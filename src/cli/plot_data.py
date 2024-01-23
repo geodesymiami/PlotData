@@ -22,7 +22,6 @@ EXAMPLE = """example:
         plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type horzvert --ref-point 19.495,-155.555  --period 20181001-20221122 --plot-box 19.43:19.5,-155.62:-155.55 --vlim -5 5
         plot_data.py MaunaLoaSenDT87/mintpy_5_20  --plot-type shaded-relief --gps --period 20181001-20221122 --dem-file $SCRATCHDIR/MaunaLoa/MLtry/data/demGeo.h5
         plot_data.py MaunaLoaSenDT87/mintpy_5_20  --plot-type shaded-relief --gps --gps-scale-fac 200 --gps-key-length 1
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20  --plot-type shaded-relief --gps --seismicity
         plot_data.py MaunaLoaSenDT87/mintpy_5_20  --plot-type shaded-relief --plot-box 19.43:19.5,-155.62:-155.55  --seismicity
         plot_data.py GalapagosSenDT128/mintpy  --plot-type=velocity --plot-box=-0.52:-0.28,-91.7:-91.4 --period=20200131-20231231 --gps --seismicity
         plot_data.py GalapagosSenDT128/mintpy GalapagosSenAT106/mintpy_orig  --plot-type=horzvert --plot-box=-1.0:-0.75,-91.55:-91.25 --period=20220101-20230831 --vlim -5 5
