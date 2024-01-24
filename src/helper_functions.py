@@ -144,7 +144,7 @@ def find_nearest_start_end_date(fname, period):
     dateList = HDFEOS(fname).get_date_list()
     
     if period:
-        period = [val for val in period.split('-')]         # converts to period=['20220101', '20221101']
+        # period = [val for val in period.split('-')]         # converts to period=['20220101', '20221101']
         start_date = period[0]
         end_date = period[1]
 

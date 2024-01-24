@@ -49,9 +49,9 @@ def run_prepare(inps):
     mask_vmin = inps.mask_vmin
     flag_save_gbis =  inps.flag_save_gbis
     if inps.period:
-        period = [val for val in inps.period.split('-')]      # converts to period=['20220101', '20221101']
-        start_date = period[0]
-        end_date = period[1]
+        inps.period = [val for val in inps.period.split('-')]      # converts to period=['20220101', '20221101']
+        start_date = inps.period[0]
+        end_date = inps.period[1]
 
     # calculate velocities for periods of interest
     data_dict = {}
@@ -60,7 +60,7 @@ def run_prepare(inps):
             work_dir = prepend_scratchdir_if_needed(dir)
             eos_file, q, q, q, out_geo_vel_file = get_file_names(work_dir)
             temp_coh_file=out_geo_vel_file.replace('velocity.h5','temporalCoherence.tif')
-            start_date, end_date = find_nearest_start_end_date(eos_file, period)
+            start_date, end_date = find_nearest_start_end_date(eos_file, inps.period)
             # get masked geo_velocity.h5 with MintPy
             # cmd = f'{eos_file} --start-date {start_date_mod} --end-date {end_date_mod} --output {out_geo_vel_file}'
             # timeseries2velocity.main( cmd.split() )
@@ -131,9 +131,9 @@ def run_plot(data_dict, inps):
     gps_unit = inps.gps_unit
     font_size = inps.font_size
     if inps.period:
-        period = [val for val in inps.period.split('-')]      # converts to period=['20220101', '20221101']
-        start_date = period[0]
-        end_date = period[1]
+        # period = [val for val in inps.period.split('-')]      # converts to period=['20220101', '20221101']
+        start_date = inps.period[0]
+        end_date = inps.period[1]
     else:
         start_date = data_dict[next(iter(data_dict))]['start_date']
         end_date = data_dict[next(iter(data_dict))]['end_date']
