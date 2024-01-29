@@ -7,15 +7,12 @@ import os
 import sys
 
 import numpy as np
-import geopandas as gpd
-import contextily as ctx
-from shapely.geometry import box
 import georaster
 import h5py
 
 import matplotlib.pyplot as plt
 from mintpy.utils import readfile, arg_utils, utils as ut
-
+from plotdata.helper_functions_PS import *
 
 def plot_scatter(ax, inps, marker='o', colorbar=True):
     
@@ -45,35 +42,6 @@ def plot_scatter(ax, inps, marker='o', colorbar=True):
     ax.axes.get_xaxis().set_visible(False)
     ax.axes.get_yaxis().set_visible(False)
 
-def calculate_mean_amplitude(slcStack, out_amplitude):
-    """
-    Calculate the mean amplitude from the SLC stack and save it to a file.
-
-    Args:
-        slcStack (str): Path to the SLC stack file.
-        out_amplitude (str): Path to the output amplitude file.
-
-    Returns:
-        None
-    """
-
-    with h5py.File(slcStack, 'r') as f:
-        slcs = f['slc']
-        s_shape = slcs.shape
-        mean_amplitude = np.zeros((s_shape[1], s_shape[2]), dtype='float32')
-        lines = np.arange(0, s_shape[1], 100)
-
-        for t in lines:
-            last = t + 100
-            if t == lines[-1]:
-                last = s_shape[1]  # Adjust the last index for the final block
-
-            # Calculate mean amplitude for the current block
-            mean_amplitude[t:last, :] = np.mean(np.abs(f['slc'][:, t:last, :]), axis=0)
-
-        # Save the calculated mean amplitude to the output file
-        np.save(out_amplitude, mean_amplitude)
-
 def update_input_namespace(inps):
     """
     Extract relevant data based on specified coordinates and masks.
@@ -89,17 +57,15 @@ def update_input_namespace(inps):
     inps.coords = {
         key: val for (key, val) in zip(keys, [lat1, lat2, lon1, lon2])
     }
-    # read data file
+    # read data and geometry file
     dataset_names = readfile.get_dataset_list(inps.data_file)
     data, atr = readfile.read(inps.data_file, datasetName=dataset_names[0])
 
-    # read geo_file
     latitude = readfile.read(inps.geometry_file, datasetName='latitude')[0]
     longitude = readfile.read(inps.geometry_file, datasetName='longitude')[0]
     DEM = (readfile.read(inps.geometry_file, datasetName='height')[0])
 
     # convert velocty to cm/yr and demError to estimated elevation
-    # print("Data unit: ", atr['UNIT'])
     if dataset_names[0] == 'velocity':
         inps.data = data * 100 # convert to cm/yr
         inps.cbar_label = 'Velocity [cm/yr]'
@@ -111,20 +77,16 @@ def update_input_namespace(inps):
             inps.cbar_label = f"Estimated elevation {atr['UNIT']}"
             print(f"Added offset to the dem error and DEM: {inps.dem_offset} meters")
 
-    if inps.ref_lalo:   
-       ref_lat = inps.ref_lalo[0]
-       ref_lon = inps.ref_lalo[1]
-       points_lalo = np.array([ref_lat, ref_lon])
-       ref_y, ref_x = coord.geo2radar(points_lalo[0], points_lalo[1])[:2]
-      
-       if dataset_names[0] == 'velocity':
-           inps.data -= inps.data[ref_y, ref_x]
+    # change reference point if given
+    if dataset_names[0] == 'velocity' and inps.ref_lalo:   
+        # inps.data = change_reference_point(inps.data, inps.ref_lalo)
+        ref_lat = inps.ref_lalo[0]
+        ref_lon = inps.ref_lalo[1]
+        points_lalo = np.array([ref_lat, ref_lon])
+        ref_y, ref_x = coord.geo2radar(points_lalo[0], points_lalo[1])[:2]
+        inps.data -= inps.data[ref_y, ref_x]
 
-    # plt.figure()
-    # plt.imshow(inps.data, cmap='viridis')
-    # plt.colorbar()
-    # plt.show(block=False)
-
+    # Fari: This should be a separate function
     mask = np.ones(data.shape, dtype=np.float32)
     mask[latitude<lat1] = 0
     mask[latitude>lat2] = 0
@@ -139,7 +101,19 @@ def update_input_namespace(inps):
     inps.lon = np.array(longitude[mask == 1])
     inps.data = np.array(inps.data[mask == 1])
 
+    if inps.kml_3d:
+        # first read demErr file
+        try:
+            demErr, atr = readfile.read('demErr.h5')
+            inps.estimated_elevation_data = demErr + DEM + inps.dem_offset
+            inps.estimated_elevation_data = np.array(inps.estimated_elevation_data[mask == 1])
+        except:
+            print('demErr.h5 file not found.')
+            raise FileNotFoundError(f'USER ERROR: file demErr.h5 not found.')
+        # create kml-3d file
+
     if inps.background =='backscatter':
+        # Fari: Here it should call one function
         coord = ut.coordinate(atr, inps.geometry_file)
         yg1, xg1 = coord.geo2radar(lat1, lon1)[:2]
         yg2, xg2 = coord.geo2radar(lat2, lon2)[:2]
@@ -162,14 +136,6 @@ def update_input_namespace(inps):
         if not os.path.exists(inps.out_amplitude):
             calculate_mean_amplitude(backscatter_file, inps.out_amplitude)
         inps.amplitude = np.fliplr(np.load(inps.out_amplitude)[ymin:ymax, xmin:xmax])
-
-def default_backscatter_file():
-    options = ['mean_amplitude.npy', '../inputs/slcStack.h5']
-    for option in options:
-        if os.path.exists(option):
-            print(f'Using {option} for backscatter.')
-            return option
-    raise FileNotFoundError(f'No backscatter file found {options}.')
 
 def configure_plot_settings(inps):
     """
@@ -196,34 +162,6 @@ def configure_plot_settings(inps):
 
     fig, ax = plt.subplots(figsize=inps.figsize)
     return fig, ax
-
-def add_open_street_map_image(ax, coords):
-    geometry = [box(coords['lon1'], coords['lat1'], coords['lon2'],coords['lat2'])]
-    gdf = gpd.GeoDataFrame({'geometry': geometry}, crs='EPSG:4326')
-    gdf.plot(ax=ax, facecolor="none", edgecolor='none')
-    ctx.add_basemap(ax, crs=gdf.crs, source=ctx.providers.OpenStreetMap.Mapnik)
-    ax.set_xlim(coords['lon1'], coords['lon2'])
-    ax.set_ylim(coords['lat1'], coords['lat2'])
-    ax.set_axis_off()
-
-def add_satellite_image(ax):
-    pass
-
-def add_geotiff_image(ax, gtif, coords, cmap='Greys_r'):
-    data_coords = coords['lon1'], coords['lon2'], coords['lat1'], coords['lat2']
-    my_image = georaster.MultiBandRaster(gtif,
-                                         bands='all',
-                                         load_data=data_coords,
-                                         latlon=True)
-    ax.imshow(my_image.r,
-              extent=my_image.extent,
-              cmap=cmap)
-
-def add_dsm_image(inps, ax):
-    pass
-
-def add_backscatter_image(ax, amplitude):
-    ax.imshow(amplitude, cmap='gray', vmin=0, vmax=300)
 
 def persistent_scatterers(inps):
     update_input_namespace(inps)
@@ -252,4 +190,9 @@ def persistent_scatterers(inps):
         else:
             fig.savefig(inps.outfile, transparent=True, dpi=inps.fig_dpi, bbox_inches='tight')
     
-    plt.show()
+    plt.show(block=False)
+
+    if inps.kml_3d:
+        # create kml-3d file
+        print('create kml 3D file')
+        create_kml_3D_file(inps)

@@ -19,11 +19,11 @@ PLOT REPO TODO:
     either as subparser or create parser that handles argparse.ArugmentParser
 '''
 EXAMPLE = """example:
-            view_persistent_scatterers.py velocity.h5 --mask ../maskPS.h5 --subset-lalo 25.8755:25.879,-80.1226:-80.1205
-            view_persistent_scatterers.py velocity.h5 --mask ../maskPS.h5 --subset-lalo 25.875:25.8795,-80.123:-80.1205 --backscatter --vlim -0.6 0.6 
-            view_persistent_scatterers.py demErr.h5 --mask ../maskPS.h5 --subset-lalo 25.8755:25.879,-80.1226:-80.1205 
-            view_persistent_scatterers.py demErr.h5 --mask ../maskPS.h5 --subset-lalo 25.8755:25.879,-80.1226:-80.1205 --estimated-elevation
-            view_persistent_scatterers.py demErr.h5 --mask ../maskPS.h5 --subset-lalo 25.8755:25.879,-80.1226:-80.1205 --estimated-elevation --geotiff ../../DEM/MiamiBeach.tif
+            view_PS.py velocity.h5 --mask ../maskPS.h5 --subset-lalo 25.8755:25.879,-80.1226:-80.1205
+            view_PS.py velocity.h5 --mask ../maskPS.h5 --subset-lalo 25.875:25.8795,-80.123:-80.1205 --backscatter --vlim -0.6 0.6 
+            view_PS.py demErr.h5 --mask ../maskPS.h5 --subset-lalo 25.8755:25.879,-80.1226:-80.1205 
+            view_PS.py demErr.h5 --mask ../maskPS.h5 --subset-lalo 25.8755:25.879,-80.1226:-80.1205 --estimated-elevation
+            view_PS.py demErr.h5 --mask ../maskPS.h5 --subset-lalo 25.8755:25.879,-80.1226:-80.1205 --estimated-elevation --geotiff ../../DEM/MiamiBeach.tif
             """
 DESCRIPTION = (
     "Plots velocity, DEM error or estimated elevation on open_street_map, geoTiff or backscatter."
@@ -76,11 +76,23 @@ def create_parser():
         type=float, help="Velocity limit for the colorbar. Default: None",
     )
     parser.add_argument(
+        "--kml-3d", dest="kml_3d",  action='store_true', default=False, 
+        help="create a 3D color-coded kml file (reads demErr.h5). Default: False" 
+    )
+    parser.add_argument(
+        "--kml-3d-key", dest="kml_3d_key",  metavar='DATASET', default='velocity', 
+        help="key used for color-coding (velocity, elevation). Default: velocity" 
+    )
+    parser.add_argument(
+        "--geo-correct", dest="geo_correct",  action='store_true', default=False, 
+        help="correct the geolocation using DEM error" 
+    )
+    parser.add_argument(
         "--flip-lr", dest="flip_lr",  action='store_true', default=False, 
         help="Flip the figure Left-Right (Default: False)." 
     )
     parser.add_argument("--flip-ud", dest="flip_ud",  action='store_true', default=False, 
-                        help="Flip the figure Up-Down (Default: False)."
+        help="Flip the figure Up-Down (Default: False)."
     )
     parser.add_argument(
         "--colormap", "-c", metavar="", type=str, default="jet",
@@ -144,7 +156,8 @@ def main(iargs=None):
     # parse
     inps = create_parser()
 
-    # import  (sys.path.pop(0) would remove the cli directory from sys.path if identifcal file names)
+    # import  (sys.path.pop(0) would remove the cli directory from sys.path if identical file names)
+    # print('sys.path:\n' + '\n'.join(sys.path))
     from plotdata.persistent_scatterers import persistent_scatterers
 
     # run
