@@ -45,11 +45,6 @@ def plot_scatter(ax, inps, marker='o', colorbar=True):
 def update_input_namespace(inps):
     """
     Extract relevant data based on specified coordinates and masks.
-
-    inps:
-        inps (Namespace):
-
-    Returns:
     """
     # parse subset_lalo, update namespace, add a dictionary of subset latlon
     keys = ['lat1', 'lat2', 'lon1', 'lon2']
@@ -57,34 +52,53 @@ def update_input_namespace(inps):
     inps.coords = {
         key: val for (key, val) in zip(keys, [lat1, lat2, lon1, lon2])
     }
-    # read data and geometry file
-    dataset_names = readfile.get_dataset_list(inps.data_file)
-    data, atr = readfile.read(inps.data_file, datasetName=dataset_names[0])
-
+    # read latitude, longitude, height
     latitude = readfile.read(inps.geometry_file, datasetName='latitude')[0]
     longitude = readfile.read(inps.geometry_file, datasetName='longitude')[0]
-    DEM = (readfile.read(inps.geometry_file, datasetName='height')[0])
+    inc_angle = readfile.read(inps.geometry_file, datasetName='incidenceAngle')[0]
+    height = readfile.read(inps.geometry_file, datasetName='height')[0]
 
-    # convert velocty to cm/yr and demError to estimated elevation
+    # read data, convert velocty to cm/yr and convert demError to estimated elevation
+    dataset_names = readfile.get_dataset_list(inps.data_file)
+    data, atr = readfile.read(inps.data_file, datasetName=dataset_names[0])
     if dataset_names[0] == 'velocity':
-        inps.data = data * 100 # convert to cm/yr
-        inps.cbar_label = 'Velocity [cm/yr]'
-    elif dataset_names[0] == 'dem':
-        inps.data = data
-        inps.cbar_label = f"Dem error {atr['UNIT']}"
-        if inps.estimated_elevation:
-            inps.data = data + DEM + inps.dem_offset
-            inps.cbar_label = f"Estimated elevation {atr['UNIT']}"
-            print(f"Added offset to the dem error and DEM: {inps.dem_offset} meters")
+        data = data * 100             # convert to cm/yr
+        cbar_label = 'Velocity [cm/yr]'
+    elif dataset_names[0] == 'dem':        #  for demErr.h5
+        data = data
+        cbar_label = f"Dem error {atr['UNIT']}"
+        if inps.estimated_elevation_flag:
+            data = data + height + inps.dem_offset
+            cbar_label = f"Estimated elevation {atr['UNIT']}"
+            print(f"Added offset to the dem error and height: {inps.dem_offset} meters")
+
+  # read demErr file (even if given as data file) and calculate estimated elevation
+    try:
+        demErr, atr = readfile.read('demErr.h5')
+        estimated_elevation = height + demErr + inps.dem_offset
+    except:
+        raise FileNotFoundError(f'USER ERROR: file demErr.h5 not found.')
 
     # change reference point if given
     if dataset_names[0] == 'velocity' and inps.ref_lalo:   
-        # inps.data = change_reference_point(inps.data, inps.ref_lalo)
+        # Need function:  inps.data = change_reference_point(inps.data, inps.ref_lalo)
         ref_lat = inps.ref_lalo[0]
         ref_lon = inps.ref_lalo[1]
         points_lalo = np.array([ref_lat, ref_lon])
         ref_y, ref_x = coord.geo2radar(points_lalo[0], points_lalo[1])[:2]
         inps.data -= inps.data[ref_y, ref_x]
+
+    inps.lat = latitude
+    inps.lon = longitude
+    inps.inc_angle = inc_angle
+    inps.data = data
+    inps.height = height
+    inps.demErr = demErr
+    inps.estimated_elevation = estimated_elevation
+    inps.HEADING = float(atr['HEADING'])
+
+    if inps.correct_geo:
+       correct_geolocation(inps)
 
     # Fari: This should be a separate function
     mask = np.ones(data.shape, dtype=np.float32)
@@ -97,20 +111,15 @@ def update_input_namespace(inps):
         mask_ps = readfile.read(inps.mask, datasetName='mask')[0]
         mask *= mask_ps  # Apply mask_p within the specified ymin, ymax, xmin, xmax
 
-    inps.lat = np.array(latitude[mask == 1])
-    inps.lon = np.array(longitude[mask == 1])
+    inps.lat = np.array(inps.lat[mask == 1])
+    inps.lon = np.array(inps.lon[mask == 1])
     inps.data = np.array(inps.data[mask == 1])
-
-    if inps.kml_3d:
-        # first read demErr file
-        try:
-            demErr, atr = readfile.read('demErr.h5')
-            inps.estimated_elevation_data = demErr + DEM + inps.dem_offset
-            inps.estimated_elevation_data = np.array(inps.estimated_elevation_data[mask == 1])
-        except:
-            print('demErr.h5 file not found.')
-            raise FileNotFoundError(f'USER ERROR: file demErr.h5 not found.')
-        # create kml-3d file
+    inps.height = np.array(inps.height[mask == 1])
+    inps.demErr = np.array(inps.demErr[mask == 1])
+    inps.estimated_elevation = np.array(inps.estimated_elevation[mask == 1])
+    
+    inps.cbar_label = cbar_label
+    inps.HEADING = float(atr['HEADING'])
 
     if inps.background =='backscatter':
         # Fari: Here it should call one function

@@ -1,4 +1,5 @@
 import os
+import h5py
 import numpy as np
 import geopandas as gpd
 import contextily as ctx
@@ -91,7 +92,7 @@ def create_kml_3D_file(inps):
     # Define the coordinates and altitudes
 
     if inps.kml_3d_key == 'velocity' or inps.kml_3d_key == 'displacement':
-        coords = list(zip(inps.lon, inps.lat, inps.estimated_elevation_data, inps.data))
+        coords = list(zip(inps.lon, inps.lat, inps.estimated_elevation, inps.data))
     else:
         coords = list(zip(inps.lon, inps.lat, inps.estimated_elevation_data, inps.estimated_elevation_data))
 
@@ -126,4 +127,39 @@ def create_kml_3D_file(inps):
     # Print the command to open the KML file with Google Earth
     print(f'open -a "Google Earth Pro.app" {os.path.abspath(kml_file)}')
 
+def correct_geolocation(inps):
+
+        print('Run geolocation correction ...')
+
+        latitude = inps.lat
+        longitude = inps.lon
+        dem_error = inps.demErr
+
+        # data, atr = readfile.read(inps.geometry_file, datasetName='azimuthAngle')
+
+        az_angle = np.deg2rad(float(inps.HEADING))
+        inc_angle = np.deg2rad(inps.inc_angle)
+
+        rad_latitude = np.deg2rad(latitude)
+
+        one_degree_latitude = 111132.92 - 559.82 * np.cos(2*rad_latitude) + \
+                              1.175 * np.cos(4 * rad_latitude) - 0.0023 * np.cos(6 * rad_latitude)
+
+        one_degree_longitude = 111412.84 * np.cos(rad_latitude) - \
+                               93.5 * np.cos(3 * rad_latitude) + 0.118 * np.cos(5 * rad_latitude)
+
+        print('one_degree_latitude, one_degree_longitude:', np.mean(one_degree_latitude), np.mean(one_degree_longitude))
+
+        dx = np.divide((dem_error) * (1 / np.tan(inc_angle)) * np.cos(az_angle), one_degree_longitude)  # converted to degree
+        dy = np.divide((dem_error) * (1 / np.tan(inc_angle)) * np.sin(az_angle), one_degree_latitude)  # converted to degree
+
+        sign = np.sign(latitude)
+        latitude += sign * dy
+
+        sign = np.sign(longitude)
+        longitude += sign * dx
+
+        inps.lat = latitude
+        inps.lon = longitude    
+        return 
 

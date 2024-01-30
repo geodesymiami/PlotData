@@ -57,7 +57,7 @@ def create_parser():
         help="DEM offset (geoid deviation) (default: 26 m for Miami)"
     )
     parser.add_argument(
-        "--estimated-elevation", dest="estimated_elevation", action='store_true',
+        "--estimated-elevation", dest="estimated_elevation_flag", action='store_true',
         help="Display estimated elevation (Default: False)"
     )
     parser.add_argument(
@@ -84,7 +84,7 @@ def create_parser():
         help="key used for color-coding (velocity, elevation). Default: velocity" 
     )
     parser.add_argument(
-        "--geo-correct", dest="geo_correct",  action='store_true', default=False, 
+        "--correct-geo", dest="correct_geo",  action='store_true', default=False, 
         help="correct the geolocation using DEM error" 
     )
     parser.add_argument(
