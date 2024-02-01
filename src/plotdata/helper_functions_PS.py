@@ -4,6 +4,7 @@ import numpy as np
 import geopandas as gpd
 import contextily as ctx
 from pathlib import Path
+import matplotlib.pyplot as plt
 import simplekml
 import colorsys
 from shapely.geometry import box
@@ -44,7 +45,7 @@ def default_backscatter_file():
         if os.path.exists(option):
             print(f'Using {option} for backscatter.')
             return option
-    raise FileNotFoundError(f'No backscatter file found {options}.')
+    raise FileNotFoundError(f'USER ERROR: No backscatter file found {options}.')
 
 def add_open_street_map_image(ax, coords):
     geometry = [box(coords['lon1'], coords['lat1'], coords['lon2'],coords['lat2'])]
@@ -83,21 +84,17 @@ def change_reference_point(data, ref_lalo):
     data -= data[ref_y, ref_x]
     return data
 
-def create_kml_3D_file(inps):
+def create_kml_file(inps):
     """ create a 3D kml file """
 
-    # Create a new KML object
+    print('create kml file with key:', inps.kml_key)
+
+    # Create a new KML object,  define the coordinates and altitudes
     kml = simplekml.Kml()
-
-    # Define the coordinates and altitudes
-
-    if inps.kml_3d_key == 'velocity' or inps.kml_3d_key == 'displacement':
+    if inps.kml_key == 'velocity' or inps.kml_key == 'displacement':
         coords = list(zip(inps.lon, inps.lat, inps.estimated_elevation, inps.data))
-    else:
-        coords = list(zip(inps.lon, inps.lat, inps.estimated_elevation_data, inps.estimated_elevation_data))
-
-    # coords = [(-80.121244, 25.872155, alt, vel) for alt, vel in zip([4, 20, 45], [0.1, 0.3, 2.0])]
-    # coords = [(-80.121244, 25.872155, alt, vel) for alt, vel in zip([4, 20, 45], [4, 20, 45])]
+    elif inps.kml_key == 'elevation':
+        coords = list(zip(inps.lon, inps.lat, inps.estimated_elevation, inps.estimated_elevation))
 
     min_key = min(key for _, _, _, key in coords)
     max_key = max(key for _, _, _, key in coords)
@@ -107,6 +104,80 @@ def create_kml_3D_file(inps):
         _, _, _, key = coord
 
         # Map the altitude to a value in the range [0, 0.7]
+        # key_norm = 0.7 * (key - min_key) / (max_key - min_key)
+        if inps.vlim:
+            key_norm = 0.7 * (key - inps.vlim[0]) / (inps.vlim[1] - inps.vlim[0])
+        else:
+            key_norm = 0.7 (key - min_key) / (max_key - min_key)    
+
+        # Convert the normalized altitude to a color in the RGB color space
+        # r, g, b = colorsys.hsv_to_rgb(key_norm, 1.0, 1.0)
+        r, g, b, _ = plt.cm.jet(key_norm)
+
+
+        # Create the point without a name
+        pnt = kml.newpoint()
+        
+        if inps.kml_3d:
+            pnt.coords = [coord]  # Set the coordinates
+            pnt.altitudemode = simplekml.AltitudeMode.relativetoground  # Set the altitude mode
+        else:
+            pnt.coords = [(coord[0], coord[1])]  # Set the coordinates
+        
+        pnt.style.iconstyle.scale = 1.0  # Set the scale of the icon
+        pnt.style.iconstyle.icon.href = 'http://maps.google.com/mapfiles/kml/shapes/shaded_dot.png'  # Set the icon
+        pnt.style.iconstyle.color = simplekml.Color.rgb(int(r * 255), int(g * 255), int(b * 255))  # Set the color
+        pnt.description = get_balloon_description(inps.kml_key, coord, key)  # Set the description
+
+        # Define a balloon style for the point
+        balloonstyle = simplekml.BalloonStyle()
+        balloonstyle.text = pnt.description
+        pnt.style.balloonstyle = balloonstyle
+
+        # Save the KML file
+        kml_file = "points.kml"
+        kml.save(kml_file)
+
+    print(f'open -a "Google Earth Pro.app" {os.path.abspath(kml_file)}')
+
+    # # Create a ScreenOverlay, set the image href, set the overlay position
+    # # FA: doe snot work. Need a color_scale,png file
+    # overlay = kml.newscreenoverlay(name='Color Scale')
+    # overlay.icon.href = 'color_scale.png'
+    # overlay.overlayxy = simplekml.OverlayXY(x=0, y=0, xunits=simplekml.Units.fraction, yunits=simplekml.Units.fraction)
+    # overlay.screenxy = simplekml.ScreenXY(x=0.015, y=0.075, xunits=simplekml.Units.fraction, yunits=simplekml.Units.fraction)
+    # overlay.size = simplekml.Size(x=0, y=0, xunits=simplekml.Units.fraction, yunits=simplekml.Units.fraction)
+    
+    # FA: This code from save_kmz_timeseries.py may work to create the color_scale,png
+    # cbar_overlay = save_kmz.generate_cbar_element(
+    #     cbar_file=inps.cbar_file,
+    #     cmap=inps.colormap,
+    #     vmin=inps.vlim[0],
+    #     vmax=inps.vlim[1],
+    # )
+    # kml_root_doc.append(cbar_overlay)
+
+def create_kml_2d_file(inps):
+    """ create a 2D kml file """
+
+    print('create kml 2D file')
+
+    # Create a new KML object,  define the coordinates
+    kml = simplekml.Kml()
+    if inps.kml_key == 'velocity' or inps.kml_key == 'displacement':
+        coords = list(zip(inps.lon, inps.lat, inps.estimated_elevation, inps.data))
+    else:
+        coords = list(zip(inps.lon, inps.lat, inps.estimated_elevation, inps.estimated_elevation))
+
+
+    min_key = min(key for _, _, key in coords)
+    max_key = max(key for _, _, key in coords)
+
+    # Create a point for each coordinate
+    for i, coord in enumerate(coords):
+        _, _, key = coord
+
+        # Map the altitude to a value in the range [0, 0.7]
         key_norm = 0.7 * (key - min_key) / (max_key - min_key)
 
         # Convert the normalized altitude to a color in the RGB color space
@@ -114,52 +185,63 @@ def create_kml_3D_file(inps):
 
         # Create the point without a name
         pnt = kml.newpoint()
-        pnt.coords = [coord]  # Set the coordinates
-        pnt.altitudemode = simplekml.AltitudeMode.relativetoground  # Set the altitude mode
+        pnt.coords = [(coord[0], coord[1])]  # Set the coordinates
         pnt.style.iconstyle.scale = 1.0  # Set the scale of the icon
         pnt.style.iconstyle.icon.href = 'http://maps.google.com/mapfiles/kml/shapes/shaded_dot.png'  # Set the icon
         pnt.style.iconstyle.color = simplekml.Color.rgb(int(r * 255), int(g * 255), int(b * 255))  # Set the color
+        # pnt.description = get_balloon_description(inps.kml_key, key)  # Set the description
+
+        # # Define a balloon style for the point
+        # balloonstyle = simplekml.BalloonStyle()
+        # balloonstyle.text = pnt.description
+        # pnt.style.balloonstyle = balloonstyle
 
     # Save the KML file
     kml_file = "points.kml"
     kml.save(kml_file)
 
-    # Print the command to open the KML file with Google Earth
-    print(f'open -a "Google Earth Pro.app" {os.path.abspath(kml_file)}')
+def get_balloon_description(kml_key, coord, key, ):
+    """Get the balloon description for a point"""
+    lat, lon, elevation, key = coord
+
+    if kml_key == 'velocity' or kml_key == 'displacement':
+        str = f"Elevation: {elevation:.2f}\n {kml_key}: {key:.3f}"
+    elif kml_key == 'elevation':    
+        str = f"Elevation: {elevation:.2f}" 
+    str += f"\nLat, Lon: {lon:.5f},{lat:.5f}"
+    return str
 
 def correct_geolocation(inps):
+    """Correct the geolocation using DEM error"""
+    print('Run geolocation correction ...')
 
-        print('Run geolocation correction ...')
+    latitude = inps.lat
+    longitude = inps.lon
+    dem_error = inps.demErr
 
-        latitude = inps.lat
-        longitude = inps.lon
-        dem_error = inps.demErr
+    az_angle = np.deg2rad(float(inps.HEADING))
+    inc_angle = np.deg2rad(inps.inc_angle)
 
-        # data, atr = readfile.read(inps.geometry_file, datasetName='azimuthAngle')
+    rad_latitude = np.deg2rad(latitude)
 
-        az_angle = np.deg2rad(float(inps.HEADING))
-        inc_angle = np.deg2rad(inps.inc_angle)
+    one_degree_latitude = 111132.92 - 559.82 * np.cos(2*rad_latitude) + \
+                            1.175 * np.cos(4 * rad_latitude) - 0.0023 * np.cos(6 * rad_latitude)
 
-        rad_latitude = np.deg2rad(latitude)
+    one_degree_longitude = 111412.84 * np.cos(rad_latitude) - \
+                            93.5 * np.cos(3 * rad_latitude) + 0.118 * np.cos(5 * rad_latitude)
 
-        one_degree_latitude = 111132.92 - 559.82 * np.cos(2*rad_latitude) + \
-                              1.175 * np.cos(4 * rad_latitude) - 0.0023 * np.cos(6 * rad_latitude)
+    print('one_degree_latitude, one_degree_longitude:', np.mean(one_degree_latitude), np.mean(one_degree_longitude))
 
-        one_degree_longitude = 111412.84 * np.cos(rad_latitude) - \
-                               93.5 * np.cos(3 * rad_latitude) + 0.118 * np.cos(5 * rad_latitude)
+    dx = np.divide((dem_error) * (1 / np.tan(inc_angle)) * np.cos(az_angle), one_degree_longitude)  # converted to degree
+    dy = np.divide((dem_error) * (1 / np.tan(inc_angle)) * np.sin(az_angle), one_degree_latitude)  # converted to degree
 
-        print('one_degree_latitude, one_degree_longitude:', np.mean(one_degree_latitude), np.mean(one_degree_longitude))
+    sign = np.sign(latitude)
+    latitude += sign * dy
 
-        dx = np.divide((dem_error) * (1 / np.tan(inc_angle)) * np.cos(az_angle), one_degree_longitude)  # converted to degree
-        dy = np.divide((dem_error) * (1 / np.tan(inc_angle)) * np.sin(az_angle), one_degree_latitude)  # converted to degree
+    sign = np.sign(longitude)
+    longitude += sign * dx
 
-        sign = np.sign(latitude)
-        latitude += sign * dy
-
-        sign = np.sign(longitude)
-        longitude += sign * dx
-
-        inps.lat = latitude
-        inps.lon = longitude    
-        return 
+    inps.lat = latitude
+    inps.lon = longitude    
+    return 
 

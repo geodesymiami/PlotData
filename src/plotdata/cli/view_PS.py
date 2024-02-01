@@ -19,11 +19,23 @@ PLOT REPO TODO:
     either as subparser or create parser that handles argparse.ArugmentParser
 '''
 EXAMPLE = """example:
-            view_PS.py velocity.h5 --mask ../maskPS.h5 --subset-lalo 25.8755:25.879,-80.1226:-80.1205
-            view_PS.py velocity.h5 --mask ../maskPS.h5 --subset-lalo 25.875:25.8795,-80.123:-80.1205 --backscatter --vlim -0.6 0.6 
-            view_PS.py demErr.h5 --mask ../maskPS.h5 --subset-lalo 25.8755:25.879,-80.1226:-80.1205 
-            view_PS.py demErr.h5 --mask ../maskPS.h5 --subset-lalo 25.8755:25.879,-80.1226:-80.1205 --estimated-elevation
-            view_PS.py demErr.h5 --mask ../maskPS.h5 --subset-lalo 25.8755:25.879,-80.1226:-80.1205 --estimated-elevation --geotiff ../../DEM/MiamiBeach.tif
+            view_PS.py velocity.h5 --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
+            view_PS.py velocity.h5 --mask maskTempCoh.h5 --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
+            view_PS.py velocity.h5 --subset-lalo 25.875:25.8795,-80.123:-80.1205 --backscatter --vlim -0.6 0.6 
+            view_PS.py S1*PS.he5 --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 
+            view_PS.py S1*PS.he5 --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --kml-3d
+            view_PS.py demErr.h5 --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 
+            view_PS.py demErr.h5 --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --estimated-elevation
+            view_PS.py demErr.h5 --mask ../maskPS.h5 --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --estimated-elevation --geotiff ../../DEM/MiamiBeach.tif
+            
+        Todo -- modify to call so that second argument is displayed: 
+            view_PS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
+            view_PS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --vlim -0.6 0.6 
+            view_PS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --backscatter 
+            view_PS.py S1*PS.he5 demErr   --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
+            view_PS.py S1*PS.he5 demErr   --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --estimated-elevation  
+            view_PS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --kml-3d
+            (modify save_hdf5eos.py to include demErr.h5 in S1*PS.he5 file)
             """
 DESCRIPTION = (
     "Plots velocity, DEM error or estimated elevation on open_street_map, geoTiff or backscatter."
@@ -42,15 +54,15 @@ def create_parser():
         help="Latitude and longitude box in format 'lat1:lat2,lon1:lon2'"
     )
     parser.add_argument(
-        "--mask", metavar='FILE', type=str, default=None,  
-        help="PS mask file",
+        "--mask", metavar='FILE', type=str, default='../maskPS.h5',  
+        help="Mask file. Default: ../maskPS.h5",
     )
     parser.add_argument(
         "--geometry-file", metavar='FILE', type=str, default='inputs/geometryRadar.h5', 
-        help="Geolocation file",
+        help="Geolocation file (default: inputs/geometryRadar.h5)",
     )
     parser.add_argument( "--ref-lalo", nargs=2,  metavar=('LAT', 'LON'), type=float, 
-        help="reference point"
+        help="reference point (default: use existing reference point)"
     )
     parser.add_argument(
         "--dem-offset", metavar='NUM', type=float, default=26,
@@ -58,45 +70,49 @@ def create_parser():
     )
     parser.add_argument(
         "--estimated-elevation", dest="estimated_elevation_flag", action='store_true',
-        help="Display estimated elevation (Default: False)"
+        help="Display estimated elevation (default: False)"
     )
     parser.add_argument(
         "--backscatter", dest="backscatter", action='store_true',
-        help="use backscatter as background (Default background: open_streep_map)"
+        help="Use backscatter as background (default background: open_streep_map)"
     )
     parser.add_argument(
         "--geotiff", type=str, metavar='FILE', default=None,
-        help="geotiff elevation file",
+        help="geotiff elevation file (default: None)",
     )
     parser.add_argument("--out-amplitude", metavar='FILE', type=str, default="mean_amplitude.npy",
         help="slcStack amplitude file (default: mean_amplitude.npy)",
     )
     parser.add_argument(
         "--vlim", nargs=2, metavar=("VMIN", "VMAX"), default=None,
-        type=float, help="Velocity limit for the colorbar. Default: None",
+        type=float, help="Velocity limit for the colorbar (default: None)",
+    )
+    parser.add_argument(
+        "--kml-2d", dest="kml_2d",  action='store_true', default=False, 
+        help="create a 2D color-coded kml file (default: False)" 
     )
     parser.add_argument(
         "--kml-3d", dest="kml_3d",  action='store_true', default=False, 
-        help="create a 3D color-coded kml file (reads demErr.h5). Default: False" 
+        help="create a 3D color-coded kml file (reads demErr.h5) (default: False)" 
     )
     parser.add_argument(
-        "--kml-3d-key", dest="kml_3d_key",  metavar='DATASET', default='velocity', 
-        help="key used for color-coding (velocity, elevation). Default: velocity" 
+        "--kml-key", dest="kml_key",  metavar='KEY', default='velocity', 
+        help="key used for color-coding [velocity, elevation] (default: velocity)" 
     )
     parser.add_argument(
         "--correct-geo", dest="correct_geo",  action='store_true', default=False, 
-        help="correct the geolocation using DEM error" 
+        help="correct the geolocation using DEM error (default: False)" 
     )
     parser.add_argument(
         "--flip-lr", dest="flip_lr",  action='store_true', default=False, 
-        help="Flip the figure Left-Right (Default: False)." 
+        help="Flip the figure Left-Right (default: False)" 
     )
     parser.add_argument("--flip-ud", dest="flip_ud",  action='store_true', default=False, 
-        help="Flip the figure Up-Down (Default: False)."
+        help="Flip the figure Up-Down (default: False)"
     )
     parser.add_argument(
         "--colormap", "-c", metavar="", type=str, default="jet",
-        help="Colormap used for display, e.g., jet",
+        help="Colormap used for display (default: jet)",
     )
     parser.add_argument(
         "--point-size", metavar='NUM', default=50, type=float,
@@ -116,8 +132,8 @@ def create_parser():
                     help='save the figure')
     parser.add_argument('--dpi', dest='fig_dpi', metavar='DPI', type=int, default=300,
                     help='DPI - dot per inch - for display/write (default: %(default)s).')
-    parser.add_argument('--nodisplay', dest='disp_fig', action='store_false',
-                    help='save and do not display the figure')
+    # parser.add_argument('--nodisplay', dest='disp_fig', action='store_false',
+    #                 help='save and do not display the figure')
     parser.add_argument('--nowhitespace', dest='disp_whitespace',
                     action='store_false', help='do not display white space')
 
@@ -132,9 +148,10 @@ def create_parser():
     if  inps.geotiff:
         inps.background = 'geotiff'
 
-    # check: coupled option behaviors
-    if not inps.disp_fig or inps.outfile:
-        inps.save_fig = True
+    # # check: coupled option behaviors (FA: form view.py, not implemented because it was unclear
+    # if not inps.disp_fig or inps.outfile:
+    #     inps.save_fig = True
+
     if not inps.outfile:
         inps.outfile = 'scatter.png'
     

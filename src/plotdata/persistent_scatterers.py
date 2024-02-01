@@ -2,16 +2,12 @@
 # Authors: Farzaneh Aziz Zanjani & Falk Amelung
 # This script plots velocity, DEM error, and estimated elevation on the backscatter.
 ############################################################
-import argparse
 import os
-import sys
-
 import numpy as np
-import georaster
-import h5py
-
+import glob
 import matplotlib.pyplot as plt
-from mintpy.utils import readfile, arg_utils, utils as ut
+from mintpy.utils import readfile, utils as ut
+from mintpy.objects import HDFEOS
 from plotdata.helper_functions_PS import *
 
 def plot_scatter(ax, inps, marker='o', colorbar=True):
@@ -59,18 +55,37 @@ def update_input_namespace(inps):
     height = readfile.read(inps.geometry_file, datasetName='height')[0]
 
     # read data, convert velocty to cm/yr and convert demError to estimated elevation
-    dataset_names = readfile.get_dataset_list(inps.data_file)
-    data, atr = readfile.read(inps.data_file, datasetName=dataset_names[0])
-    if dataset_names[0] == 'velocity':
+    # dataset_names = readfile.get_dataset_list(inps.data_file)
+    files = glob.glob(inps.data_file)
+    if not files:
+        raise FileNotFoundError(f'USER ERROR: file {inps.data_file} not found.') 
+    
+    metadata = readfile.read_attribute(files[0])
+    if metadata['FILE_TYPE'] == 'velocity':
+        data, _ = readfile.read(files[0], datasetName='velocity')
         data = data * 100             # convert to cm/yr
         cbar_label = 'Velocity [cm/yr]'
-    elif dataset_names[0] == 'dem':        #  for demErr.h5
-        data = data
-        cbar_label = f"Dem error {atr['UNIT']}"
+    elif metadata['FILE_TYPE'] == 'dem':        #  for demErr.h5
+        data, _ = readfile.read(files[0], datasetName='dem')
+        cbar_label = f"Dem error {metadata['UNIT']}"
         if inps.estimated_elevation_flag:
             data = data + height + inps.dem_offset
-            cbar_label = f"Estimated elevation {atr['UNIT']}"
+            cbar_label = f"Estimated elevation {metadata['UNIT']}"
             print(f"Added offset to the dem error and height: {inps.dem_offset} meters")
+            # # for debugging
+            # data = height
+            # cbar_label = f"height {metadata['UNIT']}"
+    elif metadata['FILE_TYPE'] == 'HDFEOS':
+        date_list = HDFEOS(files[0]).get_date_list()
+        dataset_first = f'HDFEOS/GRIDS/timeseries/observation/displacement-{date_list[0]}'
+        dataset_last = f'HDFEOS/GRIDS/timeseries/observation/displacement-{date_list[-1]}'
+        displacement_first, _ = readfile.read(files[0], datasetName=dataset_first)
+        displacement_last, _ = readfile.read(files[0], datasetName=dataset_last)
+        displacement_total = (displacement_last - displacement_first) * 100
+        data = displacement_total
+        cbar_label = 'Total displacement [cm]'
+    else:
+        raise ValueError(f'USER ERROR: File type {metadata["FILE_TYPE"]} not supported.')   
 
   # read demErr file (even if given as data file) and calculate estimated elevation
     try:
@@ -80,7 +95,7 @@ def update_input_namespace(inps):
         raise FileNotFoundError(f'USER ERROR: file demErr.h5 not found.')
 
     # change reference point if given
-    if dataset_names[0] == 'velocity' and inps.ref_lalo:   
+    if metadata['FILE_TYPE']  == 'velocity' and inps.ref_lalo:   
         # Need function:  inps.data = change_reference_point(inps.data, inps.ref_lalo)
         ref_lat = inps.ref_lalo[0]
         ref_lon = inps.ref_lalo[1]
@@ -173,11 +188,19 @@ def configure_plot_settings(inps):
     return fig, ax
 
 def persistent_scatterers(inps):
+    # create kml file, display figure to screen, or save figure
+
     update_input_namespace(inps)
 
     fig, ax = configure_plot_settings(inps)
 
-    # Adding background image
+    # create 2d or 3d kml file and exit
+    if inps.kml_2d or inps.kml_3d:
+        
+        create_kml_file(inps)
+        return
+
+    # Add background image and plot
     if inps.background == 'open_street_map':
         add_open_street_map_image(ax, inps.coords)
     elif inps.background == 'backscatter':
@@ -191,17 +214,17 @@ def persistent_scatterers(inps):
         
     plot_scatter(ax=ax, inps=inps)
     fig.tight_layout()
+    
     # save figure
-    if inps.save_fig:
+    if not inps.save_fig:
+        plt.show()
+        # plt.show(block=False)
+    else:
         print(f'save figure to {inps.outfile} with dpi={inps.fig_dpi}')
         if not inps.disp_whitespace:
             fig.savefig(inps.outfile, transparent=True, dpi=inps.fig_dpi, pad_inches=0.0)
         else:
             fig.savefig(inps.outfile, transparent=True, dpi=inps.fig_dpi, bbox_inches='tight')
     
-    plt.show(block=False)
 
-    if inps.kml_3d:
-        # create kml-3d file
-        print('create kml 3D file')
-        create_kml_3D_file(inps)
+
