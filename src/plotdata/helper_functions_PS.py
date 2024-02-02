@@ -122,11 +122,13 @@ def create_kml_file(inps):
         if inps.kml_3d:
             pnt.coords = [coord]  # Set the coordinates
             pnt.altitudemode = simplekml.AltitudeMode.relativetoground  # Set the altitude mode
+            pnt.style.iconstyle.scale = 1.0  # Set the scale of the icon
+            pnt.style.iconstyle.icon.href = 'http://maps.google.com/mapfiles/kml/shapes/shaded_dot.png'  # Set the icon
         else:
             pnt.coords = [(coord[0], coord[1])]  # Set the coordinates
-        
-        pnt.style.iconstyle.scale = 1.0  # Set the scale of the icon
-        pnt.style.iconstyle.icon.href = 'http://maps.google.com/mapfiles/kml/shapes/shaded_dot.png'  # Set the icon
+            pnt.style.iconstyle.scale = 0.5  # Set the scale of the icon
+            pnt.style.iconstyle.icon.href = 'https://maps.google.com/mapfiles/kml/shapes/road_shield3.png'  # Set the icon
+     
         pnt.style.iconstyle.color = simplekml.Color.rgb(int(r * 255), int(g * 255), int(b * 255))  # Set the color
         pnt.description = get_balloon_description(coord, key, inps)  # Set the description
 
