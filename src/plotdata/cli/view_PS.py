@@ -20,7 +20,7 @@ PLOT REPO TODO:
 '''
 EXAMPLE = """example:
             view_PS.py S1*PS.he5  --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
-            view_PS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
+            view_PS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026 -80.122124
             view_PS.py S1*PS.he5 elevation --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
             view_PS.py S1*PS.he5 dem_error --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
             view_PS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --vlim -0.6 0.6 

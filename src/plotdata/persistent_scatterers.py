@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Authors: Farzaneh Aziz Zanjani & Falk Amelung
-# This script plots velocity, DEM error, and estimated elevation on the backscatter.
+# This script plots displacement, velocity, estimated elevation or DEM error on open street map or backscatter.
 ############################################################
 import os
 import numpy as np
@@ -9,37 +9,6 @@ import matplotlib.pyplot as plt
 from mintpy.utils import readfile, utils as ut
 from mintpy.objects import HDFEOS
 from plotdata.helper_functions_PS import *
-
-def plot_scatter(ax, inps, marker='o', colorbar=True):
-    
-    if  inps.background == 'open_street_map' or inps.background == 'geotiff':
-        im1 = ax.scatter(inps.lon, inps.lat, c=inps.data, s=inps.point_size, cmap=inps.colormap, marker=marker)
-        if inps.ref_lalo:
-            ax.scatter(inps.ref_lalo[1], inps.ref_lalo[0], color='black', s=inps.point_size*0.2, marker='s')
-
-    elif  inps.background == 'backscatter':
-        # Create a boolean mask for the condition
-        mask = (inps.yv < inps.amplitude.shape[0]) & (inps.xv < inps.amplitude.shape[1])
-        xv_filtered = inps.xv[mask]
-        yv_filtered = inps.yv[mask]
-        data_filtered = inps.data[mask]
-        
-        im = ax.scatter(xv_filtered, yv_filtered, c=data_filtered, s=inps.point_size, cmap=inps.colormap, marker=marker)
-        # im = ax.scatter(inps.xv, inps.yv, c=inps.data, s=inps.point_size, cmap=inps.colormap, marker=marker)
-   
-    if colorbar:
-        cbar = plt.colorbar(im1,
-                            ax=ax,
-                            shrink=1,
-                            orientation='horizontal',
-                            pad=0.1)
-        cbar.set_label(inps.cbar_label)
-        if inps.vlim is not None:
-            clim=(inps.vlim[0], inps.vlim[1])
-            im1.set_clim(clim[0], clim[1])
-
-    ax.axes.get_xaxis().set_visible(False)
-    ax.axes.get_yaxis().set_visible(False)
 
 def update_input_namespace(inps):
     """
@@ -80,24 +49,25 @@ def update_input_namespace(inps):
         displacement_first, attr = readfile.read(files[0], datasetName=dataset_first)
         displacement_last, attr  = readfile.read(files[0], datasetName=dataset_last)
         displacement = (displacement_last - displacement_first) * 100    # total displacement
-        cbar_labels = dict()
-        cbar_labels['displacement'] = 'Total displacement [cm]'
-        cbar_labels['height'] = 'Dem height [m]'
+        label_dict = dict()
+        label_dict['displacement'] = {'str': 'Total displacement', 'unit': 'cm' }
+        label_dict['height'] = {'str': 'Dem height', 'unit': 'm' }
 
         # legacy/compatibility code: read demErr.h5 because missing in S1*he5 file, 
         #        read velocity.h5 until created on the fly
         try:
             dem_error, attr = readfile.read('demErr.h5', datasetName='dem')
             elevation = height + dem_error + inps.dem_offset
-            cbar_labels['dem_error'] = f"Dem error [{attr['UNIT']}]"
-            cbar_labels['elevation'] = f"Estimated elevation [{attr['UNIT']}]"
+            label_dict['dem_error'] = {'str': 'Dem error', 'unit': 'm' }
+            label_dict['elevation'] = {'str': 'Estimated elevation', 'unit': 'm' }
         except:
             raise FileNotFoundError(f'USER ERROR: file demErr.h5 not found.')
 
         try:
             velocity, attr = readfile.read('velocity.h5', datasetName='velocity')
             velocity = velocity * 100             # convert to cm/yr
-            cbar_labels['velocity'] = 'Velocity [cm/yr]'
+            label_dict['velocity'] = {'str': 'Velocity', 'unit': 'cm/yr' }
+
         except:
             raise FileNotFoundError(f'USER ERROR: file velocity.h5 not found.')
 
@@ -105,7 +75,7 @@ def update_input_namespace(inps):
     if inps.ref_lalo:  
         displacement = change_reference_point(displacement, inps.ref_lalo, inps.file_type) 
         velocity = change_reference_point(velocity, inps.ref_lalo, inps.file_type) 
-       # FA: REF_LAT/LON is not available. need to calculate and add to inps for plotting
+       # FA: REF_LAT/LON is not available. Need to calculate and add to inps for plotting
         
     inps.displacement = displacement
     inps.velocity = velocity
@@ -143,7 +113,7 @@ def update_input_namespace(inps):
 
     # assign the dataset of interest
     inps.data = getattr(inps, inps.dataset)
-    inps.cbar_label = cbar_labels[inps.dataset]
+    inps.label_dict = label_dict[inps.dataset]
 
     if inps.background =='backscatter':
         # Fari: Here it should call one function
@@ -205,7 +175,6 @@ def persistent_scatterers(inps):
 
     # create 2d or 3d kml file and exit
     if inps.kml_2d or inps.kml_3d:
-        
         create_kml_file(inps)
         return
 
@@ -235,5 +204,34 @@ def persistent_scatterers(inps):
         else:
             fig.savefig(inps.outfile, transparent=True, dpi=inps.fig_dpi, bbox_inches='tight')
     
+def plot_scatter(ax, inps, marker='o', colorbar=True):
+    
+    if  inps.background == 'open_street_map' or inps.background == 'geotiff':
+        im1 = ax.scatter(inps.lon, inps.lat, c=inps.data, s=inps.point_size, cmap=inps.colormap, marker=marker)
+        if inps.ref_lalo:
+            ax.scatter(inps.ref_lalo[1], inps.ref_lalo[0], color='black', s=inps.point_size*0.2, marker='s')
 
+    elif  inps.background == 'backscatter':
+        # Create a boolean mask for the condition
+        mask = (inps.yv < inps.amplitude.shape[0]) & (inps.xv < inps.amplitude.shape[1])
+        xv_filtered = inps.xv[mask]
+        yv_filtered = inps.yv[mask]
+        data_filtered = inps.data[mask]
+        
+        im = ax.scatter(xv_filtered, yv_filtered, c=data_filtered, s=inps.point_size, cmap=inps.colormap, marker=marker)
+        # im = ax.scatter(inps.xv, inps.yv, c=inps.data, s=inps.point_size, cmap=inps.colormap, marker=marker)
+   
+    if colorbar:
+        cbar = plt.colorbar(im1,
+                            ax=ax,
+                            shrink=1,
+                            orientation='horizontal',
+                            pad=0.1)
+        cbar.set_label(inps.label_dict['str'])
+        if inps.vlim is not None:
+            clim=(inps.vlim[0], inps.vlim[1])
+            im1.set_clim(clim[0], clim[1])
+
+    ax.axes.get_xaxis().set_visible(False)
+    ax.axes.get_yaxis().set_visible(False)
 

@@ -6,9 +6,9 @@ import contextily as ctx
 from pathlib import Path
 import matplotlib.pyplot as plt
 import simplekml
-import colorsys
 from shapely.geometry import box
-from mintpy.utils import readfile, arg_utils, utils as ut
+from mintpy.utils import readfile, utils as ut
+from mintpy import save_kmz
 
 
 def calculate_mean_amplitude(slcStack, out_amplitude):
@@ -91,7 +91,7 @@ def change_reference_point(data, ref_lalo, file_type):
 def create_kml_file(inps):
     """ create a 3D kml file """
 
-    print('create kml file with key:', inps.dataset)
+    print('create kml file, key:', inps.dataset)
 
     # Create a new KML object,  define the coordinates and altitudes
     kml = simplekml.Kml()
@@ -135,39 +135,55 @@ def create_kml_file(inps):
         balloonstyle.text = pnt.description
         pnt.style.balloonstyle = balloonstyle
 
-        # Save the KML file
-        kml_file = "points.kml"
-        kml.save(kml_file)
+    # Create color scale
+    save_kmz.generate_cbar_element(cbar_file='color_scale.png', cmap='jet',vmin=inps.vlim[0],vmax=inps.vlim[1],
+                     unit=inps.label_dict['unit'],loc='lower left', nbins=None, label=inps.label_dict['str'])
+    
+    # Open the image file, Get the dimensions of the image, calculate the aspect ratio
+    from PIL import Image
+    img = Image.open('color_scale.png')
+    width, height = img.size
+    aspect_ratio = width * 0.75 / height
+    overlay_size_x = width * 0.75
+    overlay_size_y = height
+
+    # Create a ScreenOverlay for the color scale
+    overlay = kml.newscreenoverlay(name='Color Scale')
+    overlay.icon.href = 'color_scale.png'
+    overlay.overlayxy = simplekml.OverlayXY(x=0, y=1, xunits=simplekml.Units.fraction, yunits=simplekml.Units.fraction)
+    
+    # Move the overlay up to 10% from the bottom of the screen
+    # Set the size of the overlay in pixels
+    overlay.size = simplekml.Size(x=overlay_size_x, y=overlay_size_y, xunits=simplekml.Units.pixel, yunits=simplekml.Units.pixel)
+    # Add the overlay to the KML object
+    kml.screenoverlay = overlay
+
+    # Save the KML file
+    kml_file = "points.kml"
+    kml.save(kml_file)
+    
+    # Create a new zipfile object
+    import zipfile
+    with zipfile.ZipFile('points.kmz', 'w') as myzip:
+        # Add the KML file to the zipfile
+        myzip.write(kml_file)
+        # Add the image file to the zipfile
+        myzip.write('color_scale.png')
 
     print(f'open -a "Google Earth Pro.app" {os.path.abspath(kml_file)}')
 
-    # # Create a ScreenOverlay, set the image href, set the overlay position
-    # # FA: doe snot work. Need a color_scale,png file
-    # overlay = kml.newscreenoverlay(name='Color Scale')
-    # overlay.icon.href = 'color_scale.png'
-    # overlay.overlayxy = simplekml.OverlayXY(x=0, y=0, xunits=simplekml.Units.fraction, yunits=simplekml.Units.fraction)
-    # overlay.screenxy = simplekml.ScreenXY(x=0.015, y=0.075, xunits=simplekml.Units.fraction, yunits=simplekml.Units.fraction)
-    # overlay.size = simplekml.Size(x=0, y=0, xunits=simplekml.Units.fraction, yunits=simplekml.Units.fraction)
-    
     # FA: This code from save_kmz_timeseries.py may work to create the color_scale,png
-    # cbar_overlay = save_kmz.generate_cbar_element(
-    #     cbar_file=inps.cbar_file,
-    #     cmap=inps.colormap,
-    #     vmin=inps.vlim[0],
-    #     vmax=inps.vlim[1],
-    # )
+    # from pykml.factory import KML_ElementMaker as KML
+    # kml_root_doc = KML.Document()
     # kml_root_doc.append(cbar_overlay)
-
 
 def get_balloon_description(coord, key, inps ):
     """Get the balloon description for a point"""
     lat, lon, elevation, key = coord
-
-    unit = inps.cbar_label.split(' ')[-1].split('[')[1].split(']')[0]
     
     str = ''
     # if inps.dataset == 'velocity' or inps.dataset == 'displacement':
-    str += f"{inps.dataset}: {key:.2f} {unit}\n"
+    str += f"{inps.label_dict['str']}: {key:.2f} {inps.label_dict['unit']}\n"
     str += f"Elevation: {elevation:.1f} m\n"
     str += f"Lat, Lon: {lon:.6f},{lat:.6f}"
     return str
