@@ -146,9 +146,10 @@ def create_kml_file(inps):
     # Create a ScreenOverlay for the color scale
     overlay = kml.newscreenoverlay(name='Color Scale')
     overlay.icon.href = 'color_scale.png'
-    overlay.overlayxy = simplekml.OverlayXY(x=0, y=1, xunits=simplekml.Units.fraction, yunits=simplekml.Units.fraction)
-    overlay.screenxy = simplekml.ScreenXY(x=0.0, y=0.4, xunits=simplekml.Units.fraction, yunits=simplekml.Units.fraction)
+    overlay.overlayxy = simplekml.OverlayXY(x=0, y=0, xunits=simplekml.Units.fraction, yunits=simplekml.Units.fraction)
+    overlay.screenxy = simplekml.ScreenXY(x=0, y=0, xunits=simplekml.Units.fraction, yunits=simplekml.Units.fraction)
     overlay.size = simplekml.Size(x=0.35 * aspect_ratio, y=0.35, xunits=simplekml.Units.fraction, yunits=simplekml.Units.fraction)
+
     # Add the overlay to the KML object
     kml.screenoverlay = overlay
 
