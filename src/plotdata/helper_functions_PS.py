@@ -10,6 +10,7 @@ import colorsys
 from shapely.geometry import box
 from mintpy.utils import readfile, arg_utils, utils as ut
 
+
 def calculate_mean_amplitude(slcStack, out_amplitude):
     """
     Calculate the mean amplitude from the SLC stack and save it to a file.
@@ -75,26 +76,26 @@ def add_dsm_image(inps, ax):
 def add_backscatter_image(ax, amplitude):
     ax.imshow(amplitude, cmap='gray', vmin=0, vmax=300)
 
-def change_reference_point(data, ref_lalo):
+def change_reference_point(data, ref_lalo, file_type):
     """Change reference point of data to ref_lalo"""
     ref_lat = ref_lalo[0]
     ref_lon = ref_lalo[1]
     points_lalo = np.array([ref_lat, ref_lon])
-    ref_y, ref_x = coord.geo2radar(points_lalo[0], points_lalo[1])[:2]
-    data -= data[ref_y, ref_x]
+    if file_type == 'HDFEOS':             # for data in radar coordinates (different for SARPROZ, Andreas)
+        atr = readfile.read_attribute('velocity.h5')
+        coord = ut.coordinate(atr, lookup_file='inputs/geometryRadar.h5')   # radar coord
+        ref_y, ref_x = coord.geo2radar(points_lalo[0], points_lalo[1])[:2]
+        data -= data[ref_y, ref_x]
     return data
 
 def create_kml_file(inps):
     """ create a 3D kml file """
 
-    print('create kml file with key:', inps.kml_key)
+    print('create kml file with key:', inps.dataset)
 
     # Create a new KML object,  define the coordinates and altitudes
     kml = simplekml.Kml()
-    if inps.kml_key == 'velocity' or inps.kml_key == 'displacement':
-        coords = list(zip(inps.lon, inps.lat, inps.estimated_elevation, inps.data))
-    elif inps.kml_key == 'elevation':
-        coords = list(zip(inps.lon, inps.lat, inps.estimated_elevation, inps.estimated_elevation))
+    coords = list(zip(inps.lon, inps.lat, inps.elevation, inps.data))
 
     min_key = min(key for _, _, _, key in coords)
     max_key = max(key for _, _, _, key in coords)
@@ -127,7 +128,7 @@ def create_kml_file(inps):
         pnt.style.iconstyle.scale = 1.0  # Set the scale of the icon
         pnt.style.iconstyle.icon.href = 'http://maps.google.com/mapfiles/kml/shapes/shaded_dot.png'  # Set the icon
         pnt.style.iconstyle.color = simplekml.Color.rgb(int(r * 255), int(g * 255), int(b * 255))  # Set the color
-        pnt.description = get_balloon_description(inps.kml_key, coord, key)  # Set the description
+        pnt.description = get_balloon_description(coord, key, inps)  # Set the description
 
         # Define a balloon style for the point
         balloonstyle = simplekml.BalloonStyle()
@@ -157,58 +158,18 @@ def create_kml_file(inps):
     # )
     # kml_root_doc.append(cbar_overlay)
 
-def create_kml_2d_file(inps):
-    """ create a 2D kml file """
 
-    print('create kml 2D file')
-
-    # Create a new KML object,  define the coordinates
-    kml = simplekml.Kml()
-    if inps.kml_key == 'velocity' or inps.kml_key == 'displacement':
-        coords = list(zip(inps.lon, inps.lat, inps.estimated_elevation, inps.data))
-    else:
-        coords = list(zip(inps.lon, inps.lat, inps.estimated_elevation, inps.estimated_elevation))
-
-
-    min_key = min(key for _, _, key in coords)
-    max_key = max(key for _, _, key in coords)
-
-    # Create a point for each coordinate
-    for i, coord in enumerate(coords):
-        _, _, key = coord
-
-        # Map the altitude to a value in the range [0, 0.7]
-        key_norm = 0.7 * (key - min_key) / (max_key - min_key)
-
-        # Convert the normalized altitude to a color in the RGB color space
-        r, g, b = colorsys.hsv_to_rgb(key_norm, 1.0, 1.0)
-
-        # Create the point without a name
-        pnt = kml.newpoint()
-        pnt.coords = [(coord[0], coord[1])]  # Set the coordinates
-        pnt.style.iconstyle.scale = 1.0  # Set the scale of the icon
-        pnt.style.iconstyle.icon.href = 'http://maps.google.com/mapfiles/kml/shapes/shaded_dot.png'  # Set the icon
-        pnt.style.iconstyle.color = simplekml.Color.rgb(int(r * 255), int(g * 255), int(b * 255))  # Set the color
-        # pnt.description = get_balloon_description(inps.kml_key, key)  # Set the description
-
-        # # Define a balloon style for the point
-        # balloonstyle = simplekml.BalloonStyle()
-        # balloonstyle.text = pnt.description
-        # pnt.style.balloonstyle = balloonstyle
-
-    # Save the KML file
-    kml_file = "points.kml"
-    kml.save(kml_file)
-
-def get_balloon_description(kml_key, coord, key, ):
+def get_balloon_description(coord, key, inps ):
     """Get the balloon description for a point"""
     lat, lon, elevation, key = coord
 
-    if kml_key == 'velocity' or kml_key == 'displacement':
-        str = f"Elevation: {elevation:.2f}\n {kml_key}: {key:.3f}"
-    elif kml_key == 'elevation':    
-        str = f"Elevation: {elevation:.2f}" 
-    str += f"\nLat, Lon: {lon:.5f},{lat:.5f}"
+    unit = inps.cbar_label.split(' ')[-1].split('[')[1].split(']')[0]
+    
+    str = ''
+    # if inps.dataset == 'velocity' or inps.dataset == 'displacement':
+    str += f"{inps.dataset}: {key:.2f} {unit}\n"
+    str += f"Elevation: {elevation:.1f} m\n"
+    str += f"Lat, Lon: {lon:.6f},{lat:.6f}"
     return str
 
 def correct_geolocation(inps):
@@ -217,7 +178,7 @@ def correct_geolocation(inps):
 
     latitude = inps.lat
     longitude = inps.lon
-    dem_error = inps.demErr
+    dem_error = inps.dem_error
 
     az_angle = np.deg2rad(float(inps.HEADING))
     inc_angle = np.deg2rad(inps.inc_angle)

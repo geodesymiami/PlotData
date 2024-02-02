@@ -13,7 +13,10 @@ from plotdata.helper_functions_PS import *
 def plot_scatter(ax, inps, marker='o', colorbar=True):
     
     if  inps.background == 'open_street_map' or inps.background == 'geotiff':
-        im = ax.scatter(inps.lon, inps.lat, c=inps.data, s=inps.point_size, cmap=inps.colormap, marker=marker)
+        im1 = ax.scatter(inps.lon, inps.lat, c=inps.data, s=inps.point_size, cmap=inps.colormap, marker=marker)
+        if inps.ref_lalo:
+            ax.scatter(inps.ref_lalo[1], inps.ref_lalo[0], color='black', s=inps.point_size*0.2, marker='s')
+
     elif  inps.background == 'backscatter':
         # Create a boolean mask for the condition
         mask = (inps.yv < inps.amplitude.shape[0]) & (inps.xv < inps.amplitude.shape[1])
@@ -25,7 +28,7 @@ def plot_scatter(ax, inps, marker='o', colorbar=True):
         # im = ax.scatter(inps.xv, inps.yv, c=inps.data, s=inps.point_size, cmap=inps.colormap, marker=marker)
    
     if colorbar:
-        cbar = plt.colorbar(im,
+        cbar = plt.colorbar(im1,
                             ax=ax,
                             shrink=1,
                             orientation='horizontal',
@@ -33,7 +36,7 @@ def plot_scatter(ax, inps, marker='o', colorbar=True):
         cbar.set_label(inps.cbar_label)
         if inps.vlim is not None:
             clim=(inps.vlim[0], inps.vlim[1])
-            im.set_clim(clim[0], clim[1])
+            im1.set_clim(clim[0], clim[1])
 
     ax.axes.get_xaxis().set_visible(False)
     ax.axes.get_yaxis().set_visible(False)
@@ -49,74 +52,76 @@ def update_input_namespace(inps):
         key: val for (key, val) in zip(keys, [lat1, lat2, lon1, lon2])
     }
     # read latitude, longitude, height
-    latitude = readfile.read(inps.geometry_file, datasetName='latitude')[0]
-    longitude = readfile.read(inps.geometry_file, datasetName='longitude')[0]
-    inc_angle = readfile.read(inps.geometry_file, datasetName='incidenceAngle')[0]
-    height = readfile.read(inps.geometry_file, datasetName='height')[0]
-
-    # read data, convert velocty to cm/yr and convert demError to estimated elevation
+    # read data, convert velocty to cm/yr and convert dem_erroror to estimated elevation
     # dataset_names = readfile.get_dataset_list(inps.data_file)
     files = glob.glob(inps.data_file)
     if not files:
         raise FileNotFoundError(f'USER ERROR: file {inps.data_file} not found.') 
     
-    metadata = readfile.read_attribute(files[0])
-    if metadata['FILE_TYPE'] == 'velocity':
-        data, _ = readfile.read(files[0], datasetName='velocity')
-        data = data * 100             # convert to cm/yr
-        cbar_label = 'Velocity [cm/yr]'
-    elif metadata['FILE_TYPE'] == 'dem':        #  for demErr.h5
-        data, _ = readfile.read(files[0], datasetName='dem')
-        cbar_label = f"Dem error {metadata['UNIT']}"
-        if inps.estimated_elevation_flag:
-            data = data + height + inps.dem_offset
-            cbar_label = f"Estimated elevation {metadata['UNIT']}"
-            print(f"Added offset to the dem error and height: {inps.dem_offset} meters")
-            # # for debugging
-            # data = height
-            # cbar_label = f"height {metadata['UNIT']}"
-    elif metadata['FILE_TYPE'] == 'HDFEOS':
+    try:
+        metadata = readfile.read_attribute(files[0])
+        metadata['FILE_TYPE']
+        inps.file_type = readfile.read_attribute(files[0])['FILE_TYPE']
+    except:
+        # Fari, here we just need something to figure out which file_type
+        inps.file_type = "SARPROZ"
+        inps.file_type = "Andreas"
+        pass
+    
+    if inps.file_type == 'HDFEOS':
+        latitude, _ = readfile.read(files[0], datasetName='HDFEOS/GRIDS/timeseries/geometry/latitude')
+        longitude, _ = readfile.read(files[0], datasetName='HDFEOS/GRIDS/timeseries/geometry/longitude')
+        height, _  = readfile.read(files[0], datasetName='HDFEOS/GRIDS/timeseries/geometry/height')
+        inc_angle, _  = readfile.read(files[0], datasetName='HDFEOS/GRIDS/timeseries/geometry/incidenceAngle')
+
         date_list = HDFEOS(files[0]).get_date_list()
         dataset_first = f'HDFEOS/GRIDS/timeseries/observation/displacement-{date_list[0]}'
         dataset_last = f'HDFEOS/GRIDS/timeseries/observation/displacement-{date_list[-1]}'
-        displacement_first, _ = readfile.read(files[0], datasetName=dataset_first)
-        displacement_last, _ = readfile.read(files[0], datasetName=dataset_last)
-        displacement_total = (displacement_last - displacement_first) * 100
-        data = displacement_total
-        cbar_label = 'Total displacement [cm]'
-    else:
-        raise ValueError(f'USER ERROR: File type {metadata["FILE_TYPE"]} not supported.')   
+        displacement_first, attr = readfile.read(files[0], datasetName=dataset_first)
+        displacement_last, attr  = readfile.read(files[0], datasetName=dataset_last)
+        displacement = (displacement_last - displacement_first) * 100    # total displacement
+        cbar_labels = dict()
+        cbar_labels['displacement'] = 'Total displacement [cm]'
+        cbar_labels['height'] = 'Dem height [m]'
 
-  # read demErr file (even if given as data file) and calculate estimated elevation
-    try:
-        demErr, atr = readfile.read('demErr.h5')
-        estimated_elevation = height + demErr + inps.dem_offset
-    except:
-        raise FileNotFoundError(f'USER ERROR: file demErr.h5 not found.')
+        # legacy/compatibility code: read demErr.h5 because missing in S1*he5 file, 
+        #        read velocity.h5 until created on the fly
+        try:
+            dem_error, attr = readfile.read('demErr.h5', datasetName='dem')
+            elevation = height + dem_error + inps.dem_offset
+            cbar_labels['dem_error'] = f"Dem error [{attr['UNIT']}]"
+            cbar_labels['elevation'] = f"Estimated elevation [{attr['UNIT']}]"
+        except:
+            raise FileNotFoundError(f'USER ERROR: file demErr.h5 not found.')
 
-    # change reference point if given
-    if metadata['FILE_TYPE']  == 'velocity' and inps.ref_lalo:   
-        # Need function:  inps.data = change_reference_point(inps.data, inps.ref_lalo)
-        ref_lat = inps.ref_lalo[0]
-        ref_lon = inps.ref_lalo[1]
-        points_lalo = np.array([ref_lat, ref_lon])
-        ref_y, ref_x = coord.geo2radar(points_lalo[0], points_lalo[1])[:2]
-        inps.data -= inps.data[ref_y, ref_x]
+        try:
+            velocity, attr = readfile.read('velocity.h5', datasetName='velocity')
+            velocity = velocity * 100             # convert to cm/yr
+            cbar_labels['velocity'] = 'Velocity [cm/yr]'
+        except:
+            raise FileNotFoundError(f'USER ERROR: file velocity.h5 not found.')
 
+    # change reference point. Need function: inps.data = change_reference_point(data, inps.ref_lalo, file_type)
+    if inps.ref_lalo:  
+        displacement = change_reference_point(displacement, inps.ref_lalo, inps.file_type) 
+        velocity = change_reference_point(velocity, inps.ref_lalo, inps.file_type) 
+       # FA: REF_LAT/LON is not available. need to calculate and add to inps for plotting
+        
+    inps.displacement = displacement
+    inps.velocity = velocity
+    inps.dem_error = dem_error
+    inps.elevation = elevation
+    inps.height = height
     inps.lat = latitude
     inps.lon = longitude
     inps.inc_angle = inc_angle
-    inps.data = data
-    inps.height = height
-    inps.demErr = demErr
-    inps.estimated_elevation = estimated_elevation
-    inps.HEADING = float(atr['HEADING'])
+    inps.HEADING = float(attr['HEADING'])
 
     if inps.correct_geo:
        correct_geolocation(inps)
 
-    # Fari: This should be a separate function
-    mask = np.ones(data.shape, dtype=np.float32)
+    # Fari: This should be a separate function, not sure why this is needed
+    mask = np.ones(displacement.shape, dtype=np.float32)
     mask[latitude<lat1] = 0
     mask[latitude>lat2] = 0
     mask[longitude<lon1] = 0
@@ -125,16 +130,20 @@ def update_input_namespace(inps):
     if inps.mask:
         mask_ps = readfile.read(inps.mask, datasetName='mask')[0]
         mask *= mask_ps  # Apply mask_p within the specified ymin, ymax, xmin, xmax
-
+  
+    inps.displacement = np.array(inps.displacement[mask == 1])
+    inps.velocity = np.array(inps.velocity[mask == 1])
+    inps.dem_error = np.array(inps.dem_error[mask == 1])
+    inps.elevation = np.array(inps.elevation[mask == 1]) 
+    inps.height = np.array(inps.height[mask == 1])
     inps.lat = np.array(inps.lat[mask == 1])
     inps.lon = np.array(inps.lon[mask == 1])
-    inps.data = np.array(inps.data[mask == 1])
-    inps.height = np.array(inps.height[mask == 1])
-    inps.demErr = np.array(inps.demErr[mask == 1])
-    inps.estimated_elevation = np.array(inps.estimated_elevation[mask == 1])
-    
-    inps.cbar_label = cbar_label
-    inps.HEADING = float(atr['HEADING'])
+    inps.inc_angle = np.array(inps.inc_angle[mask == 1])
+    inps.HEADING = float(attr['HEADING'])
+
+    # assign the dataset of interest
+    inps.data = getattr(inps, inps.dataset)
+    inps.cbar_label = cbar_labels[inps.dataset]
 
     if inps.background =='backscatter':
         # Fari: Here it should call one function

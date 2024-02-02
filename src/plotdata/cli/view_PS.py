@@ -19,17 +19,10 @@ PLOT REPO TODO:
     either as subparser or create parser that handles argparse.ArugmentParser
 '''
 EXAMPLE = """example:
-            view_PS.py velocity.h5 --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
-            view_PS.py velocity.h5 --mask maskTempCoh.h5 --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
-            view_PS.py velocity.h5 --subset-lalo 25.875:25.8795,-80.123:-80.1205 --backscatter --vlim -0.6 0.6 
-            view_PS.py S1*PS.he5 --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 
-            view_PS.py S1*PS.he5 --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --kml-3d
-            view_PS.py demErr.h5 --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 
-            view_PS.py demErr.h5 --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --estimated-elevation
-            view_PS.py demErr.h5 --mask ../maskPS.h5 --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --estimated-elevation --geotiff ../../DEM/MiamiBeach.tif
-            
-        Todo -- modify to call so that second argument is displayed: 
-            view_PS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
+            view_PS.py S1*PS.he5  --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
+            view_PS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
+            view_PS.py S1*PS.he5 elevation --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
+            view_PS.py S1*PS.he5 dem_error --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
             view_PS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --vlim -0.6 0.6 
             view_PS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --backscatter 
             view_PS.py S1*PS.he5 demErr   --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
@@ -40,14 +33,17 @@ EXAMPLE = """example:
 DESCRIPTION = (
     "Plots velocity, DEM error or estimated elevation on open_street_map, geoTiff or backscatter."
 )
-
 def create_parser():
     parser = argparse.ArgumentParser(
         description=DESCRIPTION, epilog=EXAMPLE,
         formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument(
-        'data_file', help='Data file to be plotted (e.g. velocity.h5, demErr.h5).\n'
+        'data_file', metavar='FILE', help='HDFEOS data file.\n'
+    )
+    parser.add_argument(
+        'dataset', metavar='DATASET', nargs='?', default='displacement',  
+        help='dataset to plot [displacement, elevation, demErr, velocity] (Default: displacement).\n'
     )
     parser.add_argument(
         "--subset-lalo", type=str, required=True,
@@ -94,10 +90,6 @@ def create_parser():
     parser.add_argument(
         "--kml-3d", dest="kml_3d",  action='store_true', default=False, 
         help="create a 3D color-coded kml file (reads demErr.h5) (default: False)" 
-    )
-    parser.add_argument(
-        "--kml-key", dest="kml_key",  metavar='KEY', default='velocity', 
-        help="key used for color-coding [velocity, elevation] (default: velocity)" 
     )
     parser.add_argument(
         "--correct-geo", dest="correct_geo",  action='store_true', default=False, 
