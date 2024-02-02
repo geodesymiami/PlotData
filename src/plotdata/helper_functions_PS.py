@@ -6,10 +6,11 @@ import contextily as ctx
 from pathlib import Path
 import matplotlib.pyplot as plt
 import simplekml
+import zipfile
+from PIL import Image
 from shapely.geometry import box
 from mintpy.utils import readfile, utils as ut
 from mintpy import save_kmz
-
 
 def calculate_mean_amplitude(slcStack, out_amplitude):
     """
@@ -100,21 +101,17 @@ def create_kml_file(inps):
     min_key = min(key for _, _, _, key in coords)
     max_key = max(key for _, _, _, key in coords)
 
-    # Create a point for each coordinate
     for i, coord in enumerate(coords):
         _, _, _, key = coord
 
         # Map the altitude to a value in the range [0, 0.7]
-        # key_norm = 0.7 * (key - min_key) / (max_key - min_key)
         if inps.vlim:
             key_norm = 0.7 * (key - inps.vlim[0]) / (inps.vlim[1] - inps.vlim[0])
         else:
             key_norm = 0.7 (key - min_key) / (max_key - min_key)    
 
         # Convert the normalized altitude to a color in the RGB color space
-        # r, g, b = colorsys.hsv_to_rgb(key_norm, 1.0, 1.0)
         r, g, b, _ = plt.cm.jet(key_norm)
-
 
         # Create the point without a name
         pnt = kml.newpoint()
@@ -142,7 +139,6 @@ def create_kml_file(inps):
                      unit=inps.label_dict['unit'],loc='lower left', nbins=None, label=inps.label_dict['str'])
     
     # Open the image file, Get the dimensions of the image, calculate the aspect ratio
-    from PIL import Image
     img = Image.open('color_scale.png')
     width, height = img.size
     aspect_ratio = width * 0.7 / height
@@ -151,11 +147,8 @@ def create_kml_file(inps):
     overlay = kml.newscreenoverlay(name='Color Scale')
     overlay.icon.href = 'color_scale.png'
     overlay.overlayxy = simplekml.OverlayXY(x=0, y=1, xunits=simplekml.Units.fraction, yunits=simplekml.Units.fraction)
-    
-    # Move the overlay up to 10% from the bottom of the screen
     overlay.screenxy = simplekml.ScreenXY(x=0.0, y=0.4, xunits=simplekml.Units.fraction, yunits=simplekml.Units.fraction)
     overlay.size = simplekml.Size(x=0.35 * aspect_ratio, y=0.35, xunits=simplekml.Units.fraction, yunits=simplekml.Units.fraction)
-
     # Add the overlay to the KML object
     kml.screenoverlay = overlay
 
@@ -164,7 +157,6 @@ def create_kml_file(inps):
     kml.save(kml_file)
     
     # Create a new zipfile object
-    import zipfile
     with zipfile.ZipFile('points.kmz', 'w') as myzip:
         # Add the KML file to the zipfile
         myzip.write(kml_file)
