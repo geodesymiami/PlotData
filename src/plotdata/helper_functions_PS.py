@@ -3,6 +3,7 @@ import h5py
 import numpy as np
 import geopandas as gpd
 import contextily as ctx
+import georaster
 from pathlib import Path
 import matplotlib.pyplot as plt
 import simplekml
@@ -158,18 +159,14 @@ def create_kml_file(inps):
     kml.save(kml_file)
     
     # Create a new zipfile object
-    with zipfile.ZipFile('points.kmz', 'w') as myzip:
+    kmz_file = kml_file.replace('kml','kmz')
+    with zipfile.ZipFile(kmz_file, 'w') as myzip:
         # Add the KML file to the zipfile
         myzip.write(kml_file)
         # Add the image file to the zipfile
         myzip.write('color_scale.png')
 
-    print(f'open -a "Google Earth Pro.app" {os.path.abspath(kml_file)}')
-
-    # FA: This code from save_kmz_timeseries.py may work to create the color_scale,png
-    # from pykml.factory import KML_ElementMaker as KML
-    # kml_root_doc = KML.Document()
-    # kml_root_doc.append(cbar_overlay)
+    print(f'open -a "Google Earth Pro.app" {kmz_file}')
 
 def get_balloon_description(coord, key, inps ):
     """Get the balloon description for a point"""

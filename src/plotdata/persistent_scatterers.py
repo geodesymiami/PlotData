@@ -42,6 +42,7 @@ def update_input_namespace(inps):
         longitude, _ = readfile.read(files[0], datasetName='HDFEOS/GRIDS/timeseries/geometry/longitude')
         height, _  = readfile.read(files[0], datasetName='HDFEOS/GRIDS/timeseries/geometry/height')
         inc_angle, _  = readfile.read(files[0], datasetName='HDFEOS/GRIDS/timeseries/geometry/incidenceAngle')
+        az_angle, _  = readfile.read(files[0], datasetName='HDFEOS/GRIDS/timeseries/geometry/azimuthAngle')
 
         date_list = HDFEOS(files[0]).get_date_list()
         dataset_first = f'HDFEOS/GRIDS/timeseries/observation/displacement-{date_list[0]}'
@@ -77,19 +78,6 @@ def update_input_namespace(inps):
         velocity = change_reference_point(velocity, inps.ref_lalo, inps.file_type) 
        # FA: REF_LAT/LON is not available. Need to calculate and add to inps for plotting
         
-    inps.displacement = displacement
-    inps.velocity = velocity
-    inps.dem_error = dem_error
-    inps.elevation = elevation
-    inps.height = height
-    inps.lat = latitude
-    inps.lon = longitude
-    inps.inc_angle = inc_angle
-    inps.HEADING = float(attr['HEADING'])
-
-    if inps.correct_geo:
-       correct_geolocation(inps)
-
     # Fari: This should be a separate function, not sure why this is needed
     mask = np.ones(displacement.shape, dtype=np.float32)
     mask[latitude<lat1] = 0
@@ -101,16 +89,19 @@ def update_input_namespace(inps):
         mask_ps = readfile.read(inps.mask, datasetName='mask')[0]
         mask *= mask_ps  # Apply mask_p within the specified ymin, ymax, xmin, xmax
   
-    inps.displacement = np.array(inps.displacement[mask == 1])
-    inps.velocity = np.array(inps.velocity[mask == 1])
-    inps.dem_error = np.array(inps.dem_error[mask == 1])
-    inps.elevation = np.array(inps.elevation[mask == 1]) 
-    inps.height = np.array(inps.height[mask == 1])
-    inps.lat = np.array(inps.lat[mask == 1])
-    inps.lon = np.array(inps.lon[mask == 1])
-    inps.inc_angle = np.array(inps.inc_angle[mask == 1])
+    inps.displacement = np.array(displacement[mask == 1])
+    inps.velocity = np.array(velocity[mask == 1])
+    inps.dem_error = np.array(dem_error[mask == 1])
+    inps.elevation = np.array(elevation[mask == 1]) 
+    inps.height = np.array(height[mask == 1])
+    inps.lat = np.array(latitude[mask == 1])
+    inps.lon = np.array(longitude[mask == 1])
+    inps.inc_angle = np.array(inc_angle[mask == 1])
     inps.HEADING = float(attr['HEADING'])
 
+    if inps.correct_geo:
+       correct_geolocation(inps)
+    
     # assign the dataset of interest
     inps.data = getattr(inps, inps.dataset)
     inps.label_dict = label_dict[inps.dataset]
@@ -209,7 +200,7 @@ def plot_scatter(ax, inps, marker='o', colorbar=True):
     if  inps.background == 'open_street_map' or inps.background == 'geotiff':
         im1 = ax.scatter(inps.lon, inps.lat, c=inps.data, s=inps.point_size, cmap=inps.colormap, marker=marker)
         if inps.ref_lalo:
-            ax.scatter(inps.ref_lalo[1], inps.ref_lalo[0], color='black', s=inps.point_size*0.2, marker='s')
+            ax.scatter(inps.ref_lalo[1], inps.ref_lalo[0], color='black', s=inps.point_size*1.2, marker='s')
 
     elif  inps.background == 'backscatter':
         # Create a boolean mask for the condition
@@ -226,8 +217,8 @@ def plot_scatter(ax, inps, marker='o', colorbar=True):
                             ax=ax,
                             shrink=1,
                             orientation='horizontal',
-                            pad=0.1)
-        cbar.set_label(inps.label_dict['str'])
+                            pad=0.02)
+        cbar.set_label(inps.label_dict['str'] + ' [' + inps.label_dict['unit'] + ']' )
         if inps.vlim is not None:
             clim=(inps.vlim[0], inps.vlim[1])
             im1.set_clim(clim[0], clim[1])

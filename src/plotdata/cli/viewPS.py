@@ -19,16 +19,20 @@ PLOT REPO TODO:
     either as subparser or create parser that handles argparse.ArugmentParser
 '''
 EXAMPLE = """example:
-            view_PS.py S1*PS.he5  --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
-            view_PS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026 -80.122124
-            view_PS.py S1*PS.he5 elevation --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
-            view_PS.py S1*PS.he5 dem_error --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
-            view_PS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --vlim -0.6 0.6 
-            view_PS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --backscatter 
-            view_PS.py S1*PS.he5 demErr   --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
-            view_PS.py S1*PS.he5 demErr   --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --estimated-elevation  
-            view_PS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --kml-3d
-            (modify save_hdf5eos.py to include demErr.h5 in S1*PS.he5 file)
+            viewPS.py S1*PS.he5 --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
+            viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026 -80.122124 
+            viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026 -80.122124 --mask ../maskPS.h5 
+            viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026 -80.122124 --mask maskTempCoh.h5 --vlim -4 4
+            viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --vlim -3 3 --ref-lalo 25.87609 -80.12213 --geotiff ../../DEM/MiamiBeach.tif
+            viewPS.py S1*PS.he5 elevation --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
+            viewPS.py S1*PS.he5 dem_error --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
+            viewPS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --vlim -0.6 0.6 
+            viewPS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --backscatter 
+            viewPS.py S1*PS.he5 demErr   --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
+            viewPS.py S1*PS.he5 demErr   --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --estimated-elevation  
+            viewPS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026 -80.122124 --kml-3d 
+
+            (need to modify save_hdf5eos.py to include demErr.h5 in S1*PS.he5 file)
             """
 DESCRIPTION = (
     "Plots velocity, DEM error or estimated elevation on open_street_map, geoTiff or backscatter."
@@ -118,7 +122,7 @@ def create_parser():
         "--figsize", metavar=("WID", "LEN"), type=float, nargs=2,
         default=(5,10), help="Width and length of the figure"
     )
-    parser.add_argument('-o', '--outfile', type=str,  default=None,
+    parser.add_argument('--outfile', type=str,  default=None,
                     help="filename to save figure (default=scatter.png).")
     parser.add_argument('--save', dest='save_fig', action='store_true',
                     help='save the figure')
@@ -154,11 +158,6 @@ def create_parser():
 
 ###################################################################################
 def main(iargs=None):
-    if len(sys.argv) == 1:
-        cmd = EXAMPLE.splitlines()[1]
-        cmd = re.sub(' +', ' ', cmd) .rstrip()
-        sys.argv = cmd.split()
-        print('CLI arguments:', sys.argv)
     
     message_rsmas.log(os.getcwd(), os.path.basename(__file__) + ' ' + ' '.join(sys.argv[1:]))
 
@@ -166,9 +165,8 @@ def main(iargs=None):
     inps = create_parser()
 
     # import  (sys.path.pop(0) would remove the cli directory from sys.path if identical file names)
-    # print('sys.path:\n' + '\n'.join(sys.path))
+    
     from plotdata.persistent_scatterers import persistent_scatterers
-
     # run
     persistent_scatterers(inps)
 
