@@ -120,8 +120,8 @@ def update_input_namespace(inps):
         ymax = max(yg1, yg2, yg3, yg4)
         xmin = min(xg1, xg2, xg3, xg4)
         xmax = max(xg1, xg2, xg3, xg4)
-        x = np.linspace(0, data.shape[1] - 1, data.shape[1])
-        y = np.linspace(0, data.shape[0] - 1, data.shape[0])
+        x = np.linspace(0, displacement.shape[1] - 1, displacement.shape[1])
+        y = np.linspace(0, displacement.shape[0] - 1, displacement.shape[0])
         x, y = np.meshgrid(x, y)
         inps.xv = xmax - np.array(x[mask == 1])
         inps.yv = np.array(y[mask == 1]) - ymin
@@ -208,7 +208,7 @@ def plot_scatter(ax, inps, marker='o', colorbar=True):
         yv_filtered = inps.yv[mask]
         data_filtered = inps.data[mask]
         
-        im = ax.scatter(xv_filtered, yv_filtered, c=data_filtered, s=inps.point_size, cmap=inps.colormap, marker=marker)
+        im1 = ax.scatter(xv_filtered, yv_filtered, c=data_filtered, s=inps.point_size, cmap=inps.colormap, marker=marker)
         # im = ax.scatter(inps.xv, inps.yv, c=inps.data, s=inps.point_size, cmap=inps.colormap, marker=marker)
    
     if colorbar:
