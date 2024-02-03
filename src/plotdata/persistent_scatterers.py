@@ -20,9 +20,7 @@ def update_input_namespace(inps):
     inps.coords = {
         key: val for (key, val) in zip(keys, [lat1, lat2, lon1, lon2])
     }
-    # read latitude, longitude, height
-    # read data, convert velocty to cm/yr and convert dem_erroror to estimated elevation
-    # dataset_names = readfile.get_dataset_list(inps.data_file)
+    # read data, convert velocty to cm/yr,  convert dem_error to estimated elevation
     files = glob.glob(inps.data_file)
     if not files:
         raise FileNotFoundError(f'USER ERROR: file {inps.data_file} not found.') 
@@ -55,7 +53,7 @@ def update_input_namespace(inps):
         label_dict['height'] = {'str': 'Dem height', 'unit': 'm' }
 
         # legacy/compatibility code: read demErr.h5 because missing in S1*he5 file, 
-        #        read velocity.h5 until created on the fly
+        #                            read velocity.h5 (should be created on the fly)
         try:
             dem_error, attr = readfile.read('demErr.h5', datasetName='dem')
             elevation = height + dem_error + inps.dem_offset
@@ -97,8 +95,9 @@ def update_input_namespace(inps):
     inps.lat = np.array(latitude[mask == 1])
     inps.lon = np.array(longitude[mask == 1])
     inps.inc_angle = np.array(inc_angle[mask == 1])
+    inps.az_angle = np.array(az_angle[mask == 1])
     inps.HEADING = float(attr['HEADING'])
-
+    
     if inps.correct_geo:
        correct_geolocation(inps)
     
@@ -108,7 +107,7 @@ def update_input_namespace(inps):
 
     if inps.background =='backscatter':
         # Fari: Here it should call one function
-        coord = ut.coordinate(atr, inps.geometry_file)
+        coord = ut.coordinate(attr, inps.geometry_file)
         yg1, xg1 = coord.geo2radar(lat1, lon1)[:2]
         yg2, xg2 = coord.geo2radar(lat2, lon2)[:2]
         yg3, xg3 = coord.geo2radar(lat1, lon2)[:2]

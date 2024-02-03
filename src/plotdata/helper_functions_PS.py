@@ -186,9 +186,9 @@ def correct_geolocation(inps):
     latitude = inps.lat
     longitude = inps.lon
     dem_error = inps.dem_error
-
-    az_angle = np.deg2rad(float(inps.HEADING))
     inc_angle = np.deg2rad(inps.inc_angle)
+    # az_angle = np.deg2rad(float(inps.HEADING))    # this is what MiaplPy is using
+    az_angle = np.deg2rad( -inps.az_angle - 270)    # FA 2/2024:  This works for ascending but not sure whether OK for descending orbits.
 
     rad_latitude = np.deg2rad(latitude)
 
