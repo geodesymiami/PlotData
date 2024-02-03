@@ -11,15 +11,8 @@ from mintpy.objects import HDFEOS
 from plotdata.helper_functions_PS import *
 
 def update_input_namespace(inps):
-    """
-    Extract relevant data based on specified coordinates and masks.
-    """
-    # parse subset_lalo, update namespace, add a dictionary of subset latlon
-    keys = ['lat1', 'lat2', 'lon1', 'lon2']
-    lat1, lat2, lon1, lon2 = [float(val) for val in inps.subset_lalo.replace(':', ',').split(',')]
-    inps.coords = {
-        key: val for (key, val) in zip(keys, [lat1, lat2, lon1, lon2])
-    }
+    """ Extract relevant data based on specified coordinates and masks.  """
+
     # read data, convert velocty to cm/yr,  convert dem_error to estimated elevation
     files = glob.glob(inps.data_file)
     if not files:
@@ -48,17 +41,18 @@ def update_input_namespace(inps):
         displacement_first, attr = readfile.read(files[0], datasetName=dataset_first)
         displacement_last, attr  = readfile.read(files[0], datasetName=dataset_last)
         displacement = (displacement_last - displacement_first) * 100    # total displacement
+        
         label_dict = dict()
         label_dict['displacement'] = {'str': 'Total displacement', 'unit': 'cm' }
         label_dict['height'] = {'str': 'Dem height', 'unit': 'm' }
-
+        label_dict['dem_error'] = {'str': 'Dem error', 'unit': 'm' }
+        label_dict['elevation'] = {'str': 'Estimated elevation', 'unit': 'm' }
+        
         # legacy/compatibility code: read demErr.h5 because missing in S1*he5 file, 
         #                            read velocity.h5 (should be created on the fly)
         try:
             dem_error, attr = readfile.read('demErr.h5', datasetName='dem')
             elevation = height + dem_error + inps.dem_offset
-            label_dict['dem_error'] = {'str': 'Dem error', 'unit': 'm' }
-            label_dict['elevation'] = {'str': 'Estimated elevation', 'unit': 'm' }
         except:
             raise FileNotFoundError(f'USER ERROR: file demErr.h5 not found.')
 
@@ -66,7 +60,6 @@ def update_input_namespace(inps):
             velocity, attr = readfile.read('velocity.h5', datasetName='velocity')
             velocity = velocity * 100             # convert to cm/yr
             label_dict['velocity'] = {'str': 'Velocity', 'unit': 'cm/yr' }
-
         except:
             raise FileNotFoundError(f'USER ERROR: file velocity.h5 not found.')
 
@@ -75,8 +68,17 @@ def update_input_namespace(inps):
         displacement = change_reference_point(displacement, inps.ref_lalo, inps.file_type) 
         velocity = change_reference_point(velocity, inps.ref_lalo, inps.file_type) 
        # FA: REF_LAT/LON is not available. Need to calculate and add to inps for plotting
-
-    # Fari: This should be a separate function, not sure why this is needed
+    
+    # parse subset_lalo or get from data,  create coords dictionary 
+    if inps.subset_lalo:
+        lat1, lat2, lon1, lon2 = [float(val) for val in inps.subset_lalo.replace(':', ',').split(',')]
+    else:
+        lat1, lat2 = np.min(latitude), np.max(latitude)
+        lon1, lon2 = np.min(longitude), np.max(longitude)  
+    keys = ['lat1', 'lat2', 'lon1', 'lon2']
+    inps.coords = {   key: val for (key, val) in zip(keys, [lat1, lat2, lon1, lon2])  }
+       
+    # Fari: Why  is this 
     mask = np.ones(displacement.shape, dtype=np.float32)
     mask[latitude<lat1] = 0
     mask[latitude>lat2] = 0
@@ -96,8 +98,8 @@ def update_input_namespace(inps):
     inps.lon = np.array(longitude[mask == 1])
     inps.inc_angle = np.array(inc_angle[mask == 1])
     inps.az_angle = np.array(az_angle[mask == 1])
-    inps.HEADING = float(attr['HEADING'])
     
+    # correct the geolocation if option is given
     if inps.correct_geo:
        correct_geolocation(inps)
     
@@ -107,7 +109,7 @@ def update_input_namespace(inps):
 
     if not inps.vlim: 
         inps.vlim = [np.nanmin(inps.data), np.nanmax(inps.data)]
-        
+     
     if inps.background =='backscatter':
         # Fari: Here it should call one function
         coord = ut.coordinate(attr, inps.geometry_file)

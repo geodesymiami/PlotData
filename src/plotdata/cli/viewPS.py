@@ -20,6 +20,7 @@ PLOT REPO TODO:
 '''
 EXAMPLE = """example:
             viewPS.py S1*PS.he5 --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
+            viewPS.py S1*PS.he5 velocity
             viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026 -80.122124 
             viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026 -80.122124 --mask ../maskPS.h5 
             viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026 -80.122124 --mask maskTempCoh.h5 --vlim -4 4
@@ -52,8 +53,8 @@ def create_parser():
         help='dataset to plot [displacement, elevation, demErr, velocity] (Default: displacement).\n'
     )
     parser.add_argument(
-        "--subset-lalo", type=str, required=True,
-        help="Latitude and longitude box in format 'lat1:lat2,lon1:lon2'"
+        "--subset-lalo", type=str, default=None,
+        help="Latitude and longitude box in format 'lat1:lat2,lon1:lon2' (default: None)"
     )
     parser.add_argument(
         "--mask", metavar='FILE', type=str, default='../maskPS.h5',  
@@ -153,8 +154,6 @@ def create_parser():
     if not inps.outfile:
         inps.outfile = 'scatter.png'
     
-    # print(f"QQ inps.background: {inps.background}, inps.backscatter: {inps.backscatter}, inps.geotiff: {inps.geotiff}")
-
     return inps
 
 
