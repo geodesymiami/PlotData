@@ -24,22 +24,25 @@ EXAMPLE = """example:
             viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026 -80.122124 --mask ../maskPS.h5 
             viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026 -80.122124 --mask maskTempCoh.h5 --vlim -4 4
             viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --vlim -3 3 --ref-lalo 25.87609 -80.12213 --geotiff ../../DEM/MiamiBeach.tif
-            viewPS.py S1*PS.he5 elevation --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
-            viewPS.py S1*PS.he5 dem_error --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
             viewPS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --vlim -0.6 0.6 
             viewPS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --backscatter 
-            viewPS.py S1*PS.he5 demErr   --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
-            viewPS.py S1*PS.he5 demErr   --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --estimated-elevation  
+            viewPS.py S1*PS.he5 elevation --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
+            viewPS.py S1*PS.he5 dem_error --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
+            viewPS.py S1*PS.he5 height --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
+            viewPS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026 -80.122124 --kml-2d 
             viewPS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026 -80.122124 --kml-3d 
+            viewPS.py S1*PS.he5 --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --save 
 
-            (need to modify save_hdf5eos.py to include demErr.h5 in S1*PS.he5 file)
             """
+ADDITIONAL_TEXT = (
+            "need to modify save_hdf5eos.py to include demErr.h5 in S1*PS.he5 file"
+            )
 DESCRIPTION = (
-    "Plots velocity, DEM error or estimated elevation on open_street_map, geoTiff or backscatter."
+    "Plots PS displacement, velocity, DEM error or estimated elevation on open_street_map, geoTiff or backscatter."
 )
 def create_parser():
     parser = argparse.ArgumentParser(
-        description=DESCRIPTION, epilog=EXAMPLE,
+        description=DESCRIPTION, epilog=EXAMPLE + ADDITIONAL_TEXT,
         formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument(
