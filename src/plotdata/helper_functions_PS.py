@@ -109,7 +109,7 @@ def create_kml_file(inps):
         if inps.vlim:
             key_norm = 0.7 * (key - inps.vlim[0]) / (inps.vlim[1] - inps.vlim[0])
         else:
-            key_norm = 0.7 (key - min_key) / (max_key - min_key)    
+            key_norm = 0.7 * (key - min_key) / (max_key - min_key)    
 
         # Convert the normalized altitude to a color in the RGB color space
         r, g, b, _ = plt.cm.jet(key_norm)

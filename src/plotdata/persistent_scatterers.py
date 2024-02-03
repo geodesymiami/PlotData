@@ -75,7 +75,7 @@ def update_input_namespace(inps):
         displacement = change_reference_point(displacement, inps.ref_lalo, inps.file_type) 
         velocity = change_reference_point(velocity, inps.ref_lalo, inps.file_type) 
        # FA: REF_LAT/LON is not available. Need to calculate and add to inps for plotting
-        
+
     # Fari: This should be a separate function, not sure why this is needed
     mask = np.ones(displacement.shape, dtype=np.float32)
     mask[latitude<lat1] = 0
@@ -105,6 +105,9 @@ def update_input_namespace(inps):
     inps.data = getattr(inps, inps.dataset)
     inps.label_dict = label_dict[inps.dataset]
 
+    if not inps.vlim: 
+        inps.vlim = [np.nanmin(inps.data), np.nanmax(inps.data)]
+        
     if inps.background =='backscatter':
         # Fari: Here it should call one function
         coord = ut.coordinate(attr, inps.geometry_file)

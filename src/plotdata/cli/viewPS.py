@@ -32,7 +32,6 @@ EXAMPLE = """example:
             viewPS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026 -80.122124 --kml-2d 
             viewPS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026 -80.122124 --kml-3d 
             viewPS.py S1*PS.he5 --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --save 
-
             """
 ADDITIONAL_TEXT = (
             "need to modify save_hdf5eos.py to include demErr.h5 in S1*PS.he5 file"
