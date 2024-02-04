@@ -76,6 +76,7 @@ def update_input_namespace(inps):
         inps.lon = np.array(longitude[mask == 1])
         inps.inc_angle = np.array(inc_angle[mask == 1])
         inps.az_angle = np.array(az_angle[mask == 1])
+        inps.HEADING = float(attr['HEADING'])
     
     elif inps.file_type == 'SARPROZ':
         # read_data_SARPROZ(inps)
