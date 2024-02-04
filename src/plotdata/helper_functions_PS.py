@@ -82,17 +82,18 @@ def default_backscatter_file():
             return option
     raise FileNotFoundError(f'USER ERROR: No backscatter file found {options}.')
 
-def add_open_street_map_image(ax, coords):
+def add_open_street_map_image(ax, coords, background_type='open_street_map'):
     geometry = [box(coords['lon1'], coords['lat1'], coords['lon2'],coords['lat2'])]
     gdf = gpd.GeoDataFrame({'geometry': geometry}, crs='EPSG:4326')
     gdf.plot(ax=ax, facecolor="none", edgecolor='none')
-    ctx.add_basemap(ax, crs=gdf.crs, source=ctx.providers.OpenStreetMap.Mapnik)
+    if background_type == 'open_street_map':
+        ctx.add_basemap(ax, crs=gdf.crs, source=ctx.providers.OpenStreetMap.Mapnik)
+    elif background_type == 'satellite':
+        ctx.add_basemap(ax, crs=gdf.crs, source=ctx.providers.Esri.WorldImagery)
+        
     ax.set_xlim(coords['lon1'], coords['lon2'])
     ax.set_ylim(coords['lat1'], coords['lat2'])
     ax.set_axis_off()
-
-def add_satellite_image(ax):
-    pass
 
 def add_geotiff_image(ax, gtif, coords, cmap='Greys_r'):
     data_coords = coords['lon1'], coords['lon2'], coords['lat1'], coords['lat2']

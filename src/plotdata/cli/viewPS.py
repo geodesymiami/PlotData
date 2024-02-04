@@ -27,6 +27,7 @@ EXAMPLE = """example:
             viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --vlim -3 3 --ref-lalo 25.87609 -80.12213 --geotiff ../../DEM/MiamiBeach.tif
             viewPS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --vlim -0.6 0.6 
             viewPS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --backscatter 
+            viewPS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --satellite 
             viewPS.py S1*PS.he5 elevation --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
             viewPS.py S1*PS.he5 dem_error --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
             viewPS.py S1*PS.he5 height --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
@@ -74,6 +75,10 @@ def create_parser():
     parser.add_argument(
         "--estimated-elevation", dest="estimated_elevation_flag", action='store_true',
         help="Display estimated elevation (default: False)"
+    )
+    parser.add_argument(
+        "--satellite", dest="satellite", action='store_true',
+        help="Use satellite as background (default background: open_streep_map)"
     )
     parser.add_argument(
         "--backscatter", dest="backscatter", action='store_true',
@@ -138,8 +143,10 @@ def create_parser():
 
     inps = parser.parse_args()
    
-    # set background based on backscatter, geotiff
+    # set background based on satellite, backscatter, geotiff
     inps.background = 'open_street_map'
+    if  inps.satellite:
+        inps.background = 'satellite'
     if  inps.backscatter:
         inps.background = 'backscatter'
         inps.point_size = 15

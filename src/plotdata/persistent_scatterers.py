@@ -184,12 +184,10 @@ def persistent_scatterers(inps):
     fig, ax = configure_plot_settings(inps)
 
     # Add background image 
-    if inps.background == 'open_street_map':
-        add_open_street_map_image(ax, inps.coords)
+    if inps.background == 'open_street_map' or inps.background == 'satellite':
+        add_open_street_map_image(ax, inps.coords, inps.background)
     elif inps.background == 'backscatter':
         add_backscatter_image(ax, inps.amplitude)
-    elif inps.background == 'satellite':
-        add_satellite_image(ax)
     elif inps.background == 'geotiff':
         add_geotiff_image(ax, inps.geotiff, inps.coords)
     else:
@@ -212,7 +210,7 @@ def persistent_scatterers(inps):
     
 def plot_scatter(ax, inps, marker='o', colorbar=True):
     
-    if  inps.background == 'open_street_map' or inps.background == 'geotiff':
+    if  inps.background == 'open_street_map' or  inps.background == 'satellite' or inps.background == 'geotiff':
         im1 = ax.scatter(inps.lon, inps.lat, c=inps.data, s=inps.point_size, cmap=inps.colormap, marker=marker)
         if inps.ref_lalo:
             ax.scatter(inps.ref_lalo[1], inps.ref_lalo[0], color='black', s=inps.point_size*1.2, marker='s')
