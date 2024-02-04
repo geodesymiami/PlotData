@@ -11,8 +11,8 @@ export GPSDIR=~/Downloads/GPSdata
 ```
 - Prepend to your $PATH:
 ```
-export PATH=$PLOTDATA_HOME:$PATH
-export PYTHONPATH=$PLOTDATA_HOME:$PYTHONPATH
+export PATH=${PLOTDATA_HOME}/src/plotdata/cli:$PATH
+export PYTHONPATH=${PLOTDATA_HOME}/src:$PYTHONPATH
 ```
 - Get the InSAR and GPS data for Hawaii:
 ```
