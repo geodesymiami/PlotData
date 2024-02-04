@@ -42,6 +42,38 @@ def calculate_mean_amplitude(slcStack, out_amplitude):
         # Save the calculated mean amplitude to the output file
         np.save(out_amplitude, mean_amplitude)
 
+def change_reference_point(data, ref_lalo, file_type):
+    """Change reference point of data to ref_lalo"""
+    ref_lat = ref_lalo[0]
+    ref_lon = ref_lalo[1]
+    points_lalo = np.array([ref_lat, ref_lon])
+    if file_type == 'HDFEOS':             # for data in radar coordinates (different for SARPROZ, Andreas)
+        atr = readfile.read_attribute('velocity.h5')
+        coord = ut.coordinate(atr, lookup_file='inputs/geometryRadar.h5')   # radar coord
+        ref_y, ref_x = coord.geo2radar(points_lalo[0], points_lalo[1])[:2]
+        data -= data[ref_y, ref_x]
+    return data
+
+def extract_subset_from_data(inps, plot_box_dict):
+    """Extract subset from data"""
+    mask_extract = np.ones(inps.displacement.shape, dtype=np.float32)
+    mask_extract[inps.lat < plot_box_dict['lat1']] = 0
+    mask_extract[inps.lat > plot_box_dict['lat2']] = 0
+    mask_extract[inps.lon < plot_box_dict['lon1']] = 0
+    mask_extract[inps.lon > plot_box_dict['lon2']] = 0
+
+    inps.displacement = np.array(inps.displacement[mask_extract == 1])
+    inps.velocity = np.array(inps.velocity[mask_extract == 1])
+    inps.dem_error = np.array(inps.dem_error[mask_extract == 1])
+    inps.elevation = np.array(inps.elevation[mask_extract == 1]) 
+    inps.height = np.array(inps.height[mask_extract == 1])
+    inps.lat = np.array(inps.lat[mask_extract == 1])
+    inps.lon = np.array(inps.lon[mask_extract == 1])
+    inps.inc_angle = np.array(inps.inc_angle[mask_extract == 1])
+    inps.data = np.array(inps.data[mask_extract == 1])
+
+    return
+
 def default_backscatter_file():
     options = ['mean_amplitude.npy', '../inputs/slcStack.h5']
     for option in options:
@@ -77,18 +109,6 @@ def add_dsm_image(inps, ax):
 
 def add_backscatter_image(ax, amplitude):
     ax.imshow(amplitude, cmap='gray', vmin=0, vmax=300)
-
-def change_reference_point(data, ref_lalo, file_type):
-    """Change reference point of data to ref_lalo"""
-    ref_lat = ref_lalo[0]
-    ref_lon = ref_lalo[1]
-    points_lalo = np.array([ref_lat, ref_lon])
-    if file_type == 'HDFEOS':             # for data in radar coordinates (different for SARPROZ, Andreas)
-        atr = readfile.read_attribute('velocity.h5')
-        coord = ut.coordinate(atr, lookup_file='inputs/geometryRadar.h5')   # radar coord
-        ref_y, ref_x = coord.geo2radar(points_lalo[0], points_lalo[1])[:2]
-        data -= data[ref_y, ref_x]
-    return data
 
 def create_kml_file(inps):
     """ create a 3D kml file """
@@ -165,6 +185,8 @@ def create_kml_file(inps):
         myzip.write(kml_file)
         # Add the image file to the zipfile
         myzip.write('color_scale.png')
+        os.remove(kml_file)     
+        os.remove('color_scale.png')
 
     print(f'open -a "Google Earth Pro.app" {kmz_file}')
 

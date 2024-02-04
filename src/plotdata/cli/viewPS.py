@@ -20,7 +20,7 @@ PLOT REPO TODO:
 '''
 EXAMPLE = """example:
             viewPS.py S1*PS.he5 --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
-            viewPS.py S1*PS.he5 velocity
+            viewPS.py S1*PS.he5 velocity --vlim -0.6 0.6
             viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026 -80.122124 
             viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026 -80.122124 --mask ../maskPS.h5 
             viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026 -80.122124 --mask maskTempCoh.h5 --vlim -4 4
@@ -155,7 +155,6 @@ def create_parser():
         inps.outfile = 'scatter.png'
     
     return inps
-
 
 ###################################################################################
 def main(iargs=None):
