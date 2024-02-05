@@ -90,7 +90,12 @@ def add_open_street_map_image(ax, coords, background_type='open_street_map'):
         ctx.add_basemap(ax, crs=gdf.crs, source=ctx.providers.OpenStreetMap.Mapnik)
     elif background_type == 'satellite':
         ctx.add_basemap(ax, crs=gdf.crs, source=ctx.providers.Esri.WorldImagery)
-        
+
+    dark_overlay = np.zeros((int(ax.figure.bbox.height), int(ax.figure.bbox.width), 4))
+    dark_overlay[..., :3] = 0  # Set RGB channels to 0 (black)
+    dark_overlay[..., 3] = 0.01  # Set alpha channel to 0.3 (30% opacity)
+    ax.imshow(dark_overlay, extent=(*ax.get_xlim(), *ax.get_ylim()), zorder=1, origin='upper')
+
     ax.set_xlim(coords['lon1'], coords['lon2'])
     ax.set_ylim(coords['lat1'], coords['lat2'])
     ax.set_axis_off()

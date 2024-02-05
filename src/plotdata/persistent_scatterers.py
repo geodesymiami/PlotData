@@ -64,6 +64,11 @@ def update_input_namespace(inps):
         except:
             raise FileNotFoundError(f'USER ERROR: file velocity.h5 not found.')
 
+        # change reference point (function uses geometryRadar.h5. Need a function that works for HDFEOS-radar and other file types)
+        if inps.ref_lalo:  
+            displacement = change_reference_point(displacement, inps.ref_lalo, inps.file_type) 
+            velocity = change_reference_point(velocity, inps.ref_lalo, inps.file_type) 
+   
         # mask = np.ones(displacement.shape, dtype=np.float32)
         mask = readfile.read(inps.mask, datasetName='mask')[0]
         
@@ -85,12 +90,6 @@ def update_input_namespace(inps):
         # read_data_ANDREAS(inps)
         pass
     
-    # change reference point. Need function: inps.data = change_reference_point(data, inps.ref_lalo, file_type)
-    if inps.ref_lalo:  
-        displacement = change_reference_point(displacement, inps.ref_lalo, inps.file_type) 
-        velocity = change_reference_point(velocity, inps.ref_lalo, inps.file_type) 
-       # FA: REF_LAT/LON is not available. Need to calculate and add to inps for plotting      
-     
     # assign the dataset of interest
     inps.data = getattr(inps, inps.dataset)
     inps.label_dict = label_dict[inps.dataset]
