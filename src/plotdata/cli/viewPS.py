@@ -179,21 +179,15 @@ def create_parser():
 
 def parse_lalo(str_lalo):
     """Parse the lat/lon input from the command line."""
-    lalo = []
-    for pair in str_lalo:
-        if ',' in pair:
-            lat, lon = pair.split(',')  # Split each pair by the comma
-            lalo.append([float(lat), float(lon)])
-        else:
-            lalo = [ float(str_lalo[0]), float(str_lalo[1])]
+    if ',' in str_lalo[0]:
+        lalo = [[float(coord) for coord in pair.split(',')] for pair in str_lalo]
+    else:
+        lalo = [[float(str_lalo[i]), float(str_lalo[i+1])] for i in range(0, len(str_lalo), 2)]
+    # print('str_lalo:',str_lalo)
+    # print('lalo:',lalo)
+    # print('lalo[0]',lalo[0])
     return lalo
 
-# def parse_lalo(str_lalo):
-#     """Parse the lat/lon input from the command line."""
-#     if ',' in str_lalo[0]:
-#         str_lalo = str_lalo[0].split(',')
-#     lalo = [ float(str_lalo[0]), float(str_lalo[1])]
-#     return lalo
 
 ###################################################################################
 def main(iargs=None):
