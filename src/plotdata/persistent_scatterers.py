@@ -188,13 +188,18 @@ def configure_plot_settings(inps):
     else:
         inps.colormap = plt.get_cmap('jet')
 
-    fig, ax = plt.subplots(figsize=inps.figsize)
 
-    fig_ts, ax_ts = None, None
+    figs, axs = [], []
+    fig, ax = plt.subplots(figsize=inps.figsize)
+    figs.append(fig), axs.append(ax)
+
+    inps.figsize_ts = [12,5]
     if inps.lalo:
-        inps.figsize_ts = [12,5]
-        fig_ts, ax_ts = plt.subplots(figsize=inps.figsize_ts)
-    return fig, ax, fig_ts, ax_ts
+        for i in range(len(inps.lalo)):
+            fig, ax = plt.subplots(figsize=inps.figsize_ts)
+            figs.append(fig), axs.append(ax)
+
+    return figs, axs
 
 def persistent_scatterers(inps):
     # create kml file, display figure to screen, or save figure
@@ -207,25 +212,26 @@ def persistent_scatterers(inps):
         return
     
     # Configure plot and start ax
-    fig, ax, fig_ts, ax_ts = configure_plot_settings(inps)
+    figs, axs = configure_plot_settings(inps)
 
     # Add background image 
     if inps.background == 'open_street_map' or inps.background == 'satellite':
-        add_open_street_map_image(ax, inps.coords, inps.background)
+        add_open_street_map_image(axs[0], inps.coords, inps.background)
     elif inps.background == 'backscatter':
-        add_backscatter_image(ax, inps.amplitude)
+        add_backscatter_image(axs[0], inps.amplitude)
     elif inps.background == 'geotiff':
-        add_geotiff_image(ax, inps.geotiff, inps.coords)
+        add_geotiff_image(axs[0], inps.geotiff, inps.coords)
     else:
         raise Exception("USER ERROR: background option not supported:", inps.background )
 
     # plot data    
-    plot_scatter(ax=ax, inps=inps)
-    fig.tight_layout()
+    plot_scatter(ax=axs[0], inps=inps)
+    figs[0].tight_layout()
     
     if inps.lalo:
-        # create time series plot 
-        plot_timeseries(ax=ax_ts, inps=inps)
+        # create time series plots
+        for ax in axs[1:]: 
+            plot_timeseries(ax=ax, inps=inps)
        
     # save figure
     if not inps.save_fig:
@@ -234,14 +240,17 @@ def persistent_scatterers(inps):
     else:
         print(f'save figure to {inps.outfile} with dpi={inps.fig_dpi}')
         if not inps.disp_whitespace:
-            fig.savefig(inps.outfile, transparent=True, dpi=inps.fig_dpi, pad_inches=0.0)
+            figs[0].savefig(inps.outfile, transparent=True, dpi=inps.fig_dpi, pad_inches=0.0)
         else:
-            fig.savefig(inps.outfile, transparent=True, dpi=inps.fig_dpi, bbox_inches='tight')
+            figs[0].savefig(inps.outfile, transparent=True, dpi=inps.fig_dpi, bbox_inches='tight')
     
         if inps.lalo:
-            inps.outfile_timeseries = 'timeseries.png'
-            print(f'save figure to {inps.outfile_timeseries} with dpi={inps.fig_dpi}')
-            if not inps.disp_whitespace:
-                fig_ts.savefig(inps.outfile_timeseries, transparent=True, dpi=inps.fig_dpi, pad_inches=0.0)
-            else:
-                fig_ts.savefig(inps.outfile_timeseries, transparent=True, dpi=inps.fig_dpi, bbox_inches='tight')
+            i=0
+            for fig in figs[1:]:
+                i += 1
+                outfile = f'timeseries{i}.png'
+                print(f'save figure to {outfile} with dpi={inps.fig_dpi}')
+                if not inps.disp_whitespace:
+                    fig.savefig(outfile, transparent=True, dpi=inps.fig_dpi, pad_inches=0.0)
+                else:
+                    fig.savefig(outfile, transparent=True, dpi=inps.fig_dpi, bbox_inches='tight')

@@ -23,16 +23,17 @@ EXAMPLE = """example:
             viewPS.py S1*PS.he5 velocity --vlim -0.6 0.6
             viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026 -80.122124 
             viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026 -80.122124 --mask ../maskPS.h5 
-            viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026 -80.122124 --mask maskTempCoh.h5 --vlim -4 4
-            viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --vlim -3 3 --ref-lalo 25.87609 -80.12213 --geotiff ../../DEM/MiamiBeach.tif
+            viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026,-80.122124 --mask maskTempCoh.h5 --vlim -4 4
+            viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --vlim -3 3 --ref-lalo 25.87609,-80.12213 --geotiff ../../DEM/MiamiBeach.tif
+            viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026,-80.122124 --lalo 25.878307,-80.121460 25.878176,-80.121483 --ylim -2 6
             viewPS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --vlim -0.6 0.6 
             viewPS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --backscatter 
             viewPS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --satellite 
             viewPS.py S1*PS.he5 elevation --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
             viewPS.py S1*PS.he5 dem_error --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
             viewPS.py S1*PS.he5 height --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
-            viewPS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026 -80.122124 --kml-2d 
-            viewPS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026 -80.122124 --kml-3d 
+            viewPS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026,-80.122124 --kml-2d 
+            viewPS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026,-80.122124 --kml-3d 
             viewPS.py S1*PS.he5 --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --save 
             """
 ADDITIONAL_TEXT = (
@@ -99,6 +100,10 @@ def create_parser():
         type=float, help="Velocity limit for the colorbar (default: None)",
     )
     parser.add_argument(
+        "--ylim", nargs=2, metavar=("YMIN", "YMAX"), default=None,
+        type=float, help="Y-axis limits for point plotting (default: None)",
+    )
+    parser.add_argument(
         "--kml-2d", dest="kml_2d",  action='store_true', default=False, 
         help="create a 2D color-coded kml file (default: False)" 
     )
@@ -146,8 +151,12 @@ def create_parser():
 
     inps = parser.parse_args()
    
-    inps.ref_lalo = parse_lalo(inps.ref_lalo)
-    inps.lalo = parse_lalo(inps.lalo)
+    if inps.ref_lalo:
+        inps.ref_lalo = parse_lalo(inps.ref_lalo)
+        if len(inps.ref_lalo) == 1:   # if given as one string containing ','
+            inps.ref_lalo = inps.ref_lalo[0]
+    if inps.lalo:
+        inps.lalo = parse_lalo(inps.lalo)
     # set background based on satellite, backscatter, geotiff
     inps.background = 'open_street_map'
     if  inps.satellite:

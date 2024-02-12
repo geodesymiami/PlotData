@@ -18,6 +18,13 @@ def plot_scatter(ax, inps, marker='o', colorbar=True):
         im1 = ax.scatter(inps.lon, inps.lat, c=inps.data, s=inps.point_size, cmap=inps.colormap, marker=marker)
         if inps.ref_lalo:
             ax.scatter(inps.ref_lalo[1], inps.ref_lalo[0], color='black', s=inps.point_size*1.2, marker='s')
+        
+        marker_list=['X','1','2','3','4']
+        if inps.lalo:
+            i=0
+            for point in inps.lalo:
+                ax.scatter(point[1], point[0], color='black', s=inps.point_size*1.0, marker=marker_list[i])
+                i += 1
 
     elif  inps.background == 'backscatter':
         # Create a boolean mask for the condition
@@ -191,7 +198,8 @@ def plot_timeseries(ax, inps, marker='o', colorbar=True):
                     bottom=True, top=True, left=True, right=True)
     pp.auto_adjust_xaxis_date(ax, inps.yearList, fontsize=inps.font_size)
     ax.set_ylabel(cbar_label, fontsize=inps.font_size)
-    ax.set_ylim(inps.vlim)
+    if inps.ylim:
+        ax.set_ylim(inps.ylim)
     # if self.tick_right:
     #     ax.yaxis.tick_right()
     #     ax.yaxis.set_label_position("right")
