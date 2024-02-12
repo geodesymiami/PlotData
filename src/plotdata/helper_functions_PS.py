@@ -28,16 +28,30 @@ def change_reference_point(data, attr, ref_lalo, file_type):
                 data[i] -= data[i, ref_y, ref_x]
     return data
 
-def extract_data_at_point(timeseries, attr, lalo, file_type):
+def extract_data_at_point(timeseries, attr, lalo_list, file_type):
     """Extract timeseries at point"""
-    lat = lalo[0]
-    lon = lalo[1]
-    point_lalo = np.array([lat, lon])
-    if file_type == 'HDFEOS':             # for data in radar coordinates (different for SARPROZ, Andreas)
-        coord = ut.coordinate(attr, lookup_file='inputs/geometryRadar.h5')   # radar coord
-        y, x = coord.geo2radar(point_lalo[0], point_lalo[1])[:2]
-        timeseries_at_point = timeseries[:, y, x]
-    return timeseries_at_point
+    timeseries_at_points = []
+    for lalo in lalo_list:
+        lat = lalo[0]
+        lon = lalo[1]
+        point_lalo = np.array([lat, lon])
+        if file_type == 'HDFEOS':             # for data in radar coordinates (different for SARPROZ, Andreas)
+            coord = ut.coordinate(attr, lookup_file='inputs/geometryRadar.h5')   # radar coord
+            y, x = coord.geo2radar(point_lalo[0], point_lalo[1])[:2]
+            timeseries_at_points.append(timeseries[:, y, x])
+    
+    return timeseries_at_points
+
+# def extract_data_at_point(timeseries, attr, lalo, file_type):
+#     """Extract timeseries at point"""
+#     lat = lalo[0]
+#     lon = lalo[1]
+#     point_lalo = np.array([lat, lon])
+#     if file_type == 'HDFEOS':             # for data in radar coordinates (different for SARPROZ, Andreas)
+#         coord = ut.coordinate(attr, lookup_file='inputs/geometryRadar.h5')   # radar coord
+#         y, x = coord.geo2radar(point_lalo[0], point_lalo[1])[:2]
+#         timeseries_at_point = timeseries[:, y, x]
+#     return timeseries_at_point
 
 def extract_subset_from_data(inps, plot_box_dict):
     """Extract subset from data"""

@@ -7,7 +7,7 @@ import os
 import sys
 import re
 import time
-from minsar.objects import message_rsmas
+from plotdata import logging_function
 
 '''
 PLOT REPO TODO:
@@ -65,10 +65,10 @@ def create_parser():
         "--geometry-file", metavar='FILE', type=str, default='inputs/geometryRadar.h5', 
         help="Geolocation file (default: inputs/geometryRadar.h5)",
     )
-    parser.add_argument( "--lalo", nargs=2,  metavar=('LAT', 'LON'), type=float, 
-        help="initial pixel to plot in lat/lon coord (default: ?)"
+    parser.add_argument( "--lalo", nargs='*',  metavar=('LAT,LON or LAT LON or LAT1,LON1  LAT2,LON2'), type=str, default=None,
+        help="lat/lon coords of  pixel for timeseries  (default: ?)"
     )
-    parser.add_argument( "--ref-lalo", nargs=2,  metavar=('LAT', 'LON'), type=float, 
+    parser.add_argument( "--ref-lalo", nargs='*',  metavar=('LAT,LON or LAT LON'), type=str, default=None,
         help="reference point (default: use existing reference point)"
     )
     parser.add_argument(
@@ -146,6 +146,8 @@ def create_parser():
 
     inps = parser.parse_args()
    
+    inps.ref_lalo = parse_lalo(inps.ref_lalo)
+    inps.lalo = parse_lalo(inps.lalo)
     # set background based on satellite, backscatter, geotiff
     inps.background = 'open_street_map'
     if  inps.satellite:
@@ -166,10 +168,28 @@ def create_parser():
  
     return inps
 
+def parse_lalo(str_lalo):
+    """Parse the lat/lon input from the command line."""
+    lalo = []
+    for pair in str_lalo:
+        if ',' in pair:
+            lat, lon = pair.split(',')  # Split each pair by the comma
+            lalo.append([float(lat), float(lon)])
+        else:
+            lalo = [ float(str_lalo[0]), float(str_lalo[1])]
+    return lalo
+
+# def parse_lalo(str_lalo):
+#     """Parse the lat/lon input from the command line."""
+#     if ',' in str_lalo[0]:
+#         str_lalo = str_lalo[0].split(',')
+#     lalo = [ float(str_lalo[0]), float(str_lalo[1])]
+#     return lalo
+
 ###################################################################################
 def main(iargs=None):
     
-    message_rsmas.log(os.getcwd(), os.path.basename(__file__) + ' ' + ' '.join(sys.argv[1:]))
+    logging_function.log(os.getcwd(), os.path.basename(__file__) + ' ' + ' '.join(sys.argv[1:]))
 
     # parse
     inps = create_parser()

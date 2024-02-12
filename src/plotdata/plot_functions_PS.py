@@ -183,14 +183,10 @@ def plot_timeseries(ax, inps, marker='o', colorbar=True):
     inps.num_date = len(inps.date_list)
     inps.dates, inps.yearList = ptime.date_list2vector(inps.date_list)
     #(inps.ex_date_list, inps.ex_dates, inps.ex_flag) = read_exclude_date(inps.ex_date_list, inps.date_list)
-    handle = plot_ts_scatter(ax, inps.timeseries_at_point, inps, ppar)
+    plot_ts_scatter(ax, inps.timeseries_at_point[0], inps, ppar)
     
-    handles, labels = [], []
-    handles.append(handle)
-    labels.append(ppar.label)
-
     # axis format
-    cbar_label = inps.label_dict['str'] + ' [' + inps.label_dict['unit'] + ']' 
+    cbar_label = 'Displacement ' + ' [' + inps.label_dict['unit'] + ']' 
     ax.tick_params(which='both', direction='in', labelsize=inps.font_size,
                     bottom=True, top=True, left=True, right=True)
     pp.auto_adjust_xaxis_date(ax, inps.yearList, fontsize=inps.font_size)
@@ -201,7 +197,7 @@ def plot_timeseries(ax, inps, marker='o', colorbar=True):
     #     ax.yaxis.set_label_position("right")
 
     # title
-    title = f"Point: {inps.lalo[0]:.4f}, {inps.lalo[1]:.4f}"
+    title = f"Point: {inps.lalo[0][0]:.4f}, {inps.lalo[0][1]:.4f}"
     ax.set_title(title, fontsize=inps.font_size)
 
     # legend
@@ -213,7 +209,7 @@ def plot_timeseries(ax, inps, marker='o', colorbar=True):
     print(title)
     float_formatter = lambda x: [float(f'{i:.2f}') for i in x]
     if len(inps.date_list) <= 1e3:
-        print(float_formatter(inps.timeseries_at_point))
+        print(float_formatter(inps.timeseries_at_point[0]))
 
     if not np.all(np.isnan(inps.timeseries_at_point)):
         # min/max displacement
