@@ -6,9 +6,11 @@ import os
 import numpy as np
 import glob
 import matplotlib.pyplot as plt
-from mintpy.utils import readfile, utils as ut
+from mintpy.utils import readfile, ptime, utils as ut
 from mintpy.objects import HDFEOS
+from mintpy.utils import plot as pp
 from plotdata.helper_functions_PS import *
+from plotdata.plot_functions_PS import *
 
 def update_input_namespace(inps):
     """ Extract relevant data based on specified coordinates and masks.  """
@@ -48,7 +50,12 @@ def update_input_namespace(inps):
         label_dict['height'] = {'str': 'Dem height', 'unit': 'm' }
         label_dict['dem_error'] = {'str': 'Dem error', 'unit': 'm' }
         label_dict['elevation'] = {'str': 'Estimated elevation', 'unit': 'm' }
-        
+
+        if inps.lalo:
+            print('reading full timeseries data ....')
+            timeseries, _ = readfile.read(files[0], datasetName=date_list)
+            timeseries *= 100   # convert to cm
+            
         # legacy/compatibility code: read demErr.h5 because missing in S1*he5 file, 
         #                            read velocity.h5 (should be created on the fly)
         try:
@@ -66,9 +73,11 @@ def update_input_namespace(inps):
 
         # change reference point (function uses geometryRadar.h5. Need a function that works for HDFEOS-radar and other file types)
         if inps.ref_lalo:  
-            displacement = change_reference_point(displacement, inps.ref_lalo, inps.file_type) 
-            velocity = change_reference_point(velocity, inps.ref_lalo, inps.file_type) 
-   
+            displacement = change_reference_point(displacement, attr, inps.ref_lalo, inps.file_type) 
+            velocity = change_reference_point(velocity, attr, inps.ref_lalo, inps.file_type) 
+            if inps.lalo:
+                timeseries = change_reference_point(timeseries, attr, inps.ref_lalo, inps.file_type) 
+
         # mask = np.ones(displacement.shape, dtype=np.float32)
         mask = readfile.read(inps.mask, datasetName='mask')[0]
         
@@ -82,7 +91,20 @@ def update_input_namespace(inps):
         inps.inc_angle = np.array(inc_angle[mask == 1])
         inps.az_angle = np.array(az_angle[mask == 1])
         inps.HEADING = float(attr['HEADING'])
-    
+        
+        if inps.lalo:
+            inps.timeseries = timeseries
+            inps.date_list = date_list
+            inps.num_date = len(inps.date_list)
+            inps.dates, inps.yearList = ptime.date_list2vector(inps.date_list)
+
+        # from mintpy.tsview import read_exclude_date
+        # (inps.ex_date_list, inps.ex_dates, inps.ex_flag) = read_exclude_date(inps.ex_date_list, inps.date_list)
+
+        # get data for time series plot
+        if inps.lalo:
+            inps.timeseries_at_point = extract_data_at_point(timeseries, attr, inps.lalo, inps.file_type)
+
     elif inps.file_type == 'SARPROZ':
         # read_data_SARPROZ(inps)
         pass
@@ -96,7 +118,11 @@ def update_input_namespace(inps):
     
     if not inps.vlim: 
         inps.vlim = [np.nanmin(inps.data), np.nanmax(inps.data)]
-           
+            
+    # return to main function for time series plot
+    if inps.lalo:
+        return
+          
     # parse subset_lalo or get from data,  create coords dictionary 
     if inps.subset_lalo:
         lat1, lat2, lon1, lon2 = [float(val) for val in inps.subset_lalo.replace(':', ',').split(',')]
@@ -178,23 +204,81 @@ def persistent_scatterers(inps):
     if inps.kml_2d or inps.kml_3d:
         create_kml_file(inps)
         return
-
+    
     # Configure plot and start ax
     fig, ax = configure_plot_settings(inps)
 
-    # Add background image 
-    if inps.background == 'open_street_map' or inps.background == 'satellite':
-        add_open_street_map_image(ax, inps.coords, inps.background)
-    elif inps.background == 'backscatter':
-        add_backscatter_image(ax, inps.amplitude)
-    elif inps.background == 'geotiff':
-        add_geotiff_image(ax, inps.geotiff, inps.coords)
-    else:
-        raise Exception("USER ERROR: background option not supported:", inps.background )
+   # create time series plot and exit
+    if inps.lalo:
+        from mintpy.tsview import plot_ts_scatter
+        
+        inps.marker = 'o' 
+        inps.linewidth = 0
+        inps.ex_date_list = None
+        from argparse import Namespace
+        ppar = Namespace(mfc='C0', ms=6.0, label = 'Displacement')
+            
+        inps.num_date = len(inps.date_list)
+        inps.dates, inps.yearList = ptime.date_list2vector(inps.date_list)
+        #(inps.ex_date_list, inps.ex_dates, inps.ex_flag) = read_exclude_date(inps.ex_date_list, inps.date_list)
+        handle = plot_ts_scatter(ax, inps.timeseries_at_point, inps, ppar)
+        
+        handles, labels = [], []
+        inps.font_size = None
+        handles.append(handle)
+        labels.append(ppar.label)
 
-    # plot data    
-    plot_scatter(ax=ax, inps=inps)
-    fig.tight_layout()
+        # axis format
+        cbar_label = inps.label_dict['str'] + ' [' + inps.label_dict['unit'] + ']' 
+        ax.tick_params(which='both', direction='in', labelsize=inps.font_size,
+                       bottom=True, top=True, left=True, right=True)
+        pp.auto_adjust_xaxis_date(ax, inps.yearList, fontsize=inps.font_size)
+        ax.set_ylabel(cbar_label, fontsize=inps.font_size)
+        ax.set_ylim(inps.vlim)
+        # if self.tick_right:
+        #     ax.yaxis.tick_right()
+        #     ax.yaxis.set_label_position("right")
+
+        # title
+        title = f"Point: {inps.lalo[0]:.4f}, {inps.lalo[1]:.4f}"
+        ax.set_title(title, fontsize=inps.font_size)
+
+        # legend
+        # if len(self.ts_data) > 1:
+        #     ax.legend(handles, labels)
+
+        # Print to terminal
+        print('\n---------------------------------------')
+        print(title)
+        float_formatter = lambda x: [float(f'{i:.2f}') for i in x]
+        if len(inps.date_list) <= 1e3:
+            print(float_formatter(inps.timeseries_at_point))
+
+        if not np.all(np.isnan(inps.timeseries_at_point)):
+            # min/max displacement
+            ts_min, ts_max = np.nanmin(inps.timeseries_at_point), np.nanmax(inps.timeseries_at_point)
+            print( f"time-series range: [{ts_min:.2f}, {ts_max:.2f}] {inps.label_dict['unit']}")
+
+
+            # update figure
+            # use fig.canvas.draw_idel() instead of fig.canvas.draw()
+            # reference: https://stackoverflow.com/questions/64789437
+            # fig_pts.canvas.draw_idle()
+            # fig_pts.canvas.flush_events()
+    else:
+        # Add background image 
+        if inps.background == 'open_street_map' or inps.background == 'satellite':
+            add_open_street_map_image(ax, inps.coords, inps.background)
+        elif inps.background == 'backscatter':
+            add_backscatter_image(ax, inps.amplitude)
+        elif inps.background == 'geotiff':
+            add_geotiff_image(ax, inps.geotiff, inps.coords)
+        else:
+            raise Exception("USER ERROR: background option not supported:", inps.background )
+
+        # plot data    
+        plot_scatter(ax=ax, inps=inps)
+        fig.tight_layout()
     
     # save figure
     if not inps.save_fig:
@@ -207,35 +291,4 @@ def persistent_scatterers(inps):
         else:
             fig.savefig(inps.outfile, transparent=True, dpi=inps.fig_dpi, bbox_inches='tight')
     
-def plot_scatter(ax, inps, marker='o', colorbar=True):
-    
-    if  inps.background == 'open_street_map' or  inps.background == 'satellite' or inps.background == 'geotiff':
-        im1 = ax.scatter(inps.lon, inps.lat, c=inps.data, s=inps.point_size, cmap=inps.colormap, marker=marker)
-        if inps.ref_lalo:
-            ax.scatter(inps.ref_lalo[1], inps.ref_lalo[0], color='black', s=inps.point_size*1.2, marker='s')
-
-    elif  inps.background == 'backscatter':
-        # Create a boolean mask for the condition
-        mask = (inps.yv < inps.amplitude.shape[0]) & (inps.xv < inps.amplitude.shape[1])
-        xv_filtered = inps.xv[mask]
-        yv_filtered = inps.yv[mask]
-        data_filtered = inps.data[mask]
-        # data_filtered = inps.data
-        
-        im1 = ax.scatter(xv_filtered, yv_filtered, c=data_filtered, s=inps.point_size, cmap=inps.colormap, marker=marker)
-        # im = ax.scatter(inps.xv, inps.yv, c=inps.data, s=inps.point_size, cmap=inps.colormap, marker=marker)
-   
-    if colorbar:
-        cbar = plt.colorbar(im1,
-                            ax=ax,
-                            shrink=1,
-                            orientation='horizontal',
-                            pad=0.02)
-        cbar.set_label(inps.label_dict['str'] + ' [' + inps.label_dict['unit'] + ']' )
-        if inps.vlim is not None:
-            clim=(inps.vlim[0], inps.vlim[1])
-            im1.set_clim(clim[0], clim[1])
-
-    ax.axes.get_xaxis().set_visible(False)
-    ax.axes.get_yaxis().set_visible(False)
 

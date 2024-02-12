@@ -65,6 +65,9 @@ def create_parser():
         "--geometry-file", metavar='FILE', type=str, default='inputs/geometryRadar.h5', 
         help="Geolocation file (default: inputs/geometryRadar.h5)",
     )
+    parser.add_argument( "--lalo", nargs=2,  metavar=('LAT', 'LON'), type=float, 
+        help="initial pixel to plot in lat/lon coord (default: ?)"
+    )
     parser.add_argument( "--ref-lalo", nargs=2,  metavar=('LAT', 'LON'), type=float, 
         help="reference point (default: use existing reference point)"
     )
@@ -160,7 +163,7 @@ def create_parser():
 
     if not inps.outfile:
         inps.outfile = 'scatter.png'
-    
+ 
     return inps
 
 ###################################################################################
