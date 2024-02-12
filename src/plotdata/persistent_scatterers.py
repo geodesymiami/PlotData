@@ -118,11 +118,7 @@ def update_input_namespace(inps):
     
     if not inps.vlim: 
         inps.vlim = [np.nanmin(inps.data), np.nanmax(inps.data)]
-            
-    # return to main function for time series plot
-    if inps.lalo:
-        return
-          
+                  
     # parse subset_lalo or get from data,  create coords dictionary 
     if inps.subset_lalo:
         lat1, lat2, lon1, lon2 = [float(val) for val in inps.subset_lalo.replace(':', ',').split(',')]
@@ -193,7 +189,12 @@ def configure_plot_settings(inps):
         inps.colormap = plt.get_cmap('jet')
 
     fig, ax = plt.subplots(figsize=inps.figsize)
-    return fig, ax
+
+    fig_ts, ax_ts = None, None
+    if inps.lalo:
+        inps.figsize_ts = [12,5]
+        fig_ts, ax_ts = plt.subplots(figsize=inps.figsize_ts)
+    return fig, ax, fig_ts, ax_ts
 
 def persistent_scatterers(inps):
     # create kml file, display figure to screen, or save figure
@@ -206,80 +207,26 @@ def persistent_scatterers(inps):
         return
     
     # Configure plot and start ax
-    fig, ax = configure_plot_settings(inps)
+    fig, ax, fig_ts, ax_ts = configure_plot_settings(inps)
 
-   # create time series plot and exit
-    if inps.lalo:
-        from mintpy.tsview import plot_ts_scatter
-        
-        inps.marker = 'o' 
-        inps.linewidth = 0
-        inps.ex_date_list = None
-        from argparse import Namespace
-        ppar = Namespace(mfc='C0', ms=6.0, label = 'Displacement')
-            
-        inps.num_date = len(inps.date_list)
-        inps.dates, inps.yearList = ptime.date_list2vector(inps.date_list)
-        #(inps.ex_date_list, inps.ex_dates, inps.ex_flag) = read_exclude_date(inps.ex_date_list, inps.date_list)
-        handle = plot_ts_scatter(ax, inps.timeseries_at_point, inps, ppar)
-        
-        handles, labels = [], []
-        inps.font_size = None
-        handles.append(handle)
-        labels.append(ppar.label)
-
-        # axis format
-        cbar_label = inps.label_dict['str'] + ' [' + inps.label_dict['unit'] + ']' 
-        ax.tick_params(which='both', direction='in', labelsize=inps.font_size,
-                       bottom=True, top=True, left=True, right=True)
-        pp.auto_adjust_xaxis_date(ax, inps.yearList, fontsize=inps.font_size)
-        ax.set_ylabel(cbar_label, fontsize=inps.font_size)
-        ax.set_ylim(inps.vlim)
-        # if self.tick_right:
-        #     ax.yaxis.tick_right()
-        #     ax.yaxis.set_label_position("right")
-
-        # title
-        title = f"Point: {inps.lalo[0]:.4f}, {inps.lalo[1]:.4f}"
-        ax.set_title(title, fontsize=inps.font_size)
-
-        # legend
-        # if len(self.ts_data) > 1:
-        #     ax.legend(handles, labels)
-
-        # Print to terminal
-        print('\n---------------------------------------')
-        print(title)
-        float_formatter = lambda x: [float(f'{i:.2f}') for i in x]
-        if len(inps.date_list) <= 1e3:
-            print(float_formatter(inps.timeseries_at_point))
-
-        if not np.all(np.isnan(inps.timeseries_at_point)):
-            # min/max displacement
-            ts_min, ts_max = np.nanmin(inps.timeseries_at_point), np.nanmax(inps.timeseries_at_point)
-            print( f"time-series range: [{ts_min:.2f}, {ts_max:.2f}] {inps.label_dict['unit']}")
-
-
-            # update figure
-            # use fig.canvas.draw_idel() instead of fig.canvas.draw()
-            # reference: https://stackoverflow.com/questions/64789437
-            # fig_pts.canvas.draw_idle()
-            # fig_pts.canvas.flush_events()
+    # Add background image 
+    if inps.background == 'open_street_map' or inps.background == 'satellite':
+        add_open_street_map_image(ax, inps.coords, inps.background)
+    elif inps.background == 'backscatter':
+        add_backscatter_image(ax, inps.amplitude)
+    elif inps.background == 'geotiff':
+        add_geotiff_image(ax, inps.geotiff, inps.coords)
     else:
-        # Add background image 
-        if inps.background == 'open_street_map' or inps.background == 'satellite':
-            add_open_street_map_image(ax, inps.coords, inps.background)
-        elif inps.background == 'backscatter':
-            add_backscatter_image(ax, inps.amplitude)
-        elif inps.background == 'geotiff':
-            add_geotiff_image(ax, inps.geotiff, inps.coords)
-        else:
-            raise Exception("USER ERROR: background option not supported:", inps.background )
+        raise Exception("USER ERROR: background option not supported:", inps.background )
 
-        # plot data    
-        plot_scatter(ax=ax, inps=inps)
-        fig.tight_layout()
+    # plot data    
+    plot_scatter(ax=ax, inps=inps)
+    fig.tight_layout()
     
+    if inps.lalo:
+        # create time series plot 
+        plot_timeseries(ax=ax_ts, inps=inps)
+       
     # save figure
     if not inps.save_fig:
         plt.show()
@@ -291,4 +238,10 @@ def persistent_scatterers(inps):
         else:
             fig.savefig(inps.outfile, transparent=True, dpi=inps.fig_dpi, bbox_inches='tight')
     
-
+        if inps.lalo:
+            inps.outfile_timeseries = 'timeseries.png'
+            print(f'save figure to {inps.outfile_timeseries} with dpi={inps.fig_dpi}')
+            if not inps.disp_whitespace:
+                fig_ts.savefig(inps.outfile_timeseries, transparent=True, dpi=inps.fig_dpi, pad_inches=0.0)
+            else:
+                fig_ts.savefig(inps.outfile_timeseries, transparent=True, dpi=inps.fig_dpi, bbox_inches='tight')

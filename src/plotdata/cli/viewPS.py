@@ -179,6 +179,7 @@ def main(iargs=None):
     from plotdata.persistent_scatterers import persistent_scatterers
     # run
     persistent_scatterers(inps)
+    return
 
    ################################################################################
 if __name__ == '__main__':
