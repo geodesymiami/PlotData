@@ -19,11 +19,12 @@ def plot_scatter(ax, inps, marker='o', colorbar=True):
         if inps.ref_lalo:
             ax.scatter(inps.ref_lalo[1], inps.ref_lalo[0], color='black', s=inps.point_size*1.2, marker='s')
         
-        marker_list=['X','1','2','3','4']
         if inps.lalo:
             i=0
             for point in inps.lalo:
-                ax.scatter(point[1], point[0], color='black', s=inps.point_size*1.0, marker=marker_list[i])
+                ax.scatter(point[1], point[0], color='black', s=inps.point_size*1.0, marker=inps.marker_list[i])
+                if inps.marker_number:
+                    ax.text(point[1], point[0], str(i), color='black', fontsize=10)
                 i += 1
 
     elif  inps.background == 'backscatter':
@@ -176,7 +177,7 @@ def get_balloon_description(coord, key, inps ):
     str += f"Lat, Lon: {lon:.6f},{lat:.6f}"
     return str
 
-def plot_timeseries(ax, inps, marker='o', colorbar=True):
+def plot_timeseries(ax, index, inps):
     """Plot timeseries"""
         
     inps.marker = 'o' 
@@ -190,7 +191,7 @@ def plot_timeseries(ax, inps, marker='o', colorbar=True):
     inps.num_date = len(inps.date_list)
     inps.dates, inps.yearList = ptime.date_list2vector(inps.date_list)
     #(inps.ex_date_list, inps.ex_dates, inps.ex_flag) = read_exclude_date(inps.ex_date_list, inps.date_list)
-    plot_ts_scatter(ax, inps.timeseries_at_point[0], inps, ppar)
+    plot_ts_scatter(ax, inps.timeseries_at_point[index], inps, ppar)
     
     # axis format
     cbar_label = 'Displacement ' + ' [' + inps.label_dict['unit'] + ']' 
@@ -205,7 +206,11 @@ def plot_timeseries(ax, inps, marker='o', colorbar=True):
     #     ax.yaxis.set_label_position("right")
 
     # title
-    title = f"Point: {inps.lalo[0][0]:.4f}, {inps.lalo[0][1]:.4f}"
+    if inps. marker_number:
+        title = f"Point: {inps.lalo[index][0]:.5f}, {inps.lalo[index][1]:.5f},  number: {index}"
+    else:
+        title = f"Point: {inps.lalo[index][0]:.5f}, {inps.lalo[index][1]:.5f}"
+
     ax.set_title(title, fontsize=inps.font_size)
 
     # legend

@@ -73,6 +73,10 @@ def create_parser():
         help="reference point (default: use existing reference point)"
     )
     parser.add_argument(
+        "--no-marker-number", dest="marker_number",  action='store_false', default=True, 
+        help="add marker numbers to points (default: False)" 
+    )
+    parser.add_argument(
         "--dem-offset", metavar='NUM', type=float, default=26,
         help="DEM offset (geoid deviation) (default: 26 m for Miami)"
     )
@@ -175,6 +179,7 @@ def create_parser():
     if not inps.outfile:
         inps.outfile = 'scatter.png'
  
+    inps.marker_list=['X','1','2','3','4']
     return inps
 
 def parse_lalo(str_lalo):

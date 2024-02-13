@@ -230,8 +230,10 @@ def persistent_scatterers(inps):
     
     if inps.lalo:
         # create time series plots
+        i = 0
         for ax in axs[1:]: 
-            plot_timeseries(ax=ax, inps=inps)
+            plot_timeseries(ax=ax, index=i, inps=inps)
+            i += 1
        
     # save figure
     if not inps.save_fig:
