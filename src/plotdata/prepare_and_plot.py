@@ -45,7 +45,7 @@ def run_prepare(inps):
         dem_file =  inps.data_dir[0] + '/geo/geo_geometryRadar.h5'
 
     plot_type = inps.plot_type
-    reference_lalo = inps.reference_lalo
+    ref_lalo = inps.ref_lalo
     mask_vmin = inps.mask_vmin
     flag_save_gbis =  inps.flag_save_gbis
     if inps.period:
@@ -72,8 +72,8 @@ def run_prepare(inps):
             save_gdal.main( cmd.split() )
             cmd = f'{out_geo_vel_file} --mask {temp_coh_file} --mask-vmin { mask_vmin} --outfile {out_geo_vel_file}'
             mask.main( cmd.split() )
-            if reference_lalo:
-                cmd = f'{out_geo_vel_file} --lat {reference_lalo[0]} --lon {reference_lalo[1]}'
+            if ref_lalo:
+                cmd = f'{out_geo_vel_file} --lat {ref_lalo[0]} --lon {ref_lalo[1]}'
                 reference_point.main( cmd.split() )
             if flag_save_gbis:
                 save_gbis_plotdata(eos_file, out_geo_vel_file, start_date, end_date)
@@ -88,8 +88,8 @@ def run_prepare(inps):
             geo_step, atr = readfile.read(geo_vel_file, datasetName='step20210306')
             out_geo_step_file = out_geo_vel_file.replace('velocity','step')
             writefile.write(geo_step, out_file=out_geo_step_file, metadata=atr)
-            if reference_lalo:
-                cmd = f'{out_geo_step_file} --lat {reference_lalo[0]} --lon {reference_lalo[1]}'
+            if ref_lalo:
+                cmd = f'{out_geo_step_file} --lat {ref_lalo[0]} --lon {ref_lalo[1]}'
                 reference_point.main( cmd.split() )
             data_dict[out_geo_step_file] = {
             'start_date': atr['mintpy.timeFunc.stepDate'],

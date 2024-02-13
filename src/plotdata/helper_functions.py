@@ -42,9 +42,9 @@ def cmd_line_parse(iargs=None):
     inps = args
     print('cmd_line_parse: inps.plot_box:',inps.plot_box)
     inps.plot_box = [float(val) for val in args.plot_box.replace(':', ',').split(',')]  # converts to plot_box=[19.3, 19.6, -155.8, -155.4]
-    if inps.reference_lalo:
-        reference_lalo = args.reference_lalo
-        inps.reference_lalo = [float(val) for val in reference_lalo.split(',')]         # converts to reference_point=[19.3, -155.8]
+    if inps.ref_lalo:
+        ref_lalo = args.ref_lalo
+        inps.ref_lalo = [float(val) for val in ref_lalo.split(',')]         # converts to reference_point=[19.3, -155.8]
     if inps.period:
         period = args.period
         inps.period = [val for val in period.split('-')]                                # converts to period=['20220101', '20221101']
