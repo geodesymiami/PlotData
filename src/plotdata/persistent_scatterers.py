@@ -220,7 +220,7 @@ def persistent_scatterers(inps):
     elif inps.background == 'backscatter':
         add_backscatter_image(axs[0], inps.amplitude)
     elif inps.background == 'dem':
-        add_geotiff_image(axs[0], inps.dem_file, inps.coords)
+        add_dem_image(axs[0], inps.dem_file, inps)
     else:
         raise Exception("USER ERROR: background option not supported:", inps.background )
 

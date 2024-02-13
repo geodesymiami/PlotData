@@ -70,35 +70,28 @@ def add_open_street_map_image(ax, coords, background_type='open_street_map'):
     ax.set_ylim(coords['lat1'], coords['lat2'])
     ax.set_axis_off()
 
-def add_geotiff_image(ax, file_gtif, coords, cmap='Greys_r'):
-    data_coords = coords['lon1'], coords['lon2'], coords['lat1'], coords['lat2']
-    geo_box = coords['lon1'], coords['lat2'], coords['lon2'], coords['lat1'] 
+def add_dem_image(ax, dem_file, inps, cmap='Greys_r'):
+    data_coords = inps.coords['lon1'], inps.coords['lon2'], inps.coords['lat1'], inps.coords['lat2']
+    geo_box = inps.coords['lon1'], inps.coords['lat2'], inps.coords['lon2'], inps.coords['lat1'] 
 
     print('plotting DEM background ...')
+
     from mintpy.utils import plot as pp
+    dem, dem_metadata, dem_pix_box = pp.read_dem(dem_file, geo_box=geo_box, print_msg=True )
 
-    from mintpy.cli.view import cmd_line_parse
-    from mintpy.view import viewer
-    iargs = ['velocity.h5', 'velocity']
-    inps = cmd_line_parse(iargs)
+    # use MintPy for shaded relief and Faris's code for heigh
+    if inps.disp_dem_shade:
+        # FA 2/24: needs inps from view.py for dem shading to work
+        from mintpy.cli.view import cmd_line_parse
+        iargs = ['velocity.h5']              # needs any file. inps.data_file may not work because it can be S*.he5
+        tmp_inps = cmd_line_parse(iargs)                 
+        tmp_inps.disp_dem_shade = inps.disp_dem_shade
+        pp.plot_dem_background( ax=ax, geo_box=geo_box, dem=dem, inps=tmp_inps, print_msg=True)
+    else:
+        my_image = georaster.MultiBandRaster(dem_file, bands='all', load_data=data_coords, latlon=True)
+        ax.imshow(my_image.r,extent=my_image.extent,cmap=cmap)
 
-    # obj = viewer(iargs=iargs)
-    # obj.configure(inps)
-    # dem, dem_metadata, dem_pix_box = pp.read_dem(file_gtif, pix_box=inps.pix_box, geo_box=inps.geo_box, print_msg=True )
-    dem, dem_metadata, dem_pix_box = pp.read_dem(file_gtif, geo_box=geo_box, print_msg=True )
-
-    pp.plot_dem_background( ax=ax, geo_box=geo_box, dem=dem, inps=inps, print_msg=True)
-    # my_image = georaster.MultiBandRaster(file_gtif,
-    #                                      bands='all',
-    #                                      load_data=data_coords,
-    #                                      latlon=True)
-    # ax.imshow(my_image.r,
-    #           extent=my_image.extent,
-    #           cmap=cmap)
     return
-
-def add_dsm_image(inps, ax):
-    pass
 
 def add_backscatter_image(ax, amplitude):
     ax.imshow(amplitude, cmap='gray', vmin=0, vmax=300)
