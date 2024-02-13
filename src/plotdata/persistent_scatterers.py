@@ -219,8 +219,8 @@ def persistent_scatterers(inps):
         add_open_street_map_image(axs[0], inps.coords, inps.background)
     elif inps.background == 'backscatter':
         add_backscatter_image(axs[0], inps.amplitude)
-    elif inps.background == 'geotiff':
-        add_geotiff_image(axs[0], inps.geotiff, inps.coords)
+    elif inps.background == 'dem':
+        add_geotiff_image(axs[0], inps.dem_file, inps.coords)
     else:
         raise Exception("USER ERROR: background option not supported:", inps.background )
 

@@ -14,7 +14,7 @@ from mintpy.utils import  plot as pp, ptime
 
 def plot_scatter(ax, inps, marker='o', colorbar=True):
     
-    if  inps.background == 'open_street_map' or  inps.background == 'satellite' or inps.background == 'geotiff':
+    if  inps.background == 'open_street_map' or  inps.background == 'satellite' or inps.background == 'dem':
         im1 = ax.scatter(inps.lon, inps.lat, c=inps.data, s=inps.point_size, cmap=inps.colormap, marker=marker)
         if inps.ref_lalo:
             ax.scatter(inps.ref_lalo[1], inps.ref_lalo[0], color='black', s=inps.point_size*1.2, marker='s')
@@ -70,15 +70,32 @@ def add_open_street_map_image(ax, coords, background_type='open_street_map'):
     ax.set_ylim(coords['lat1'], coords['lat2'])
     ax.set_axis_off()
 
-def add_geotiff_image(ax, gtif, coords, cmap='Greys_r'):
+def add_geotiff_image(ax, file_gtif, coords, cmap='Greys_r'):
     data_coords = coords['lon1'], coords['lon2'], coords['lat1'], coords['lat2']
-    my_image = georaster.MultiBandRaster(gtif,
-                                         bands='all',
-                                         load_data=data_coords,
-                                         latlon=True)
-    ax.imshow(my_image.r,
-              extent=my_image.extent,
-              cmap=cmap)
+    geo_box = coords['lon1'], coords['lat2'], coords['lon2'], coords['lat1'] 
+
+    print('plotting DEM background ...')
+    from mintpy.utils import plot as pp
+
+    from mintpy.cli.view import cmd_line_parse
+    from mintpy.view import viewer
+    iargs = ['velocity.h5', 'velocity']
+    inps = cmd_line_parse(iargs)
+
+    # obj = viewer(iargs=iargs)
+    # obj.configure(inps)
+    # dem, dem_metadata, dem_pix_box = pp.read_dem(file_gtif, pix_box=inps.pix_box, geo_box=inps.geo_box, print_msg=True )
+    dem, dem_metadata, dem_pix_box = pp.read_dem(file_gtif, geo_box=geo_box, print_msg=True )
+
+    pp.plot_dem_background( ax=ax, geo_box=geo_box, dem=dem, inps=inps, print_msg=True)
+    # my_image = georaster.MultiBandRaster(file_gtif,
+    #                                      bands='all',
+    #                                      load_data=data_coords,
+    #                                      latlon=True)
+    # ax.imshow(my_image.r,
+    #           extent=my_image.extent,
+    #           cmap=cmap)
+    return
 
 def add_dsm_image(inps, ax):
     pass
