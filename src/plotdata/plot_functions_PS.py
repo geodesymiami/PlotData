@@ -79,7 +79,7 @@ def add_dem_image(ax, dem_file, inps, cmap='Greys_r'):
     from mintpy.utils import plot as pp
     dem, dem_metadata, dem_pix_box = pp.read_dem(dem_file, geo_box=geo_box, print_msg=True )
 
-    # use MintPy for shaded relief and Faris's code for heigh
+    # use MintPy for shaded relief. MintPy does not support displaying elevation (FA 2/24)
     if inps.disp_dem_shade:
         # FA 2/24: needs inps from view.py for dem shading to work
         from mintpy.cli.view import cmd_line_parse
