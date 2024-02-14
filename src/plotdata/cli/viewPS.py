@@ -46,88 +46,39 @@ def create_parser():
     parser = argparse.ArgumentParser(
         description=DESCRIPTION, epilog=EXAMPLE + ADDITIONAL_TEXT,
         formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument(
-        'data_file', metavar='FILE', help='HDFEOS data file.\n')
-    parser.add_argument(
-        'dataset', metavar='DATASET', nargs='?', default='displacement',  
-        help='dataset to plot [displacement, elevation, demErr, velocity] (Default: displacement).\n')
-    parser.add_argument(
-        "--subset-lalo", type=str, default=None,
-        help="Latitude and longitude box in format 'lat1:lat2,lon1:lon2' (default: None)")
-    parser.add_argument(
-        "--mask", metavar='FILE', type=str, default='../maskPS.h5',  
-        help="Mask file. Default: ../maskPS.h5",)
-    parser.add_argument(
-        "--geometry-file", metavar='FILE', type=str, default='inputs/geometryRadar.h5', 
-        help="Geolocation file (default: inputs/geometryRadar.h5)",)
-    parser.add_argument( "--lalo", nargs='*',  metavar=('LAT,LON or LAT LON or LAT1,LON1  LAT2,LON2'), type=str, default=None,
-        help="lat/lon coords of  pixel for timeseries  (default: ?)")
-    parser.add_argument( "--ref-lalo", nargs='*',  metavar=('LAT,LON or LAT LON'), type=str, default=None,
-        help="reference point (default: use existing reference point)")
-    parser.add_argument(
-        "--no-marker-number", dest="marker_number",  action='store_false', default=True, 
-        help="add marker numbers to points (default: False)" )
-    parser.add_argument(
-        "--dem-offset", metavar='NUM', type=float, default=26,
-        help="DEM offset (geoid deviation) (default: 26 m for Miami)")
-    parser.add_argument(
-        "--estimated-elevation", dest="estimated_elevation_flag", action='store_true',
-        help="Display estimated elevation (default: False)")
-    parser.add_argument(
-        "--satellite", dest="satellite", action='store_true',
-        help="Use satellite as background (default background: open_streep_map)")
-    parser.add_argument(
-        "--backscatter", dest="backscatter", action='store_true',
-        help="Use backscatter as background (default background: open_streep_map)")
-    parser.add_argument(
-        "--dem", dest="dem_file", type=str, metavar='FILE', default=None,
-        help="Elevation file to plot on (default: None)")
-    parser.add_argument('--dem-noshade', dest='disp_dem_shade', action='store_false',
-                     help='do not show DEM shaded relief')
-    parser.add_argument("--out-amplitude", metavar='FILE', type=str, default="mean_amplitude.npy",
-        help="slcStack amplitude file (default: mean_amplitude.npy)")
-    parser.add_argument(
-        "--vlim", nargs=2, metavar=("VMIN", "VMAX"), default=None,
-        type=float, help="Velocity limit for the colorbar (default: None)")
-    parser.add_argument(
-        "--ylim", nargs=2, metavar=("YMIN", "YMAX"), default=None,
-        type=float, help="Y-axis limits for point plotting (default: None)")
-    parser.add_argument(
-        "--kml-2d", dest="kml_2d",  action='store_true', default=False, 
-        help="create a 2D color-coded kml file (default: False)")
-    parser.add_argument(
-        "--kml-3d", dest="kml_3d",  action='store_true', default=False, 
-        help="create a 3D color-coded kml file (reads demErr.h5) (default: False)" )
-    parser.add_argument(
-        "--correct-geo", dest="correct_geo",  action='store_true', default=False, 
-        help="correct the geolocation using DEM error (default: False)")
-    parser.add_argument(
-        "--flip-lr", dest="flip_lr",  action='store_true', default=False, 
-        help="Flip the figure Left-Right (default: False)" )
-    parser.add_argument("--flip-ud", dest="flip_ud",  action='store_true', default=False, 
-        help="Flip the figure Up-Down (default: False)")
-    parser.add_argument(
-        "--colormap", "-c", metavar="", type=str, default="jet",
-        help="Colormap used for display (default: jet)")
-    parser.add_argument(
-        "--point-size", metavar='NUM', default=50, type=float,
-        help="Point size (Default: 50  (20 for backscatter))",)
-    parser.add_argument(
-        "--fontsize", "-f", metavar="", type=float, default=10,
-        help="Font size (Default: 10)")
-    parser.add_argument(
-        "--figsize", metavar=("WID", "LEN"), type=float, nargs=2,
-        default=(5,10), help="Width and length of the figure")
-    parser.add_argument('--outfile', type=str,  default=None,
-                    help="filename to save figure (default=scatter.png).")
-    parser.add_argument('--save', dest='save_fig', action='store_true',
-                    help='save the figure')
-    parser.add_argument('--dpi', dest='fig_dpi', metavar='DPI', type=int, default=300,
-                    help='DPI - dot per inch - for display/write (default: %(default)s).')
+    parser.add_argument('data_file', metavar='FILE', help='HDFEOS data file.\n')
+    parser.add_argument('dataset', metavar='DATASET', nargs='?', default='displacement', 
+                        help='dataset to plot [displacement, elevation, demErr, velocity] (Default: displacement).\n')
+    parser.add_argument( "--subset-lalo", type=str, default=None, help="Latitude and longitude box in format 'lat1:lat2,lon1:lon2' (default: None)")
+    parser.add_argument("--mask", metavar='FILE', type=str, default='../maskPS.h5', help="Mask file. Default: ../maskPS.h5",)
+    parser.add_argument("--geometry-file", metavar='FILE', type=str, default='inputs/geometryRadar.h5', help="Geolocation file (default: inputs/geometryRadar.h5)",)
+    parser.add_argument( "--lalo", nargs='*',  metavar=('LAT,LON or LAT LON or LAT1,LON1  LAT2,LON2'), type=str, default=None, help="lat/lon coords of  pixel for timeseries  (default: ?)")
+    parser.add_argument( "--ref-lalo", nargs='*',  metavar=('LAT,LON or LAT LON'), type=str, default=None, help="reference point (default: use existing reference point)")
+    parser.add_argument( "--no-marker-number", dest="marker_number",  action='store_false', default=True, help="add marker numbers to points (default: False)" )
+    parser.add_argument("--dem-offset", metavar='NUM', type=float, default=26,help="DEM offset (geoid deviation) (default: 26 m for Miami)")
+    parser.add_argument("--estimated-elevation", dest="estimated_elevation_flag", action='store_true', help="Display estimated elevation (default: False)")
+    parser.add_argument("--satellite", dest="satellite", action='store_true', help="Satellite as background (default: open_streep_map)")
+    parser.add_argument("--backscatter", dest="backscatter", action='store_true', help="Backscatter as background (default: open_streep_map)")
+    parser.add_argument("--dem", dest="dem_file", type=str, metavar='FILE', default=None,help="Shaded relief/elevation as background (default: None)")
+    parser.add_argument('--dem-noshade', dest='disp_dem_shade', action='store_false', help='do not show DEM shaded relief')
+    parser.add_argument("--out-amplitude", metavar='FILE', type=str, default="mean_amplitude.npy", help="slcStack amplitude file (default: mean_amplitude.npy)")
+    parser.add_argument("--vlim", nargs=2, metavar=("VMIN", "VMAX"), default=None,type=float, help="Velocity limit for the colorbar (default: None)")
+    parser.add_argument("--ylim", nargs=2, metavar=("YMIN", "YMAX"), default=None,type=float, help="Y-axis limits for point plotting (default: None)")
+    parser.add_argument("--kml-2d", dest="kml_2d",  action='store_true', default=False, help="create 2D color-coded kml file (default: False)")
+    parser.add_argument("--kml-3d", dest="kml_3d",  action='store_true', default=False, help="create a 3D color-coded kml file (reads demErr.h5) (default: False)" )
+    parser.add_argument("--correct-geo", dest="correct_geo",  action='store_true', default=False, help="correct geolocation using DEM error (default: False)")
+    parser.add_argument("--flip-lr", dest="flip_lr",  action='store_true', default=False, help="Flip the figure Left-Right (default: False)" )
+    parser.add_argument("--flip-ud", dest="flip_ud",  action='store_true', default=False, help="Flip the figure Up-Down (default: False)")
+    parser.add_argument("--colormap", "-c", metavar="", type=str, default="jet",help="Colormap used for display (default: jet)")
+    parser.add_argument("--point-size", metavar='NUM', default=50, type=float, help="Point size (Default: 50  (20 for backscatter))",)
+    parser.add_argument("--fontsize", "-f", metavar="", type=float, default=10, help="Font size (Default: 10)")
+    parser.add_argument("--figsize", metavar=("WID", "LEN"), type=float, nargs=2, default=(5,10), help="Width and length of the figure")
+    parser.add_argument('--outfile', type=str,  default=None, help="filename to save figure (default=scatter.png).")
+    parser.add_argument('--save', dest='save_fig', action='store_true',help='save the figure')
+    parser.add_argument('--dpi', dest='fig_dpi', metavar='DPI', type=int, default=300, help='dot per inch for display/write (default: %(default)s).')
     # parser.add_argument('--nodisplay', dest='disp_fig', action='store_false',
     #                 help='save and do not display the figure')
-    parser.add_argument('--nowhitespace', dest='disp_whitespace',
-                    action='store_false', help='do not display white space')
+    parser.add_argument('--nowhitespace', dest='disp_whitespace', action='store_false', help='do not display white space')
 
     inps = parser.parse_args()
    
@@ -172,7 +123,7 @@ def parse_lalo(str_lalo):
 
 ###################################################################################
 def main(iargs=None):
-    
+
     logging_function.log(os.getcwd(), os.path.basename(__file__) + ' ' + ' '.join(sys.argv[1:]))
 
     # parse
