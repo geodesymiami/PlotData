@@ -52,9 +52,10 @@ def create_parser():
     parser.add_argument( "--subset-lalo", type=str, default=None, help="Latitude and longitude box in format 'lat1:lat2,lon1:lon2' (default: None)")
     parser.add_argument("--mask", metavar='FILE', type=str, default='../maskPS.h5', help="Mask file. Default: ../maskPS.h5",)
     parser.add_argument("--geometry-file", metavar='FILE', type=str, default='inputs/geometryRadar.h5', help="Geolocation file (default: inputs/geometryRadar.h5)",)
-    parser.add_argument( "--lalo", nargs='*',  metavar=('LAT,LON or LAT LON or LAT1,LON1  LAT2,LON2'), type=str, default=None, help="lat/lon coords of  pixel for timeseries  (default: ?)")
-    parser.add_argument( "--ref-lalo", nargs='*',  metavar=('LAT,LON or LAT LON'), type=str, default=None, help="reference point (default: use existing reference point)")
-    parser.add_argument( "--no-marker-number", dest="marker_number",  action='store_false', default=True, help="add marker numbers to points (default: False)" )
+    parser.add_argument("--ref-lalo", nargs='*',  metavar=('LAT,LON or LAT LON'), type=str, default=None, help="reference point (default: use existing reference point)")
+    parser.add_argument("--lalo", nargs='*',  metavar=('LAT,LON or LAT LON or LAT1,LON1  LAT2,LON2'), type=str, default=None, help="lat/lon coords of  pixel for timeseries  (default: ?)")
+    parser.add_argument("--no-marker-number", dest="marker_number",  action='store_false', default=True, help="add marker numbers to points (default: False)" )
+    parser.add_argument("--noreference", dest="show_reference_point",  action='store_false', default=True, help="hide reference point (default: False)" )
     parser.add_argument("--dem-offset", metavar='NUM', type=float, default=26,help="DEM offset (geoid deviation) (default: 26 m for Miami)")
     parser.add_argument("--estimated-elevation", dest="estimated_elevation_flag", action='store_true', help="Display estimated elevation (default: False)")
     parser.add_argument("--satellite", dest="satellite", action='store_true', help="Satellite as background (default: open_streep_map)")
@@ -72,7 +73,7 @@ def create_parser():
     parser.add_argument("--colormap", "-c", metavar="", type=str, default="jet",help="Colormap used for display (default: jet)")
     parser.add_argument("--point-size", metavar='NUM', default=50, type=float, help="Point size (Default: 50  (20 for backscatter))",)
     parser.add_argument("--fontsize", "-f", metavar="", type=float, default=10, help="Font size (Default: 10)")
-    parser.add_argument("--figsize", metavar=("WID", "LEN"), type=float, nargs=2, default=(5,10), help="Width and length of the figure")
+    parser.add_argument("--figsize", metavar=("WID", "LEN"), type=float, nargs=2, default=(5,10), help="Width and length of the figure (default: 5 10)")
     parser.add_argument('--outfile', type=str,  default=None, help="filename to save figure (default=scatter.png).")
     parser.add_argument('--save', dest='save_fig', action='store_true',help='save the figure')
     parser.add_argument('--dpi', dest='fig_dpi', metavar='DPI', type=int, default=300, help='dot per inch for display/write (default: %(default)s).')
@@ -115,11 +116,9 @@ def parse_lalo(str_lalo):
         lalo = [[float(coord) for coord in pair.split(',')] for pair in str_lalo]
     else:
         lalo = [[float(str_lalo[i]), float(str_lalo[i+1])] for i in range(0, len(str_lalo), 2)]
-    # print('str_lalo:',str_lalo)
-    # print('lalo:',lalo)
-    # print('lalo[0]',lalo[0])
+    if len(lalo) == 1:     # if given as one string containing ','
+        lalo = lalo[0]
     return lalo
-
 
 ###################################################################################
 def main(iargs=None):

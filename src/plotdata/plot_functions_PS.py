@@ -16,7 +16,7 @@ def plot_scatter(ax, inps, marker='o', colorbar=True):
     
     if  inps.background == 'open_street_map' or  inps.background == 'satellite' or inps.background == 'dem':
         im1 = ax.scatter(inps.lon, inps.lat, c=inps.data, s=inps.point_size, cmap=inps.colormap, marker=marker)
-        if inps.ref_lalo:
+        if inps.ref_lalo and inps.show_reference_point:
             ax.scatter(inps.ref_lalo[1], inps.ref_lalo[0], color='black', s=inps.point_size*1.2, marker='s')
         
         if inps.lalo:
@@ -39,11 +39,7 @@ def plot_scatter(ax, inps, marker='o', colorbar=True):
         # im = ax.scatter(inps.xv, inps.yv, c=inps.data, s=inps.point_size, cmap=inps.colormap, marker=marker)
    
     if colorbar:
-        cbar = plt.colorbar(im1,
-                            ax=ax,
-                            shrink=1,
-                            orientation='horizontal',
-                            pad=0.02)
+        cbar = plt.colorbar(im1, ax=ax, shrink=1, orientation='horizontal', pad=0.02)
         cbar.set_label(inps.label_dict['str'] + ' [' + inps.label_dict['unit'] + ']' )
         if inps.vlim is not None:
             clim=(inps.vlim[0], inps.vlim[1])

@@ -63,7 +63,7 @@ def update_input_namespace(inps):
             elevation = height + dem_error + inps.dem_offset
         except:
             raise FileNotFoundError(f'USER ERROR: file demErr.h5 not found.')
-
+            
         try:
             velocity, attr = readfile.read('velocity.h5', datasetName='velocity')
             velocity = velocity * 100             # convert to cm/yr
@@ -194,6 +194,7 @@ def configure_plot_settings(inps):
     figs.append(fig), axs.append(ax)
 
     inps.figsize_ts = [12,5]
+    inps.figsize_ts = [10,4]
     if inps.lalo:
         for i in range(len(inps.lalo)):
             fig, ax = plt.subplots(figsize=inps.figsize_ts)

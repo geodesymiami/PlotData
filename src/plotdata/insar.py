@@ -21,7 +21,10 @@ def generate_view_velocity_cmd(vel_file,  inps):
     cmd += f"--notitle -u {inps.unit} --fontsize {inps.font_size} -c jet --noverbose" 
     if inps.vlim:
         cmd += f" --vlim {inps.vlim[0]} {inps.vlim[1]}"
-        
+    if inps.dem_file:
+        cmd += f" --dem {inps.dem_file}"     
+    if not inps.show_reference_point:
+        cmd += f" --noreference"  
     # print(cmd)
     return cmd
     
