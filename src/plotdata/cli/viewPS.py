@@ -107,7 +107,7 @@ def create_parser():
     if not inps.outfile:
         inps.outfile = 'scatter.png'
  
-    inps.marker_list=['X','1','2','3','4']
+    inps.marker_list=['X','1','2','3','4','X','1','2','3','4']
     return inps
 
 def parse_lalo(str_lalo):

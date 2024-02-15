@@ -15,13 +15,16 @@ from mintpy.utils import  plot as pp, ptime
 def plot_scatter(ax, inps, marker='o', colorbar=True):
     
     if  inps.background == 'open_street_map' or  inps.background == 'satellite' or inps.background == 'dem':
+
         im1 = ax.scatter(inps.lon, inps.lat, c=inps.data, s=inps.point_size, cmap=inps.colormap, marker=marker)
+        
         if inps.ref_lalo and inps.show_reference_point:
             ax.scatter(inps.ref_lalo[1], inps.ref_lalo[0], color='black', s=inps.point_size*1.2, marker='s')
         
         if inps.lalo:
             i=0
             for point in inps.lalo:
+                ax.scatter(point[1], point[0], color='white', s=inps.point_size*2.0, marker='s')
                 ax.scatter(point[1], point[0], color='black', s=inps.point_size*1.0, marker=inps.marker_list[i])
                 if inps.marker_number:
                     ax.text(point[1], point[0], str(i), color='black', fontsize=10)
