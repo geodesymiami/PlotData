@@ -17,9 +17,9 @@ from plotdata.helper_functions import prepend_scratchdir_if_needed, find_nearest
 from plotdata.helper_functions import  save_gbis_plotdata
 from plotdata.plot_functions import plot_shaded_relief
 from plotdata.plot_functions import modify_colormap, add_colorbar
+from plotdata.plot_functions import generate_view_velocity_cmd, generate_view_ifgram_cmd
 from plotdata.seismicity import get_earthquakes, normalize_earthquake_times
 from plotdata.gps import get_gps
-from plotdata.insar import generate_view_velocity_cmd, generate_view_ifgram_cmd
 import subprocess
 
 def run_prepare(inps):

@@ -59,7 +59,8 @@ def create_parser():
     parser.add_argument('--vlim', dest='vlim', nargs=2, metavar=('VMIN', 'VMAX'), type=float, help='colorlimit')
     parser.add_argument("--noreference", dest="show_reference_point",  action='store_false', default=True, help="hide reference point (default: False)" )
     parser.add_argument('--save-gbis', dest='flag_save_gbis', action='store_true', default=False, help='save GBIS files')
-
+    parser.add_argument('--scatterplot', nargs='?', metavar='POINTSIZE', const=10, default=None, type=int,
+                    help='Scatterplot (no argument: point size 10) (default: no scatterplot)')
     inps = parser.parse_args()
 
     if len(inps.data_dir) < 1 or len(inps.data_dir) > 2:
