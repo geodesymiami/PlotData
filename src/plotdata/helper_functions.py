@@ -71,7 +71,7 @@ def get_file_names(path):
         eos_file = os.getenv('SCRATCHDIR') + '/' + path
     else:
         if 'mintpy' in path or 'network' in path :
-            files = glob.glob( path + '/*[0-9].he5' )
+            files = glob.glob( path + '/*.he5' )
         else:
             files = glob.glob( path + '/mintpy/*.he5' )
         if len(files) == 0:
