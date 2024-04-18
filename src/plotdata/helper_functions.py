@@ -9,7 +9,6 @@ from mintpy.utils.arg_utils import create_argument_parser
 import numpy as np
 from pathlib import Path
 
-
 EXAMPLE = """example:
   plot_data.py  MaunaLoaSenDT87 MaunaLoaSenAT124 
   plot_data.py  MaunaLoaSenDT87       
