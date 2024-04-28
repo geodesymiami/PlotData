@@ -30,7 +30,7 @@ tar xvf GPSdata.tar
 ```
 mkdir -p $PLOTDATA_HOME
 cd $PLOTDATA_HOME/..
-git clone https://github.com/geodesymiami/plotdata.git
+git clone https://github.com/geodesymiami/PlotData.git
 ```
 - run testdata:
 ```
