@@ -133,7 +133,7 @@ def generate_view_velocity_cmd(vel_file,  inps):
         cmd += f" --dem {inps.dem_file}"     
     if not inps.show_reference_point:
         cmd += f" --noreference"  
-    if  inps.scatterplot:
-        cmd += f" --scatterplot {inps.scatterplot}"  
+    if  inps.style == 'scatter':
+        cmd += f" --style scatter --scatter-size {inps.scatter_marker_size}"
     # print(cmd)
     return cmd
