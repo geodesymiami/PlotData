@@ -12,6 +12,12 @@ from plotdata import logging_function
 
 ############################################################
 EXAMPLE = """example:
+        plot_data.py GalapagosSenDT128
+        plot_data.py GalapagosSenDT128/mintpy
+        plot_data.py GalapagosSenDT128/mintpy/S1_IW12_128_0593_0597_20181005_XXXXXXXX.he5
+        plot_data.py GalapagosSenDT128/mintpy  --plot-type=velocity --subset-lalo=-0.52:-0.28,-91.7:-91.4 --period=20200131-20231231 --gps --seismicity
+        plot_data.py GalapagosSenDT128/mintpy GalapagosSenAT106/mintpy_orig  --plot-type=horzvert --subset-lalo=-1.0:-0.75,-91.55:-91.25 --period=20220101-20230831 --vlim -5 5
+        plot_data.py MaunaLoaSenDT87/mintpy/
         plot_data.py MaunaLoaSenDT87 --plot-type ifgram --seismicity --gps
         plot_data.py MaunaLoaSenDT87 --plot-type shaded_relief --seismicity --gps
         plot_data.py MaunaLoaSenDT87 --plot-type velocity --seismicity --gps
@@ -23,16 +29,11 @@ EXAMPLE = """example:
         plot_data.py MaunaLoaSenDT87/mintpy_5_20  --plot-type shaded-relief --gps --gps-scale-fac 200 --gps-key-length 1
         plot_data.py MaunaLoaSenDT87/mintpy_5_20  --plot-type shaded-relief --gps --seismicity
         plot_data.py MaunaLoaSenDT87/mintpy_5_20  --plot-type shaded-relief --subset-lalo 19.43:19.5,-155.62:-155.55  --seismicity
-        plot_data.py GalapagosSenDT128/mintpy/S1_IW12_128_0593_0597_20181005_XXXXXXXX.he5
-        plot_data.py GalapagosSenDT128/mintpy  --plot-type=velocity --subset-lalo=-0.52:-0.28,-91.7:-91.4 --period=20200131-20231231 --gps --seismicity
-        plot_data.py GalapagosSenDT128/mintpy GalapagosSenAT106/mintpy_orig  --plot-type=horzvert --subset-lalo=-1.0:-0.75,-91.55:-91.25 --period=20220101-20230831 --vlim -5 5
         plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type velocity --ref-lalo 19.55,-155.45 --period 20220801-20221127 --vlim -20 20 --save-gbis --gps --seismicity --fontsize 14
         plot_data.py GalapagosSenDT128/mintpy  --plot-type=velocity --subset-lalo=-0.52:-0.28,-91.7:-91.4 --period=20200131-20221231 --gps --seismicity
         plot_data.py GalapagosSenDT128/mintpy --plot-type=velocity --subset-lalo=-0.52:-0.28,-91.7:-91.4 --period=20200131-20220430
         plot_data.py GalapagosSenDT128/mintpy --plot-type=velocity --period=20200131-20220430
-        plot_data.py GalapagosSenDT128/mintpy --plot-type=velocity
         plot_data.py GalapagosSenDT128/mintpy --plot-type=velocity --subset-lalo=-0.52:-0.28,-91.7:-91.4
-        plot_data.py GalapagosSenDT128/mintpy --subset-lalo=-0.86:-0.77:-91.19:-91.07 --ref-lalo=-0.771,-91.19
         plot_data.py GalapagosSenDT128/mintpy --subset-lalo=-0.86:-0.77:-91.19:-91.07 --ref-lalo=-0.771,-91.19
 """
 

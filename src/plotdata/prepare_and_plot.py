@@ -34,7 +34,7 @@ def run_prepare(inps):
     else:
         inps.gps_dir = os.getenv('SCRATCHDIR') + '/MaunaLoa/MLtry/data'
     
-    print('run_prepare: inps.gps_dir:' , inps.gps_dir)
+    # print('run_prepare: inps.gps_dir:' , inps.gps_dir)
     inps.gps_list_file = inps.gps_dir + '/GPS_BenBrooks_03-05full.txt'
 
     data_dir = inps.data_dir

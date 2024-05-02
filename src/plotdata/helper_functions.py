@@ -97,18 +97,14 @@ def get_file_names(path):
     return eos_file, geo_vel_file, geo_geometry_file, project_base_dir, out_geo_vel_file    
 
 def prepend_scratchdir_if_needed(path):
-    """ Prepends $SCRATCHDIR if path is project name (got complicated; neet to refactor) """
+    """ Prepends $SCRATCHDIR if not in path """
 
-    path, mintpy_dir = remove_directory_containing_mintpy_from_path(path)
     path_obj = Path(path)
+    scratch_dir_obj = Path(os.getenv('SCRATCHDIR'))
 
-    if path_obj.is_file():
-        raise Exception('ERROR: need to be directory: ' + path)
-    if len(Path(path_obj).parts) == 1:
-        path = os.getenv('SCRATCHDIR') + '/' + path
-    if  mintpy_dir:
-        path = path + '/' + mintpy_dir
-   
+    if str(scratch_dir_obj) not in str(path_obj):
+        path = str(scratch_dir_obj / path_obj)
+
     return path
 
 def save_gbis_plotdata(eos_file, geo_vel_file, start_date_mod, end_date_mod):
