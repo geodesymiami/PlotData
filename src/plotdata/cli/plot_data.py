@@ -63,6 +63,8 @@ def create_parser():
     parser.add_argument('--save-gbis', dest='flag_save_gbis', action='store_true', default=False, help='save GBIS files')
     parser.add_argument('--style', dest='style', choices={'image', 'scatter'}, default='image', help='Plot data as image or scatter (default: %(default)s).')
     parser.add_argument('--scatter-size', dest='scatter_marker_size', type=float, metavar='SIZE', default=10, help='Scatter marker size in points**2 (default: %(default)s).')
+    parser.add_argument('--shade-exag ',dest='shade_exag', type=float, default=1, help='Shade exaggeration factor (Default: 0.5)')
+
 
     inps = parser.parse_args()
 

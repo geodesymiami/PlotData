@@ -130,9 +130,11 @@ def generate_view_velocity_cmd(vel_file,  inps):
     if inps.vlim:
         cmd += f" --vlim {inps.vlim[0]} {inps.vlim[1]}"
     if inps.dem_file:
-        cmd += f" --dem {inps.dem_file}"     
+        cmd += f" --dem {inps.dem_file}"
+        if inps.shade_exag:
+            cmd += f" --shade-exag {inps.shade_exag}"    
     if not inps.show_reference_point:
-        cmd += f" --noreference"  
+        cmd += f" --noreference"
     if  inps.style == 'scatter':
         cmd += f" --style scatter --scatter-size {inps.scatter_marker_size}"
     # print(cmd)
