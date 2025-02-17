@@ -6,7 +6,7 @@ Scripts to plot InSAR, GPS and Seismcity data. Need a working python installatio
 - Set environment variables:
 ```
 export SCRATCHDIR=~/Downloads/test
-export PLOTDATA_HOME=~/tools/plotdata
+export PLOTDATA_HOME=~/tools/PlotData
 export GPSDIR=~/Downloads/GPSdata
 ```
 - Prepend to your $PATH:
