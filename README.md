@@ -1,4 +1,4 @@
-# plotdata
+# PlotData
 Scripts to plot InSAR, GPS and Seismcity data. Need a working python installation including `MintPy`.
 
 
