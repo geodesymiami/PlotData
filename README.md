@@ -48,7 +48,7 @@ You also can run in Jupyer Lab `plot_data.ipynb` which is the original ipython v
 
 The package contains `viewPS.py` for displaying MiaplPy results 
 
-To test, download example data (`$SCRATCHDIR` is needed, e.g. `export SCRATCHDIR=~/Downloads`
+To test, download example data (28GB) (`$SCRATCHDIR` is needed, e.g. `export SCRATCHDIR=~/Downloads`)
 ```
 rsyncFJ MiamiSenAT48/miaplpy_MDCBeach_201601_202310/network_delaunay_4
 rsyncFJ MiamiSenAT48/DEM
