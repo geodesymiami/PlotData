@@ -56,8 +56,8 @@ rsyncFJ MiamiSenAT48/miaplpy_MDCBeach_201601_202310/inputs
 
 cd /Users/famelung/Downloads/scratch/MiamiSenAT48/miaplpy_MDCBeach_201601_202310/network_delaunay_4/
 
-viewPS.py S1*PS.he5 --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
-viewPS.py S1_IW23_048_0081_0083_20160412_20231021_N25765_N25980_W080147_W080115_Del4PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --vlim -3 3 --ref-lalo 25.87609,-80.12213 --dem ../../DEM/MiamiBeach.tif --dem-noshade
+viewPS.py S1*PS.he5 --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 &
+viewPS.py S1_IW23_048_0081_0083_20160412_20231021_N25765_N25980_W080147_W080115_Del4PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --vlim -3 3 --ref-lalo 25.87609,-80.12213 --dem ../../DEM/MiamiBeach.tif --dem-noshade &
 ```
 For the full suite of examples clone the PlotData-notebooks repo (into `rsmas_insar/notebooks` so that the `cdpdn` alias works) and run
 https://github.com/geodesymiami/PlotData-notebooks/blob/main/run_Miami.ipynb
