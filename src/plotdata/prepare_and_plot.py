@@ -21,6 +21,7 @@ from plotdata.plot_functions import generate_view_velocity_cmd, generate_view_if
 from plotdata.seismicity import get_earthquakes, normalize_earthquake_times
 from plotdata.gps import get_gps
 import subprocess
+from mintpy.cli import timeseries2velocity as ts2v
 
 def run_prepare(inps):
     # Prepare data for plotting
@@ -65,8 +66,13 @@ def run_prepare(inps):
             # cmd = f'{eos_file} --start-date {start_date_mod} --end-date {end_date_mod} --output {out_geo_vel_file}'
             # timeseries2velocity.main( cmd.split() )
             cmd = f'{eos_file} --start-date {start_date} --end-date {end_date} --output {out_geo_vel_file}'
-            cmd =['timeseries2velocity.py'] + cmd.split()
-            output = subprocess.check_output(cmd)
+
+            # Giacomo: import the modules, not the command line scripts
+            ts2v.main(cmd.split())
+            # Giacomo: NO
+            if False:
+                cmd =['timeseries2velocity.py'] + cmd.split()
+                output = subprocess.check_output(cmd)
             #print(output.decode())
             cmd = f'{eos_file} --dset temporalCoherence --output {temp_coh_file}'
             save_gdal.main( cmd.split() )
