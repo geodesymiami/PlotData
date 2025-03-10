@@ -218,3 +218,49 @@ def get_dem_extent(atr_dem):
         float(atr_dem['Y_FIRST']) + int(atr_dem['FILE_LENGTH'])*float(atr_dem['Y_STEP']), float(atr_dem['Y_FIRST'])]
     return(dem_extent)
 
+
+def extract_window(vel_file, lat, lon, window_size=3):
+    data, metadata = readfile.read(vel_file)
+
+    lat_out = []
+    lon_out = []
+
+    length = int(metadata['LENGTH'])
+    width = int(metadata['WIDTH'])
+
+    for y_i, x_i in zip([0, length], [0, width]):
+        lat_i = None if y_i is None else (y_i + 0.5) * float(metadata['Y_STEP']) + float(metadata['Y_FIRST'])
+        lon_i = None if x_i is None else (x_i + 0.5) * float(metadata['X_STEP']) + float(metadata['X_FIRST'])
+        lat_out.append(lat_i)
+        lon_out.append(lon_i)
+
+    # Define the latitude and longitude edges
+    lat_edges = np.linspace(min(lat_out), max(lat_out), length)
+    lon_edges = np.linspace(min(lon_out), max(lon_out), width)
+
+    # Check if the reference point is within the data coverage
+    if lat < min(lat_edges) or lat > max(lat_edges) or lon < min(lon_edges) or lon > max(lon_edges):
+        raise ValueError('input reference point is OUT of data coverage on file: ' + vel_file)
+
+    # Find the indices of the specified point
+    lat_idx = np.searchsorted(lat_edges, lat)
+    lon_idx = np.searchsorted(lon_edges, lon)
+
+    # Extract the subarray
+    lat_start = max(lat_idx - window_size, 0)
+    lat_end = min(lat_idx + window_size + 1, len(lat_edges))
+    lon_start = max(lon_idx - window_size, 0)
+    lon_end = min(lon_idx + window_size + 1, len(lon_edges))
+
+    # Check if the window outfit the data coverage
+    if lat_start<0 or lat_end>length:
+        raise ValueError('Latitude range is too large for the data coverage on file: ' + vel_file)
+
+    if lon_start<0 or lon_end>width:
+        raise ValueError('Longitude range is too large for the data coverage on file: ' + vel_file)
+
+    subarray = data[lat_start:lat_end, lon_start:lon_end]
+    sublat = lat_edges[lat_start:lat_end]
+    sublon = lon_edges[lon_start:lon_end]
+
+    return ~np.isnan(subarray) ,sublat, sublon
