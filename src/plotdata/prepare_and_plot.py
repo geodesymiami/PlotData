@@ -6,6 +6,7 @@
 # Output is  written into  `$SCRATCHDIR/MaunaLoa/SenDT87` and `$SCRATCHDIR/MaunaLoa/SenAT124`
 
 import os
+import numpy as np
 import matplotlib.pyplot as plt
 import scipy.io as sio
 from mintpy.utils import readfile, writefile
@@ -14,7 +15,7 @@ from mintpy.view import prep_slice, plot_slice
 from mintpy.cli import reference_point, asc_desc2horz_vert, save_gdal, mask
 from plotdata.helper_functions import get_file_names, get_data_type, get_plot_box
 from plotdata.helper_functions import prepend_scratchdir_if_needed, find_nearest_start_end_date
-from plotdata.helper_functions import  save_gbis_plotdata
+from plotdata.helper_functions import  save_gbis_plotdata, extract_window
 from plotdata.plot_functions import plot_shaded_relief
 from plotdata.plot_functions import modify_colormap, add_colorbar
 from plotdata.plot_functions import generate_view_velocity_cmd, generate_view_ifgram_cmd
@@ -78,15 +79,76 @@ def run_prepare(inps):
             save_gdal.main( cmd.split() )
             cmd = f'{out_geo_vel_file} --mask {temp_coh_file} --mask-vmin { mask_vmin} --outfile {out_geo_vel_file}'
             mask.main( cmd.split() )
-            if ref_lalo:
+
+            # TODO moved down, delete
+            if ref_lalo and False:
                 cmd = f'{out_geo_vel_file} --lat {ref_lalo[0]} --lon {ref_lalo[1]}'
                 reference_point.main( cmd.split() )
-            if flag_save_gbis:
+
+            if flag_save_gbis and False:
                 save_gbis_plotdata(eos_file, out_geo_vel_file, start_date, end_date)
-            data_dict[out_geo_vel_file] = {
-            'start_date': start_date,
-            'end_date': end_date
-            }
+            if False:
+                data_dict[out_geo_vel_file] = {
+                'start_date': start_date,
+                'end_date': end_date
+                }
+
+            ####################
+
+#################################### LOOK FOR COMMON REF POINT ###############################################
+
+        if ref_lalo:
+            # Get full path
+            data_dir = list(map(prepend_scratchdir_if_needed, data_dir))
+            # Extract the full path of the geo_velocity file only
+            eos_file, out_geo_vel_file = zip(*[(file[1], file[4]) for file in map(get_file_names, data_dir)])
+
+            if plot_type == 'horzvert':
+
+                if len(data_dir) != 2:
+                    raise ValueError('horzvert plot requires two data directories')
+
+                # Extract the subarray for each dataset with Boolean values for NaNs
+                (subdata1, sublat1, sublon1), (subdata2, _, _) = [extract_window(velocity, ref_lalo[0], ref_lalo[1], inps.window_size) for velocity in out_geo_vel_file]
+
+                paired = list(zip(subdata1, subdata2))
+                valid_indices = []
+
+                # Find the overlapping indices of True (valid data points) values
+                for ind, (i,j) in enumerate(paired):
+                    if np.logical_and(i, j).any():
+                        valid_indices.append((ind, np.where(np.logical_and(i, j))))
+
+                # This will be used as a measure of distance from the center of the window (the input reference point)
+                shorter = inps.window_size*2 +1
+
+                # Find the closest valid data point to the center of the window
+                for ind, indices in valid_indices:
+                    distances = np.sqrt((ind - inps.window_size) ** 2 + (indices[0] - inps.window_size) ** 2)
+                    min_distance_index = np.argmin(distances)
+                    min_distance = distances[min_distance_index]
+
+                    if min_distance < shorter:
+                        shorter = min_distance
+                        ref_lalo = [sublat1[ind], sublon1[indices[0][min_distance_index]]]
+
+            for geo_vel in out_geo_vel_file:
+                cmd = f'{geo_vel} --lat {ref_lalo[0]} --lon {ref_lalo[1]}'
+                reference_point.main( cmd.split() )
+
+############################################################################################################
+
+        if flag_save_gbis:
+            for eos, vel in zip(eos_file, out_geo_vel_file):
+                start_date, end_date = find_nearest_start_end_date(eos, inps.period)
+                save_gbis_plotdata(eos, vel, start_date, end_date)
+
+
+        data_dict[out_geo_vel_file] = {
+        'start_date': start_date,
+        'end_date': end_date
+        }
+
     elif plot_type == 'step':
         for dir in data_dir:
             work_dir = prepend_scratchdir_if_needed(dir)
@@ -110,17 +172,17 @@ def run_prepare(inps):
     # calculate horizontal and vertical
     if  plot_type == 'horzvert':
         data_dict = {}
-        q, q, q, q, out_geo_vel_file0 = get_file_names( prepend_scratchdir_if_needed(data_dir[0]) )
-        q, q, q, q, out_geo_vel_file1 = get_file_names( prepend_scratchdir_if_needed(data_dir[1]) )
-        
-        cmd = f'{out_geo_vel_file0} {out_geo_vel_file1}'
+        _,_,_,project_base_dir, out_geo_vel_file0 = get_file_names( prepend_scratchdir_if_needed(data_dir[0]) )
+        out_geo_vel_file1 = get_file_names( prepend_scratchdir_if_needed(data_dir[1]) )[4]
+
+        cmd = f'{out_geo_vel_file0} {out_geo_vel_file1} --output {project_base_dir}/hz_{start_date}-{end_date}.h5 {project_base_dir}/up_{start_date}-{end_date}.h5'
         asc_desc2horz_vert.main( cmd.split() )
         data_dict['up.h5'] = {'start_date': start_date, 'end_date': end_date}
         data_dict['hz.h5'] = {'start_date': start_date, 'end_date': end_date}
-    
+
     if inps.plot_box is None:
         inps.plot_box = get_plot_box(data_dict)
-    
+
     return data_dict
 
 def run_plot(data_dict, inps):

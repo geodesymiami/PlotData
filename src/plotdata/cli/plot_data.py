@@ -64,6 +64,7 @@ def create_parser():
     parser.add_argument('--style', dest='style', choices={'image', 'scatter'}, default='image', help='Plot data as image or scatter (default: %(default)s).')
     parser.add_argument('--scatter-size', dest='scatter_marker_size', type=float, metavar='SIZE', default=10, help='Scatter marker size in points**2 (default: %(default)s).')
     parser.add_argument('--shade-exag ',dest='shade_exag', type=float, default=1, help='Shade exaggeration factor (Default: 0.5)')
+    parser.add_argument('--window_size', dest='window_size', type=int, default=3, help='window size (square side in number of pixels) for reference point look up (default: %(default)s).')
 
 
     inps = parser.parse_args()
