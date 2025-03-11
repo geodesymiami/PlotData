@@ -12,10 +12,10 @@ import scipy.io as sio
 from mintpy.utils import readfile, writefile
 from mintpy.defaults.plot import *
 from mintpy.view import prep_slice, plot_slice
-from mintpy.cli import reference_point, asc_desc2horz_vert, save_gdal, mask
+from mintpy.cli import reference_point, asc_desc2horz_vert, save_gdal, mask, geocode
 from plotdata.helper_functions import get_file_names, get_data_type, get_plot_box
 from plotdata.helper_functions import prepend_scratchdir_if_needed, find_nearest_start_end_date
-from plotdata.helper_functions import  save_gbis_plotdata, extract_window
+from plotdata.helper_functions import  save_gbis_plotdata, extract_window, find_longitude_degree
 from plotdata.plot_functions import plot_shaded_relief
 from plotdata.plot_functions import modify_colormap, add_colorbar
 from plotdata.plot_functions import generate_view_velocity_cmd, generate_view_ifgram_cmd
@@ -60,24 +60,55 @@ def run_prepare(inps):
     if plot_type == 'velocity' or plot_type == 'horzvert':
         for dir in data_dir:
             work_dir = prepend_scratchdir_if_needed(dir)
-            eos_file, q, q, q, out_geo_vel_file = get_file_names(work_dir)
+            eos_file, _, _, _, out_geo_vel_file = get_file_names(work_dir)
             temp_coh_file=out_geo_vel_file.replace('velocity.h5','temporalCoherence.tif')
             start_date, end_date = find_nearest_start_end_date(eos_file, inps.period)
             # get masked geo_velocity.h5 with MintPy
-            # cmd = f'{eos_file} --start-date {start_date_mod} --end-date {end_date_mod} --output {out_geo_vel_file}'
-            # timeseries2velocity.main( cmd.split() )
-            cmd = f'{eos_file} --start-date {start_date} --end-date {end_date} --output {out_geo_vel_file}'
 
-            # Giacomo: import the modules, not the command line scripts
+            cmd = f'{eos_file} --start-date {start_date} --end-date {end_date} --output {out_geo_vel_file}'
             ts2v.main(cmd.split())
-            # Giacomo: NO
+
+            # TODO To remove
             if False:
                 cmd =['timeseries2velocity.py'] + cmd.split()
                 output = subprocess.check_output(cmd)
-            #print(output.decode())
+
+            metadata = readfile.read(out_geo_vel_file)[1]
+
+            # Already geocoded?
+            if 'Y_STEP' in metadata: # REMOVE FALSE
+               print(f'{out_geo_vel_file} already geocoded, skipping ...')
+
+            # Not geocoded
+            else:
+                if hasattr(inps, 'ref_lalo') and inps.ref_lalo:
+                    ref_lat = inps.ref_lalo[0]
+                else:
+                    for key in ['LAT_REF1', 'REF_LAT']:
+                        if key in metadata:
+                            ref_lat = metadata[key]
+                            break
+
+                if hasattr(inps, 'lat_step') and inps.lat_step:
+                    lat_step = inps.lat_step
+
+                elif 'mintpy.geocode.laloStep' in metadata:
+                    lat_step = metadata['mintpy.geocode.laloStep'].split(',')[0]
+
+                lon_step = find_longitude_degree(ref_lat, lat_step)
+
+                # Go to folder with all the input files
+                os.chdir(work_dir)
+
+                cmd = f"{os.path.join(os.getenv('SCRATCHDIR'), out_geo_vel_file)} --lalo-step {lat_step} {lon_step} --outdir {os.path.join(os.getenv('SCRATCHDIR'), out_geo_vel_file)}"
+                geocode.main(cmd.split())
+
+                # Go back to SCRACTDIR
+                os.chdir(os.getenv('SCRATCHDIR'))
+
             cmd = f'{eos_file} --dset temporalCoherence --output {temp_coh_file}'
             save_gdal.main( cmd.split() )
-            cmd = f'{out_geo_vel_file} --mask {temp_coh_file} --mask-vmin { mask_vmin} --outfile {out_geo_vel_file}'
+            cmd = f'{out_geo_vel_file} --mask {temp_coh_file} --mask-vmin { mask_vmin} --outdir {out_geo_vel_file}'
             mask.main( cmd.split() )
 
             # TODO moved down, delete
