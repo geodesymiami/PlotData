@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 import os
-import argparse
+import math
 import subprocess
 import glob
 from mintpy.utils import readfile, writefile
@@ -264,3 +264,8 @@ def extract_window(vel_file, lat, lon, window_size=3):
     sublon = lon_edges[lon_start:lon_end]
 
     return ~np.isnan(subarray) ,sublat, sublon
+
+
+def find_longitude_degree(ref_lat, lat_step):
+    # Find the longitude step in degrees that covers the same distance as the latitude step
+    return float(lat_step) / math.cos(math.radians(int(ref_lat)))
