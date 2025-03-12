@@ -60,7 +60,7 @@ def run_prepare(inps):
     if plot_type == 'velocity' or plot_type == 'horzvert':
         for dir in data_dir:
             work_dir = prepend_scratchdir_if_needed(dir)
-            eos_file, _, _, _, out_geo_vel_file = get_file_names(work_dir)
+            eos_file, _, _, project_base_dir, out_geo_vel_file = get_file_names(work_dir)
             temp_coh_file=out_geo_vel_file.replace('velocity.h5','temporalCoherence.tif')
             start_date, end_date = find_nearest_start_end_date(eos_file, inps.period)
             # get masked geo_velocity.h5 with MintPy
@@ -100,7 +100,7 @@ def run_prepare(inps):
                 # Go to folder with all the input files
                 os.chdir(work_dir)
 
-                cmd = f"{os.path.join(os.getenv('SCRATCHDIR'), out_geo_vel_file)} --lalo-step {lat_step} {lon_step} --outdir {os.path.join(os.getenv('SCRATCHDIR'), out_geo_vel_file)}"
+                cmd = f"{os.path.join(os.getenv('SCRATCHDIR'), out_geo_vel_file)} --lalo-step {lat_step} {lon_step} --outdir {os.path.join(os.getenv('SCRATCHDIR'), project_base_dir)}"
                 geocode.main(cmd.split())
 
                 # Go back to SCRACTDIR
@@ -108,7 +108,7 @@ def run_prepare(inps):
 
             cmd = f'{eos_file} --dset temporalCoherence --output {temp_coh_file}'
             save_gdal.main( cmd.split() )
-            cmd = f'{out_geo_vel_file} --mask {temp_coh_file} --mask-vmin { mask_vmin} --outdir {out_geo_vel_file}'
+            cmd = f'{out_geo_vel_file} --mask {temp_coh_file} --mask-vmin { mask_vmin} --outfile {out_geo_vel_file}'
             mask.main( cmd.split() )
 
             # TODO moved down, delete
@@ -163,6 +163,10 @@ def run_prepare(inps):
                         shorter = min_distance
                         ref_lalo = [sublat1[ind], sublon1[indices[0][min_distance_index]]]
 
+                print('-'*50)
+                print(f"Reference point selected: {ref_lalo[0]}, {ref_lalo[1]}")
+                print('-'*50)
+
             for geo_vel in out_geo_vel_file:
                 cmd = f'{geo_vel} --lat {ref_lalo[0]} --lon {ref_lalo[1]}'
                 reference_point.main( cmd.split() )
@@ -206,10 +210,10 @@ def run_prepare(inps):
         _,_,_,project_base_dir, out_geo_vel_file0 = get_file_names( prepend_scratchdir_if_needed(data_dir[0]) )
         out_geo_vel_file1 = get_file_names( prepend_scratchdir_if_needed(data_dir[1]) )[4]
 
-        cmd = f'{out_geo_vel_file0} {out_geo_vel_file1} --output {project_base_dir}/hz_{start_date}-{end_date}.h5 {project_base_dir}/up_{start_date}-{end_date}.h5'
+        cmd = f'{out_geo_vel_file0} {out_geo_vel_file1} --output {project_base_dir}/hz.h5 {project_base_dir}/up.h5'
         asc_desc2horz_vert.main( cmd.split() )
-        data_dict['up.h5'] = {'start_date': start_date, 'end_date': end_date}
-        data_dict['hz.h5'] = {'start_date': start_date, 'end_date': end_date}
+        data_dict[os.path.join(project_base_dir, 'up.h5')] = {'start_date': start_date, 'end_date': end_date}
+        data_dict[os.path.join(project_base_dir, 'hz.h5')] = {'start_date': start_date, 'end_date': end_date}
 
     if inps.plot_box is None:
         inps.plot_box = get_plot_box(data_dict)
