@@ -192,9 +192,9 @@ def get_data_type(file):
             raise Exception('USER ERROR: direction is not A or D -- exiting ')
     else:
         #print("File does not contain 'Sen' or 'Csk':", file)
-        if file == 'up.h5':
+        if 'up.h5' in file:
             type = 'Up'
-        elif file == 'hz.h5':
+        elif 'hz.h5' in file:
             type = 'Horz'
         else:
             type = 'Dem'
