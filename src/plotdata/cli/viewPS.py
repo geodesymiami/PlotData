@@ -21,20 +21,20 @@ PLOT REPO TODO:
 EXAMPLE = """example:
             viewPS.py S1*PS.he5 --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
             viewPS.py S1*PS.he5 velocity --vlim -0.6 0.6
-            viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026 -80.122124 
-            viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026 -80.122124 --mask ../maskPS.h5 
+            viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026 -80.122124
+            viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026 -80.122124 --mask ../maskPS.h5
             viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026,-80.122124 --mask maskTempCoh.h5 --vlim -4 4
             viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --vlim -3 3 --ref-lalo 25.87609,-80.12213 --dem ../../DEM/MiamiBeach.tif
             viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --vlim -3 3 --ref-lalo 25.87609,-80.12213 --dem ../../DEM/MiamiBeach.tif --dem-noshade
             viewPS.py S1*PS.he5 displacement --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026,-80.122124 --lalo 25.878307,-80.121460 25.878176,-80.121483 --ylim -2 6
-            viewPS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --backscatter 
-            viewPS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --satellite 
+            viewPS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --backscatter
+            viewPS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --satellite
             viewPS.py S1*PS.he5 elevation --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
             viewPS.py S1*PS.he5 dem_error --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
             viewPS.py S1*PS.he5 height --subset-lalo 25.8759:25.8787,-80.1223:-80.1205
-            viewPS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026,-80.122124 --kml-2d 
-            viewPS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026,-80.122124 --kml-3d 
-            viewPS.py S1*PS.he5 --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --save 
+            viewPS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026,-80.122124 --kml-2d
+            viewPS.py S1*PS.he5 velocity --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --ref-lalo 25.876026,-80.122124 --kml-3d
+            viewPS.py S1*PS.he5 --subset-lalo 25.8759:25.8787,-80.1223:-80.1205 --save
             """
 ADDITIONAL_TEXT = (
             "need to modify save_hdf5eos.py to include demErr.h5 in S1*PS.he5 file"
@@ -47,16 +47,17 @@ def create_parser():
         description=DESCRIPTION, epilog=EXAMPLE + ADDITIONAL_TEXT,
         formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument('data_file', metavar='FILE', help='HDFEOS data file.\n')
-    parser.add_argument('dataset', metavar='DATASET', nargs='?', default='displacement', 
+    parser.add_argument('dataset', metavar='DATASET', nargs='?', default='displacement',
                         help='dataset to plot [displacement, elevation, demErr, velocity] (Default: displacement).\n')
     parser.add_argument( "--subset-lalo", type=str, default=None, help="Latitude and longitude box in format 'lat1:lat2,lon1:lon2' (default: None)")
+    parser.add_argument('--period', dest='period', metavar='YYYYMMDD-YYYYMMDD', default=None, help='time period (Default: full time period)')
     parser.add_argument("--mask", metavar='FILE', type=str, default='../maskPS.h5', help="Mask file. Default: ../maskPS.h5",)
     parser.add_argument("--geometry-file", metavar='FILE', type=str, default='inputs/geometryRadar.h5', help="Geolocation file (default: inputs/geometryRadar.h5)",)
     parser.add_argument("--ref-lalo", nargs='*',  metavar=('LAT,LON or LAT LON'), type=str, default=None, help="reference point (default: use existing reference point)")
     parser.add_argument("--lalo", nargs='*',  metavar=('LAT,LON or LAT LON or LAT1,LON1  LAT2,LON2'), type=str, default=None, help="lat/lon coords of  pixel for timeseries  (default: ?)")
     parser.add_argument("--no-marker-number", dest="marker_number",  action='store_false', default=True, help="add marker numbers to points (default: False)" )
     parser.add_argument("--noreference", dest="show_reference_point",  action='store_false', default=True, help="hide reference point (default: False)" )
-    parser.add_argument("--dem-offset", metavar='NUM', type=float, default=26,help="DEM offset (geoid deviation) (default: 26 m for Miami)")
+    parser.add_argument("--geoid-height", metavar='NUM', type=float, default=-26,help="geoid height (default: -26 m for Miami)")
     parser.add_argument("--estimated-elevation", dest="estimated_elevation_flag", action='store_true', help="Display estimated elevation (default: False)")
     parser.add_argument("--satellite", dest="satellite", action='store_true', help="Satellite as background (default: open_streep_map)")
     parser.add_argument("--backscatter", dest="backscatter", action='store_true', help="Backscatter as background (default: open_streep_map)")
@@ -82,7 +83,7 @@ def create_parser():
     parser.add_argument('--nowhitespace', dest='disp_whitespace', action='store_false', help='do not display white space')
 
     inps = parser.parse_args()
-   
+
     if inps.ref_lalo:
         inps.ref_lalo = parse_lalo(inps.ref_lalo)
         if len(inps.ref_lalo) == 1:   # if given as one string containing ','
@@ -106,7 +107,7 @@ def create_parser():
 
     if not inps.outfile:
         inps.outfile = 'scatter.png'
- 
+
     inps.marker_list=['X','1','2','3','4','X','1','2','3','4']
     return inps
 
@@ -129,7 +130,7 @@ def main(iargs=None):
     inps = create_parser()
 
     # import  (sys.path.pop(0) would remove the cli directory from sys.path if identical file names)
-    
+
     from plotdata.persistent_scatterers import persistent_scatterers
     # run
     persistent_scatterers(inps)

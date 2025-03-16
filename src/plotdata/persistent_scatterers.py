@@ -18,8 +18,8 @@ def update_input_namespace(inps):
     # determne file type (HDFEOS, SARPROZ or ANDREAS)
     files = glob.glob(inps.data_file)
     if not files:
-        raise FileNotFoundError(f'USER ERROR: file {inps.data_file} not found.') 
-    
+        raise FileNotFoundError(f'USER ERROR: file {inps.data_file} not found.')
+
     try:
         metadata = readfile.read_attribute(files[0])
         metadata['FILE_TYPE']
@@ -29,7 +29,7 @@ def update_input_namespace(inps):
         inps.file_type = "SARPROZ"
         inps.file_type = "Andreas"
         pass
-    
+
     if inps.file_type == 'HDFEOS':
         # read HDFEOS data, convert velocty to cm/yr,  convert dem_error to estimated elevation
         latitude, _ = readfile.read(files[0], datasetName='HDFEOS/GRIDS/timeseries/geometry/latitude')
@@ -39,12 +39,22 @@ def update_input_namespace(inps):
         az_angle, _  = readfile.read(files[0], datasetName='HDFEOS/GRIDS/timeseries/geometry/azimuthAngle')
 
         date_list = HDFEOS(files[0]).get_date_list()
-        dataset_first = f'HDFEOS/GRIDS/timeseries/observation/displacement-{date_list[0]}'
-        dataset_last = f'HDFEOS/GRIDS/timeseries/observation/displacement-{date_list[-1]}'
+
+        date1 = date_list[0]
+        date2 = date_list[-1]
+        if  inps.period:
+            date1 = inps.period.split('-')[0]
+            date2 = inps.period.split('-')[1]
+
+        print(f'period: {date1} to {date2}')
+        dataset_first = f'HDFEOS/GRIDS/timeseries/observation/displacement-{date1}'
+        dataset_last = f'HDFEOS/GRIDS/timeseries/observation/displacement-{date2}'
         displacement_first, attr = readfile.read(files[0], datasetName=dataset_first)
         displacement_last, attr  = readfile.read(files[0], datasetName=dataset_last)
+
+        # FA 2/2025: diplacement is the difference between first and last date. velocity need to be estimated using timeserie2velocity.py
         displacement = (displacement_last - displacement_first) * 100    # total displacement
-        
+
         label_dict = dict()
         label_dict['displacement'] = {'str': 'Total displacement', 'unit': 'cm' }
         label_dict['height'] = {'str': 'Dem height', 'unit': 'm' }
@@ -55,16 +65,18 @@ def update_input_namespace(inps):
             print('reading full timeseries data ....')
             timeseries, _ = readfile.read(files[0], datasetName=date_list)
             timeseries *= 100   # convert to cm
-            
-        # legacy/compatibility code: read demErr.h5 because missing in S1*he5 file, 
+
+        # legacy/compatibility code: read demErr.h5 because missing in S1*he5 file,
         #                            read velocity.h5 (should be created on the fly)
         try:
             dem_error, attr = readfile.read('demErr.h5', datasetName='dem')
-            elevation = height + dem_error + inps.dem_offset
+            # in Miami geoid_height is -26 meters
+            elevation = height + dem_error - inps.geoid_height
         except:
             raise FileNotFoundError(f'USER ERROR: file demErr.h5 not found.')
-            
+
         try:
+            # FA 2/2025: for --period, velocity.h5 should be created on the fly from displacements or using timeseries2velocity.py
             velocity, attr = readfile.read('velocity.h5', datasetName='velocity')
             velocity = velocity * 100             # convert to cm/yr
             label_dict['velocity'] = {'str': 'Velocity', 'unit': 'cm/yr' }
@@ -72,26 +84,26 @@ def update_input_namespace(inps):
             raise FileNotFoundError(f'USER ERROR: file velocity.h5 not found.')
 
         # change reference point (function uses geometryRadar.h5. Need a function that works for HDFEOS-radar and other file types)
-        if inps.ref_lalo:  
-            displacement = change_reference_point(displacement, attr, inps.ref_lalo, inps.file_type) 
-            velocity = change_reference_point(velocity, attr, inps.ref_lalo, inps.file_type) 
+        if inps.ref_lalo:
+            displacement = change_reference_point(displacement, attr, inps.ref_lalo, inps.file_type)
+            velocity = change_reference_point(velocity, attr, inps.ref_lalo, inps.file_type)
             if inps.lalo:
-                timeseries = change_reference_point(timeseries, attr, inps.ref_lalo, inps.file_type) 
+                timeseries = change_reference_point(timeseries, attr, inps.ref_lalo, inps.file_type)
 
         # mask = np.ones(displacement.shape, dtype=np.float32)
         mask = readfile.read(inps.mask, datasetName='mask')[0]
-        
+
         inps.displacement = np.array(displacement[mask == 1])
         inps.velocity = np.array(velocity[mask == 1])
         inps.dem_error = np.array(dem_error[mask == 1])
-        inps.elevation = np.array(elevation[mask == 1]) 
+        inps.elevation = np.array(elevation[mask == 1])
         inps.height = np.array(height[mask == 1])
         inps.lat = np.array(latitude[mask == 1])
         inps.lon = np.array(longitude[mask == 1])
         inps.inc_angle = np.array(inc_angle[mask == 1])
         inps.az_angle = np.array(az_angle[mask == 1])
         inps.HEADING = float(attr['HEADING'])
-        
+
         if inps.lalo:
             inps.timeseries = timeseries
             inps.date_list = date_list
@@ -111,23 +123,23 @@ def update_input_namespace(inps):
     elif inps.file_type == 'ANDREAS':
         # read_data_ANDREAS(inps)
         pass
-    
+
     # assign the dataset of interest
     inps.data = getattr(inps, inps.dataset)
     inps.label_dict = label_dict[inps.dataset]
-    
-    if not inps.vlim: 
+
+    if not inps.vlim:
         inps.vlim = [np.nanmin(inps.data), np.nanmax(inps.data)]
-                  
-    # parse subset_lalo or get from data,  create coords dictionary 
+
+    # parse subset_lalo or get from data,  create coords dictionary
     if inps.subset_lalo:
         lat1, lat2, lon1, lon2 = [float(val) for val in inps.subset_lalo.replace(':', ',').split(',')]
     else:
         lat1, lat2 = np.min(latitude), np.max(latitude)
-        lon1, lon2 = np.min(longitude), np.max(longitude)  
+        lon1, lon2 = np.min(longitude), np.max(longitude)
     keys = ['lat1', 'lat2', 'lon1', 'lon2']
     inps.coords = {   key: val for (key, val) in zip(keys, [lat1, lat2, lon1, lon2])  }
- 
+
     if inps.subset_lalo:
        extract_subset_from_data(inps, inps.coords)
 
@@ -141,7 +153,7 @@ def update_input_namespace(inps):
         mask[latitude>lat2] = 0
         mask[longitude<lon1] = 0
         mask[longitude>lon2] = 0
-        
+
         coord = ut.coordinate(attr, inps.geometry_file)
         yg1, xg1 = coord.geo2radar(lat1, lon1)[:2]
         yg2, xg2 = coord.geo2radar(lat2, lon2)[:2]
@@ -160,7 +172,7 @@ def update_input_namespace(inps):
         x, y = np.meshgrid(x, y)
         inps.xv = xmax - np.array(x[mask == 1])
         inps.yv = np.array(y[mask == 1]) - ymin
-        backscatter_file = default_backscatter_file() 
+        backscatter_file = default_backscatter_file()
         if not os.path.exists(inps.out_amplitude):
             calculate_mean_amplitude(backscatter_file, inps.out_amplitude)
         inps.amplitude = np.fliplr(np.load(inps.out_amplitude)[ymin:ymax, xmin:xmax])
@@ -211,11 +223,11 @@ def persistent_scatterers(inps):
     if inps.kml_2d or inps.kml_3d:
         create_kml_file(inps)
         return
-    
+
     # Configure plot and start ax
     figs, axs = configure_plot_settings(inps)
 
-    # Add background image 
+    # Add background image
     if inps.background == 'open_street_map' or inps.background == 'satellite':
         add_open_street_map_image(axs[0], inps.coords, inps.background)
     elif inps.background == 'backscatter':
@@ -225,17 +237,17 @@ def persistent_scatterers(inps):
     else:
         raise Exception("USER ERROR: background option not supported:", inps.background )
 
-    # plot data    
+    # plot data
     plot_scatter(ax=axs[0], inps=inps)
     figs[0].tight_layout()
-    
+
     if inps.lalo:
         # create time series plots
         i = 0
-        for ax in axs[1:]: 
+        for ax in axs[1:]:
             plot_timeseries(ax=ax, index=i, inps=inps)
             i += 1
-       
+
     # save figure
     if not inps.save_fig:
         plt.show()
@@ -246,7 +258,7 @@ def persistent_scatterers(inps):
             figs[0].savefig(inps.outfile, transparent=True, dpi=inps.fig_dpi, pad_inches=0.0)
         else:
             figs[0].savefig(inps.outfile, transparent=True, dpi=inps.fig_dpi, bbox_inches='tight')
-    
+
         if inps.lalo:
             i=0
             for fig in figs[1:]:
