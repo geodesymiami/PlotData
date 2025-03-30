@@ -10,9 +10,6 @@
 #################################################################
 
 # Global Volcanism Program, 2024. [Database] Volcanoes of the World (v. 5.2.3; 20 Sep 2024). Distributed by Smithsonian Institution, compiled by Venzke, E. https://doi.org/10.5479/si.GVP.VOTW5-2024.5.2
-import sys
-sys.path.insert(0, '/Users/giacomo/code/PlotData/src')
-
 from plotdata.volcano_functions import volcanoes_list
 import argparse
 import os

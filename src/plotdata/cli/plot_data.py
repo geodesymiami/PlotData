@@ -11,7 +11,6 @@ import sys
 # The asgeo import breaks when called by readfile.py unless I do the following
 from osgeo import gdal, osr
 
-sys.path.insert(0, '/Users/giacomo/code/PlotData/src')
 import argparse
 from datetime import datetime
 from plotdata.utils.argument_parsers import add_date_arguments, add_location_arguments, add_plot_parameters_arguments, add_map_parameters_arguments, add_save_arguments,add_gps_arguments
