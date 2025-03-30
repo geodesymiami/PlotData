@@ -1,0 +1,61 @@
+// {
+//     // Use IntelliSense to learn about possible attributes.
+//     // Hover to view descriptions of existing attributes.
+//     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+//     "version": "0.2.0",
+//     "configurations": [
+//         {
+//             "name": "Python Debugger: Current File with Arguments",
+//             "type": "debugpy",
+//             "request": "launch",
+//             "program": "${file}",
+//             "console": "integratedTerminal",
+//             "args": [
+//                 "/Users/giacomo/onedrive/scratch/Chiles-CerroNegro/A120/geo_velocity_15-19_msk.h5"
+//             ]
+//         }
+//     ]
+// }
+{
+"version": "0.2.0",
+"configurations": [
+    {
+        "name": "Python Debugger: Current File with Arguments",
+        "type": "debugpy",
+        "request": "launch",
+        "program": "${file}",
+        "console": "integratedTerminal",
+        "justMyCode": false,
+        "env": {
+            "PATH": "/Users/giacomo/PyEnv/venvscode/bin:/User/giacomo/code/PlotData/src/plotdata/cli:${env:PATH}",
+            "PYTHONPATH": "/Users/giacomo/code/PlotData/src:${env:PYTHONPATH}"
+        },
+        "args": 
+        [
+            "Chiles-CerroNegroSenAT120/mintpy",
+            "Chiles-CerroNegroSenDT142/mintpy",
+            "--plot-type=horzvert",
+            "--period",
+            "20220101:20230831",
+            "20230831:20231001",
+            "--ref-lalo",
+            "0.8389,-77.902",
+            "--resolution",
+            "01s",
+            "--isolines",
+            "1",
+            "--section",
+            "-77.968",
+            "-77.9309",
+            "0.793",
+            "0.793",
+            // "--resample-vector",
+            // "10"
+            // "--style",
+            // "ifgram"
+            // "--no-show"
+        ]
+
+    }
+]
+}

@@ -11,36 +11,14 @@ import sys
 # The asgeo import breaks when called by readfile.py unless I do the following
 from osgeo import gdal, osr
 
-sys.path.insert(0, '/Users/giacomo/code/Playground/Plot_data2/src')
+sys.path.insert(0, '/Users/giacomo/code/PlotData/src')
 import argparse
 from datetime import datetime
-from src.plotdata.utils.argument_parsers import add_date_arguments, add_location_arguments, add_plot_parameters_arguments, add_map_parameters_arguments, add_save_arguments,add_gps_arguments
+from plotdata.utils.argument_parsers import add_date_arguments, add_location_arguments, add_plot_parameters_arguments, add_map_parameters_arguments, add_save_arguments,add_gps_arguments
 
 ############################################################
 EXAMPLE = """example:
-        plot_data.py GalapagosSenDT128
-        plot_data.py GalapagosSenDT128/mintpy
-        plot_data.py GalapagosSenDT128/mintpy/S1_IW12_128_0593_0597_20181005_XXXXXXXX.he5
-        plot_data.py GalapagosSenDT128/mintpy  --plot-type=velocity --subset-lalo=-0.52:-0.28,-91.7:-91.4 --period=20200131-20231231 --gps --seismicity
-        plot_data.py GalapagosSenDT128/mintpy GalapagosSenAT106/mintpy_orig  --plot-type=horzvert --subset-lalo=-1.0:-0.75,-91.55:-91.25 --period=20220101-20230831 --vlim -5 5
-        plot_data.py MaunaLoaSenDT87/mintpy/
-        plot_data.py MaunaLoaSenDT87 --plot-type ifgram --seismicity --gps
-        plot_data.py MaunaLoaSenDT87 --plot-type shaded_relief --seismicity --gps
-        plot_data.py MaunaLoaSenDT87 --plot-type velocity --seismicity --gps
-        plot_data.py MaunaLoaSenAT124 MaunaLoaSenDT87 --ref-lalo 19.55,-155.45
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20  --plot-type velocity
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type velocity --ref-lalo 19.495,-155.555  --period 20181001-20221122 --subset-lalo 19.43:19.5,-155.62:-155.55 --vlim -5 5
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type horzvert --ref-lalo 19.495,-155.555  --period 20181001-20221122 --subset-lalo 19.43:19.5,-155.62:-155.55 --vlim -5 5
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20  --plot-type shaded-relief --gps --period 20181001-20221122 --dem-file $SCRATCHDIR/MaunaLoa/MLtry/data/demGeo.h5
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20  --plot-type shaded-relief --gps --gps-scale-fac 200 --gps-key-length 1
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20  --plot-type shaded-relief --gps --seismicity
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20  --plot-type shaded-relief --subset-lalo 19.43:19.5,-155.62:-155.55  --seismicity
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type velocity --ref-lalo 19.55,-155.45 --period 20220801-20221127 --vlim -20 20 --save-gbis --gps --seismicity --fontsize 14
-        plot_data.py GalapagosSenDT128/mintpy  --plot-type=velocity --subset-lalo=-0.52:-0.28,-91.7:-91.4 --period=20200131-20221231 --gps --seismicity
-        plot_data.py GalapagosSenDT128/mintpy --plot-type=velocity --subset-lalo=-0.52:-0.28,-91.7:-91.4 --period=20200131-20220430
-        plot_data.py GalapagosSenDT128/mintpy --plot-type=velocity --period=20200131-20220430
-        plot_data.py GalapagosSenDT128/mintpy --plot-type=velocity --subset-lalo=-0.52:-0.28,-91.7:-91.4
-        plot_data.py GalapagosSenDT128/mintpy --subset-lalo=-0.86:-0.77:-91.19:-91.07 --ref-lalo=-0.771,-91.19
+        plotdata.py Chiles-CerroNegroSenAT120/mintpy Chiles-CerroNegroSenDT142/mintpy --plot-type=horzvert --period=20220101-20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2
 """
 
 def create_parser():
@@ -198,8 +176,8 @@ def main(iargs=None):
     inps = create_parser()
 
     # import
-    from src.plotdata.process_data import run_prepare
-    from src.plotdata.plot import run_plot
+    from plotdata.process_data import run_prepare
+    from plotdata.plot import run_plot
 
     # extract_volcanoes_info('', 'Kilauea', inps.start_date, inps.end_date)
     plot_info = run_prepare(inps)
