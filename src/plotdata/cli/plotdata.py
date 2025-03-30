@@ -14,7 +14,7 @@ from osgeo import gdal, osr
 sys.path.insert(0, '/Users/giacomo/code/Playground/Plot_data2/src')
 import argparse
 from datetime import datetime
-from plotdata.utils.argument_parsers import add_date_arguments, add_location_arguments, add_plot_parameters_arguments, add_map_parameters_arguments, add_save_arguments,add_gps_arguments
+from src.plotdata.utils.argument_parsers import add_date_arguments, add_location_arguments, add_plot_parameters_arguments, add_map_parameters_arguments, add_save_arguments,add_gps_arguments
 
 ############################################################
 EXAMPLE = """example:
@@ -198,8 +198,8 @@ def main(iargs=None):
     inps = create_parser()
 
     # import
-    from Plot_data2.src.plotdata.process_data import run_prepare
-    from Plot_data2.src.plotdata.plot import run_plot
+    from src.plotdata.process_data import run_prepare
+    from src.plotdata.plot import run_plot
 
     # extract_volcanoes_info('', 'Kilauea', inps.start_date, inps.end_date)
     plot_info = run_prepare(inps)
