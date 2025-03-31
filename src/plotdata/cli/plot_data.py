@@ -17,7 +17,13 @@ from plotdata.utils.argument_parsers import add_date_arguments, add_location_arg
 
 ############################################################
 EXAMPLE = """example:
-        plotdata.py Chiles-CerroNegroSenAT120/mintpy Chiles-CerroNegroSenDT142/mintpy --plot-type=horzvert --period=20220101-20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2
+        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=horzvert --ref-lalo 19.55,-155.45 --period 20220801:20221127 --resolution '01s' --isolines 2
+
+        plot_data.py Chiles-CerroNegroSenAT120/mintpy Chiles-CerroNegroSenDT142/mintpy --plot-type=horzvert --period=20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2
+
+        # FOR GIACOMO TO TEST
+        plot_data.py Chiles-CerroNegroSenAT120/mintpy Chiles-CerroNegroSenDT142/mintpy --plot-type=horzvert --period=20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2 --section -77.968 -77.9309 0.793 0.793
+
 """
 
 def create_parser():
@@ -29,26 +35,11 @@ def create_parser():
     parser.add_argument('--seismicity', dest='flag_seismicity', action='store_true', default=False, help='flag to add seismicity')
     parser.add_argument('--dem', dest='dem_file', default=None, help='external DEM file (Default: geo/geo_geometryRadar.h5)')
     parser.add_argument('--lines', dest='line_file', default=None, help='fault file (Default: None, but plotdata/data/hawaii_lines_new.mat for Hawaii)')
-    parser.add_argument('--unit', dest='unit', default="cm", help='InSAR units (Default: cm)')
     parser.add_argument('--mask-thresh', dest='mask_vmin', type=float, default=0.7, help='coherence threshold for masking (Default: 0.7)')
-    parser.add_argument("--noreference", dest="show_reference_point",  action='store_false', default=True, help="hide reference point (default: False)" )
+    # parser.add_argument('--unit', dest='unit', default="cm", help='InSAR units (Default: cm)')
+    # parser.add_argument("--noreference", dest="show_reference_point",  action='store_false', default=True, help="hide reference point (default: False)" )
     parser.add_argument("--section", dest="line", nargs=4, metavar="LON1 LON2 LAT1 LAT2", type=float, default=None, help="Section coordinates for deformation vectors")
     parser.add_argument("--resample-vector", dest="resample_vector", type=int, default=1, help="resample factor for deformation vectors (default: %(default)s).")
-    # parser.add_argument('--window_size', dest='window_size', type=int, default=3, help='window size (square side in number of pixels) for reference point look up (default: %(default)s).')
-    # parser.add_argument('--lat-step', dest='lat_step', type=float, default=None, help='latitude step for geocoding (default: %(default)s).')
-    # parser.add_argument('--subset-lalo',  nargs='?', dest='plot_box', type=str, default=None, help='geographic area plotted')
-    # parser.add_argument('--gps', dest='flag_gps', action='store_true', default=False, help='flag to add GPS vectors')
-    # parser.add_argument('--gps-scale-fac', dest='gps_scale_fac', default=500, type=int, help='GPS scale factor (Default: 500)')
-    # parser.add_argument('--gps-key-length', dest='gps_key_length', default=4, type=int, help='GPS key length (Default: 4)')
-    # parser.add_argument('--gps-units', dest='gps_unit', default="cm", help='GPS units (Default: cm)')
-    # parser.add_argument('--fontsize', dest='font_size', default=12, type=int, help='fontsize for view.py (Default: 12)')
-    # parser.add_argument('--ref-lalo', nargs='*',  metavar=('LAT,LON or LAT LON'), type=str, default=None, help='reference point (default:  existing reference point)')
-    # parser.add_argument("--lalo", nargs='*',  metavar=('LAT,LON or LAT LON or LAT1,LON1  LAT2,LON2'), type=str, default=None, help="lat/lon coords of  pixel for timeseries  (default: ?)")
-    # parser.add_argument('--vlim', dest='vlim', nargs=2, metavar=('VMIN', 'VMAX'), type=float, help='colorlimit')
-    # parser.add_argument('--save-gbis', dest='flag_save_gbis', action='store_true', default=False, help='save GBIS files')
-    # parser.add_argument('--style', dest='style', choices={'image', 'scatter'}, default='image', help='Plot data as image or scatter (default: %(default)s).')
-    # parser.add_argument('--scatter-size', dest='scatter_marker_size', type=float, metavar='SIZE', default=10, help='Scatter marker size in points**2 (default: %(default)s).')
-    # parser.add_argument('--shade-exag ',dest='shade_exag', type=float, default=1, help='Shade exaggeration factor (Default: 0.5)')
 
     parser = add_date_arguments(parser)
     parser = add_location_arguments(parser)

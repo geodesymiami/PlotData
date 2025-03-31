@@ -26,18 +26,18 @@
         "program": "${file}",
         "console": "integratedTerminal",
         "justMyCode": false,
-        "env": {
-            "PATH": "/Users/giacomo/PyEnv/venvscode/bin:/User/giacomo/code/PlotData/src/plotdata/cli:${env:PATH}",
-            "PYTHONPATH": "/Users/giacomo/code/PlotData/src:${env:PYTHONPATH}"
-        },
+        // "env": {
+        //     "PATH": "/Users/giacomo/code/rsmas_insar/tools/miniforge3:/User/giacomo/code/PlotData/src:${env:PATH}",
+        //     "PYTHONPATH": "/Users/giacomo/code/PlotData/src:${env:PYTHONPATH}"
+        // },
         "args": 
         [
             "Chiles-CerroNegroSenAT120/mintpy",
-            "Chiles-CerroNegroSenDT142/mintpy",
-            "--plot-type=horzvert",
+            // "Chiles-CerroNegroSenDT142/mintpy",
+            "--plot-type=velocity",
             "--period",
             "20220101:20230831",
-            "20230831:20231001",
+            // "20230831:20231001",
             "--ref-lalo",
             "0.8389,-77.902",
             "--resolution",

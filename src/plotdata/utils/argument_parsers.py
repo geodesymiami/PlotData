@@ -98,7 +98,7 @@ def add_plot_parameters_arguments(parser):
     plot_parameters.add_argument('--plot-type',
                         dest='plot_type',
                         default='velocity',
-                        choices=['velocity', 'deformation','horzvert', 'vectors', 'shaded_relief', 'globe', 'timeseries'],
+                        choices=['velocity','horzvert', 'vectors', 'horizontal', 'shaded_relief', 'globe', 'timeseries'],
                         help='Type of plot: (default: %(default)s).')
     plot_parameters.add_argument('--add-event',
                         nargs='*',
@@ -166,11 +166,6 @@ def add_map_parameters_arguments(parser):
                         type=float,
                         default=0.5,
                         help='Line width for isolines (default: %(default)s).')
-    # TODO remove, redundant
-    map_parameters.add_argument('--levels',
-                        type=int,
-                        default=10,
-                        help='Number of levels for isolines (default: %(default)s).')
     map_parameters.add_argument('--inline',
                         action='store_true',
                         help='Display isolines inline')

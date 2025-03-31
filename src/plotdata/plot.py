@@ -12,8 +12,9 @@ from plotdata.helper_functions import draw_vectors
 def run_plot(plot_info, inps):
     vmin = inps.vlim[0] if inps.vlim else None
     vmax = inps.vlim[1] if inps.vlim else None
-    fig = plt.figure()
+    # fig = plt.figure(figsize=(10,10))
     plots = []
+    title = plot_info[list(plot_info.keys())[0]]['directory'].split('/')[-1]
 
     if inps.plot_type == 'shaded_relief':
         main_gs = gridspec.GridSpec(1, 1, figure=fig) #rows, columns
@@ -21,8 +22,32 @@ def run_plot(plot_info, inps):
         rel_map = Mapper(ax=ax, region=inps.region)
         Relief(map=rel_map, resolution = inps.resolution, interpolate=inps.interpolate, no_shade=inps.no_shade, zorder=None)
 
+    if inps.plot_type == 'velocity':
+        fig, axs = plt.subplots(nrows=len(inps.data_dir), ncols=len(plot_info.keys()),layout="constrained", squeeze=False)
+        fig.suptitle(title)
+
+        for col,key in enumerate(plot_info.keys()):
+            # Extract files
+            asc_file = plot_info[key]['ascending'][0] if plot_info[key]['ascending'] else None
+            desc_file = plot_info[key]['descending'][0] if plot_info[key]['descending'] else None
+
+            files = [file for file in [asc_file, desc_file] if file is not None]
+
+            # Create subplots and set properties
+            axes = [axs[i, col] for i in range(len(files))]
+            axs[0,col].set_title(key)
+
+            for ax, file in zip(axes, files):
+                if file:
+                    processing_maps(ax=ax, file=file, no_dem=inps.no_dem, resolution=inps.resolution, interpolate=inps.interpolate, no_shade=inps.no_shade, style=inps.style, vmin=vmin, vmax=vmax, isolines=inps.isolines, iso_color=inps.iso_color, linewidth=inps.linewidth, inline=inps.inline, movement=inps.movement)
+
+                ax.set_box_aspect(0.5)
+                ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=3))
+                ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=3))
+
     if inps.plot_type == 'horzvert':
-        main_gs = gridspec.GridSpec(2, len(plot_info.keys()), figure=fig)
+        fig, axs = plt.subplots(nrows=2, ncols=len(plot_info.keys()),layout="constrained")
+        fig.suptitle(title)
 
         for col,key in enumerate(plot_info.keys()):
             # Extract files
@@ -33,17 +58,21 @@ def run_plot(plot_info, inps):
 
             # Create subplots and set properties
             axes = [
-                fig.add_subplot(main_gs[0, col]),
-                fig.add_subplot(main_gs[1, col]),
+                axs[0, col],
+                axs[1, col],
             ]
 
             horz_map = processing_maps(ax=axes[0], file=horz_file, no_dem=inps.no_dem, resolution=inps.resolution, interpolate=inps.interpolate, no_shade=inps.no_shade, style=inps.style, vmin=vmin, vmax=vmax, isolines=inps.isolines, iso_color=inps.iso_color, linewidth=inps.linewidth, inline=inps.inline, movement=inps.movement)
-
             vert_map = processing_maps(ax=axes[1], file=vert_file, no_dem=inps.no_dem, resolution=inps.resolution, interpolate=inps.interpolate, no_shade=inps.no_shade, style=inps.style, vmin=vmin, vmax=vmax, isolines=inps.isolines, iso_color=inps.iso_color, linewidth=inps.linewidth, inline=inps.inline, movement=inps.movement)
 
-
     if inps.plot_type == 'vectors':
-        main_gs = gridspec.GridSpec(3, len(plot_info.keys()), figure=fig) #rows, columns
+        fig, axs = plt.subplots(nrows=3, ncols=len(plot_info.keys()),layout="constrained")
+        fig.suptitle(title)
+
+        if len(plot_info.keys()) == 1:
+            axs = np.reshape(axs, (3, 1))
+        else:
+            axs = np.atleast_2d(axs)
 
         for col,key in enumerate(plot_info.keys()):
             # Extract files
@@ -54,19 +83,20 @@ def run_plot(plot_info, inps):
                 plot_info[key]['vertical']
             )
 
-            # Create subplots and set properties
             axes = [
-                fig.add_subplot(main_gs[0, col]),
-                fig.add_subplot(main_gs[1, col]),
-                fig.add_subplot(main_gs[2, col])
+                axs[0, col],
+                axs[1, col],
+                axs[2, col]
             ]
+
+            axs[0,col].set_title(key)
 
             for ax in axes:
                 ax.set_box_aspect(0.5)
                 ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=3))
                 ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=3))
 
-            asc_map = processing_maps(ax=axes[0],
+            asc_data = processing_maps(ax=axes[0],
                             file=asc_file,
                             no_dem=inps.no_dem,
                             resolution=inps.resolution,
@@ -81,7 +111,7 @@ def run_plot(plot_info, inps):
                             inline=inps.inline,
                             movement=inps.movement)
 
-            desc_map = processing_maps(ax=axes[1],
+            desc_data = processing_maps(ax=axes[1],
                             file=desc_file,
                             no_dem=inps.no_dem,
                             resolution=inps.resolution,
@@ -158,7 +188,7 @@ def run_plot(plot_info, inps):
             # Calculate vector scaling parameters
             start_x, start_y = max(x) * 0.1, (2 * max(elevation_section.values) * 0.8)
             magnitudes = np.sqrt(v**2 + h**2)
-            non_zero_magnitudes = magnitudes[magnitudes != 0] # No need??
+            # non_zero_magnitudes = magnitudes[magnitudes != 0] # No need??
 
             # Resample vectors
             for i in range(len(h)):
@@ -190,11 +220,20 @@ def run_plot(plot_info, inps):
                 width=(1 / 10**(2.5))
             )
 
+            axes[0].plot(inps.line[0], inps.line[1], '-', linewidth=2, alpha=0.7, color='black')
+            axes[1].plot(inps.line[0], inps.line[1], '-', linewidth=2, alpha=0.7, color='black')
+            print(inps.line[0], inps.line[1])
+
+            # Mean velocity
+            axes[2].quiver([start_x], [start_y], [abs(np.mean(filtered_h * rescale_h))],[0], color='red', scale_units='xy', width=(1 / 10**(2.5)))
+            axes[2].text(start_x, start_y*1.03, f"{round(abs(np.mean(filtered_h * rescale_h)), 3)} m/yr", color='black', ha='left', fontsize=8)
             # Control Vecor
-            if True:
-                print(max(v))
-                axes[2].quiver([start_x], [start_y], [np.mean(rescale_h)],[0], color='red', scale_units='xy', width=(1 / 10**(2.5)))
+            if False:
                 axes[2].quiver([start_x], [start_y], [0],[np.mean(rescale_v)], color='red', scale_units='xy', width=(1 / 10**(2.5)))
+
+    if inps.plot_type == 'horizontal':
+        fig, axs = plt.subplots(nrows=1, ncols=len(plot_info.keys()),layout="constrained")
+        pass
 
     plt.show()
     return

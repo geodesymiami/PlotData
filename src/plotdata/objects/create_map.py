@@ -130,9 +130,9 @@ class Mapper():
             C = data.flatten()
 
             self.imdata = self.ax.scatter(X, Y, c=C, cmap=cmap, marker='o', zorder=zorder, s=2, vmin=vmin, vmax=vmax)
-        print(self.imdata)
-        # plt.colorbar(self.imdata, ax=self.ax, orientation='vertical', label=label)
 
+        cbar = self.ax.figure.colorbar(self.imdata, ax=self.ax, orientation='horizontal', aspect=13)
+        cbar.set_label(label)
 
 class Isolines:
         def __init__(self, map: Mapper, resolution = '01m', color = 'black', linewidth = 0.5, levels = 10, inline = False, zorder = None):
