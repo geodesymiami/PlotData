@@ -13,7 +13,7 @@ from plotdata.objects.get_methods import DataFetcherFactory
 
 
 class Earthquake():
-    def __init__(self, start_date, end_date = None, distance_km = 20, distance_deg = None, magnitude = 3, volcano: str = None, region: list = None, map: Mapper = None):
+    def __init__(self, start_date=None, end_date = None, distance_km = 20, distance_deg = None, magnitude = 1, volcano: str = None, region: list = None, map: Mapper = None):
         # Constants
         self.API_ENDPOINT = "https://earthquake.usgs.gov/fdsnws/event/1/query.geojson"
         self.PARAMS = {
@@ -25,24 +25,49 @@ class Earthquake():
         if volcano:
             self.coordinates, self.id = get_volcano_coord_id(None, volcano)
             self.region = draw_box(self.coordinates[0], self.coordinates[1], distance_km, distance_deg)
+            self.start_date = datetime.strptime(start_date,'%Y%m%d') if isinstance(start_date, str) else start_date
+            self.end_date = datetime.today() if not end_date else datetime.strptime(end_date, '%Y%m%d') if isinstance(end_date, str) else end_date
 
         if region:
             self.region = region
+            self.start_date = datetime.strptime(start_date,'%Y%m%d') if isinstance(start_date, str) else start_date
+            self.end_date = datetime.today() if not end_date else datetime.strptime(end_date, '%Y%m%d') if isinstance(end_date, str) else end_date
 
         if map:
             self.region = map.region
+            self.start_date = map.start_date
+            self.end_date = map.end_date
+            self.ax = map.ax
 
-        self.start_date = datetime.strptime(start_date,'%Y%m%d') if isinstance(start_date, str) else start_date
-        self.end_date = datetime.today() if not end_date else datetime.strptime(end_date, '%Y%m%d') if isinstance(end_date, str) else end_date
 
         self.get_earthquake_data(website="usgs")
 
+
+    def map(self):
+        if not self.earthquakes['date']:
+            print("No earthquake data available.")
+            return
+
+        cmap = plt.cm.viridis
+        norm = plt.Normalize(vmin=min(self.earthquakes['magnitude']), vmax=max(self.earthquakes['magnitude']))
+
+        for lalo, magnitude, date in zip(self.earthquakes['lalo'], self.earthquakes['magnitude'], self.earthquakes['date']):
+            self.ax.scatter(
+                lalo[1], lalo[0], 
+                s=10**(magnitude*0.5),  # Size based on magnitude
+                c=cmap(norm(magnitude)),  # Color based on magnitude
+                edgecolors='black',  # Edge color
+                linewidths=0.5,  # Edge width
+                marker='o',  # Circle marker
+                alpha=0.5,  # Transparency
+                label=f"{magnitude} {date}"
+            )
 
     def get_earthquake_data(self, website="usgs"):
         min_lon, max_lon, min_lat, max_lat = self.region
 
         fetcher = DataFetcherFactory.create_fetcher(
-            website="usgs",
+            website=website,
             start_date=self.start_date.isoformat(),
             end_date=self.end_date.isoformat(),
             magnitude=self.magnitude

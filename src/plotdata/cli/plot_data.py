@@ -21,6 +21,17 @@ EXAMPLE = """example:
 
         plot_data.py Chiles-CerroNegroSenAT120/mintpy Chiles-CerroNegroSenDT142/mintpy --plot-type=horzvert --period=20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2
 
+        plot_data.py  Chiles-CerroNegroSenDT142/mintpy --plot-type=velocity --period 20220101:20230831 20230831:20231001  --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2 --section -77.968 -77.9309 0.793 0.793
+
+        PLOT BOTH VELOCITY FILES
+        plot_data.py Chiles-CerroNegroSenAT120/mintpy Chiles-CerroNegroSenDT142/mintpy --plot-type=velocity --period 20220101:20230831  --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2
+
+        PLOT VECTORS
+        plot_data.py Chiles-CerroNegroSenAT120/mintpy Chiles-CerroNegroSenDT142/mintpy --plot-type=vectors --period 20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2 --section -77.968 -77.9309 0.793 0.793
+
+        ADD EARTHQUAKES
+        plot_data.py Chiles-CerroNegroSenAT120/mintpy --plot-type=velocity --period 20220101:20230831  --ref-lalo 0.8389,-77.902 --resolution '01s' --earthquake
+
         # FOR GIACOMO TO TEST
         plot_data.py Chiles-CerroNegroSenAT120/mintpy Chiles-CerroNegroSenDT142/mintpy --plot-type=horzvert --period=20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2 --section -77.968 -77.9309 0.793 0.793
 
@@ -40,6 +51,7 @@ def create_parser():
     # parser.add_argument("--noreference", dest="show_reference_point",  action='store_false', default=True, help="hide reference point (default: False)" )
     parser.add_argument("--section", dest="line", nargs=4, metavar="LON1 LON2 LAT1 LAT2", type=float, default=None, help="Section coordinates for deformation vectors")
     parser.add_argument("--resample-vector", dest="resample_vector", type=int, default=1, help="resample factor for deformation vectors (default: %(default)s).")
+    parser.add_argument("--earthquake", dest="earthquake", action='store_true', default=False, help="plot earthquakes")
 
     parser = add_date_arguments(parser)
     parser = add_location_arguments(parser)
