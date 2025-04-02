@@ -15,7 +15,7 @@ from plotdata.helper_functions import parse_polygon, get_bounding_box
 
 
 class Mapper():
-    def __init__(self, region=None, polygon=None, location_types: dict = {}, ax=None, file=None):
+    def __init__(self, region=None, polygon=None, start_date=None, end_date=None,location_types: dict = {}, ax=None, file=None):
         if not ax:
             # self.fig = plt.figure(figsize=(8, 8))
             # self.ax = self.fig.add_subplot(111)
@@ -24,15 +24,17 @@ class Mapper():
             self.ax = ax
             self.fig = ax.get_figure()
 
-        if file:
+        if region:
+            self.region = region
+            self.start_date = datetime.strptime(start_date, '%Y%m%d') if isinstance(end_date, str) else start_date
+            self.end_date = datetime.strptime(end_date, '%Y%m%d') if isinstance(end_date, str) else end_date
+
+        elif file:
             self.velocity, self.metadata = readfile.read(file)
             self.start_date = datetime.strptime(self.metadata['START_DATE'], '%Y%m%d')
             self.end_date = datetime.strptime(self.metadata['END_DATE'], '%Y%m%d')
             latitude, longitude = get_bounding_box(self.metadata)
             self.region = [longitude[0], longitude[1], latitude[0], latitude[1]]
-
-        elif region:
-                self.region = region
 
         elif polygon:
             self.region = parse_polygon(polygon)

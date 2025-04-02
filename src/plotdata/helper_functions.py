@@ -399,3 +399,14 @@ def interpolate(x, y):
         y = y_values_interpolated
 
     return y
+
+
+def unpack_file(file):
+    if isinstance(file, (list, tuple)):
+        for element in file:
+            result = unpack_file(element)
+            if result is not None:
+                return result
+    else:
+        return file
+    return None

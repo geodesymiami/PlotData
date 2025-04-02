@@ -1,19 +1,18 @@
 import sys
 import os
 
-sys.path.insert(0, '/Users/giacomo/code/Playground/Plot_data2/src')
+sys.path.insert(0, '/Users/giacomo/code/Plotdata/src')
 
-import requests
 from datetime import datetime
 from matplotlib import pyplot as plt
 from plotdata.objects.create_map import Mapper
 from plotdata.helper_functions import draw_box, calculate_distance
-from plotdata.volcano_functions import get_volcano_coord_id
+from plotdata.volcano_functions import get_volcano_coord_id, get_volcano_coord_name
 from plotdata.objects.get_methods import DataFetcherFactory
 
 
 class Earthquake():
-    def __init__(self, start_date=None, end_date = None, distance_km = 20, distance_deg = None, magnitude = 1, volcano: str = None, region: list = None, map: Mapper = None):
+    def __init__(self, start_date=None, end_date = None, distance_km = 20, distance_deg = None, magnitude = 1, id=None, volcano: str = None, region: list = None, map: Mapper = None):
         # Constants
         self.API_ENDPOINT = "https://earthquake.usgs.gov/fdsnws/event/1/query.geojson"
         self.PARAMS = {
@@ -22,11 +21,8 @@ class Earthquake():
         }
         self.magnitude = magnitude
 
-        if volcano:
-            self.coordinates, self.id = get_volcano_coord_id(None, volcano)
-            self.region = draw_box(self.coordinates[0], self.coordinates[1], distance_km, distance_deg)
-            self.start_date = datetime.strptime(start_date,'%Y%m%d') if isinstance(start_date, str) else start_date
-            self.end_date = datetime.today() if not end_date else datetime.strptime(end_date, '%Y%m%d') if isinstance(end_date, str) else end_date
+        if volcano or id:
+            self.define_info(start_date, end_date, distance_km, distance_deg, volcano, id)
 
         if region:
             self.region = region
@@ -59,9 +55,19 @@ class Earthquake():
                 edgecolors='black',  # Edge color
                 linewidths=0.5,  # Edge width
                 marker='o',  # Circle marker
-                alpha=0.5,  # Transparency
+                alpha=0.6,  # Transparency
                 label=f"{magnitude} {date}"
             )
+
+    def define_info(self, start_date, end_date, distance_km = 20, distance_deg = None, volcano=None, id=None):
+        if volcano:
+            self.coordinates, self.id = get_volcano_coord_id(None, volcano)
+        if id:
+            self.coordinates, self.volcano = get_volcano_coord_name(None, id)
+        self.region = draw_box(self.coordinates[0], self.coordinates[1], distance_km, distance_deg)
+        self.start_date = datetime.strptime(start_date,'%Y%m%d') if isinstance(start_date, str) else start_date
+        self.end_date = datetime.today() if not end_date else datetime.strptime(end_date, '%Y%m%d') if isinstance(end_date, str) else end_date
+
 
     def get_earthquake_data(self, website="usgs"):
         min_lon, max_lon, min_lat, max_lat = self.region
@@ -152,9 +158,14 @@ class Earthquake():
 
 
 if __name__ == "__main__":
+    from plotdata.helper_functions import parse_polygon
+    region = parse_polygon("POLYGON((-78.0068 0.7843,-77.8049 0.7843,-77.8049 1.0059,-78.0068 1.0059,-78.0068 0.7843))")
+    print(region)
     volcano = "Kilauea"
-    start = "20220101"
+    start = "20170101"
     end = "20221201"
     dis = 50
-    eq = Earthquake(volcano=volcano, start_date=start, end_date=end, distance_km=dis, magnitude=4)
+    eq1 = Earthquake(volcano=volcano, start_date=start, end_date=end, distance_km=dis, magnitude=4)
+    eq = Earthquake(region=region, start_date=start, end_date=end, distance_km=dis, magnitude=4)
     eq.plot()
+    eq1.plot()

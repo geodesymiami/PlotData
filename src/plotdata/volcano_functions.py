@@ -89,6 +89,19 @@ def get_volcano_coord_id(jsonfile, volcanoName: str):
             return coordinates, id
 
 
+def get_volcano_coord_name(jsonfile, volcanoId):
+    data = get_volcano_json(jsonfile, JSON_DOWNLOAD_URL)
+
+    for j in data['features']:
+        if j['properties']['VolcanoNumber'] == int(volcanoId):
+            name = j['properties']['VolcanoNumber']
+
+            coordinates = j['geometry']['coordinates']
+            coordinates = coordinates[::-1]
+
+            return coordinates, name
+
+
 def get_volcano_event(jsonfile, volcanoName: str, start_date, end_date, strength = 0):
     """
     Extracts information about a specific volcano from a JSON file.

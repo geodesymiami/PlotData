@@ -19,18 +19,38 @@ from plotdata.utils.argument_parsers import add_date_arguments, add_location_arg
 EXAMPLE = """example:
         plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=horzvert --ref-lalo 19.55,-155.45 --period 20220801:20221127 --resolution '01s' --isolines 2
 
-        plot_data.py Chiles-CerroNegroSenAT120/mintpy Chiles-CerroNegroSenDT142/mintpy --plot-type=horzvert --period=20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2
+        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=horzvert --period=20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2
 
-        plot_data.py  Chiles-CerroNegroSenDT142/mintpy --plot-type=velocity --period 20220101:20230831 20230831:20231001  --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2 --section -77.968 -77.9309 0.793 0.793
+        plot_data.py MaunaLoaSenAT124/mintpy_5_20 --plot-type=velocity --period 20220101:20230831 20230831:20231001 --resolution '01s' --isolines 2 --section -77.968 -77.9309 0.793 0.793
+
+        PLOT SHADED RELIEF AND ADD ISO-LINES
+        give file
+        plot_data.py MaunaLoaSenDT87/mintpy_5_20 --plot-type=shaded_relief --period 20220101:20230831 --resolution '01s' --isolines 2
+
+        give polygon
+        plot_data.py --polygon "POLYGON((-155.8 19.3, -155.4 19.3, -155.4 19.6, -155.8 19.6, -155.8 19.3))" --plot-type=shaded_relief --period 20220101:20230831 --resolution '01s' --isolines 2
 
         PLOT BOTH VELOCITY FILES
-        plot_data.py Chiles-CerroNegroSenAT120/mintpy Chiles-CerroNegroSenDT142/mintpy --plot-type=velocity --period 20220101:20230831  --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2
+        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=velocity --period 20220101:20230831 --resolution '01s' --isolines 2
+
+        PLOT BOTH VELOCITY FILES WITH DIFFERENT PERIODS
+        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=velocity --period 20220101:20230831 20200101:20220101 --resolution '01s' --isolines 2
+
+        PLOT HORIZONTAL AND VERTICAL VELOCITY
+        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=horzvert --period 20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2
+
+        PLOT HORIZONTAL
+        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=horzvert --period 20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2 --plot-option horizontal
 
         PLOT VECTORS
-        plot_data.py Chiles-CerroNegroSenAT120/mintpy Chiles-CerroNegroSenDT142/mintpy --plot-type=vectors --period 20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2 --section -77.968 -77.9309 0.793 0.793
+        default: ascending and descending
+        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=vectors --period 20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2 --section -77.968 -77.9309 0.793 0.793
+
+        plot horizontal and vertical instead
+        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=vectors --period 20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2 --section -77.968 -77.9309 0.793 0.793 --plot-option horzvert
 
         ADD EARTHQUAKES
-        plot_data.py Chiles-CerroNegroSenAT120/mintpy --plot-type=velocity --period 20220101:20230831  --ref-lalo 0.8389,-77.902 --resolution '01s' --earthquake
+        plot_data.py MaunaLoaSenDT87/mintpy_5_20 --plot-type=velocity --period 20220101:20230831  --ref-lalo 0.8389,-77.902 --resolution '01s' --earthquake
 
         # FOR GIACOMO TO TEST
         plot_data.py Chiles-CerroNegroSenAT120/mintpy Chiles-CerroNegroSenDT142/mintpy --plot-type=horzvert --period=20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2 --section -77.968 -77.9309 0.793 0.793
@@ -49,7 +69,7 @@ def create_parser():
     parser.add_argument('--mask-thresh', dest='mask_vmin', type=float, default=0.7, help='coherence threshold for masking (Default: 0.7)')
     # parser.add_argument('--unit', dest='unit', default="cm", help='InSAR units (Default: cm)')
     # parser.add_argument("--noreference", dest="show_reference_point",  action='store_false', default=True, help="hide reference point (default: False)" )
-    parser.add_argument("--section", dest="line", nargs=4, metavar="LON1 LON2 LAT1 LAT2", type=float, default=None, help="Section coordinates for deformation vectors")
+    parser.add_argument("--section", dest="line", nargs='*', type=float, default=None, help="Section coordinates for deformation vectors")
     parser.add_argument("--resample-vector", dest="resample_vector", type=int, default=1, help="resample factor for deformation vectors (default: %(default)s).")
     parser.add_argument("--earthquake", dest="earthquake", action='store_true', default=False, help="plot earthquakes")
 
@@ -62,14 +82,24 @@ def create_parser():
 
     inps = parser.parse_args()
 
-    if len(inps.data_dir) < 1 or len(inps.data_dir) > 2:
-        parser.error('USER ERROR: You must provide 1 or 2 directory paths.')
+    if inps.plot_type == 'vectors':
+        if not inps.line:
+            parser.error('USER ERROR: Section coordinates are required for deformation vectors')
+
+    if len(inps.data_dir) > 2:
+        parser.error('USER ERROR: To many files provided.')
+
+    if inps.line:
+        if len(inps.line) != 4:
+            parser.error('USER ERROR: Section need 4 args, LON1 LON2, LAT1, LAT2')
 
     if inps.plot_box:
         inps.plot_box = [float(val) for val in inps.plot_box.replace(':', ',').split(',')]  # converts to plot_box=[19.3, 19.6, -155.8, -155.4]
 
     if inps.polygon:
         inps.region = parse_polygon(inps.polygon)
+    else:
+        inps.region = None
 
     if inps.lalo:
         inps.lalo = parse_lalo(inps.lalo)
@@ -79,6 +109,9 @@ def create_parser():
 
     if inps.dem_file and '$' in inps.dem_file:
         inps.dem_file = os.path.expandvars(inps.dem_file)
+
+    inps.vmax = max(inps.vlim) if inps.vlim else None
+    inps.vmin = min(inps.vlim) if inps.vlim else None
 
     if inps.period:
         for p in inps.period:
@@ -177,15 +210,63 @@ def main(iargs=None):
 
     inps = create_parser()
 
-    # import
-    from plotdata.process_data import run_prepare
-    from plotdata.plot import run_plot
+    if True:
+        from plotdata.objects.process_data import ProcessData
 
-    # extract_volcanoes_info('', 'Kilauea', inps.start_date, inps.end_date)
-    plot_info = run_prepare(inps)
+        processors = []
+        for start_date, end_date in zip(inps.start_date, inps.end_date):
+            processors.append(ProcessData(inps, start_date, end_date))
 
-    if inps.show_flag:
-        run_plot(plot_info, inps)
+        for process in processors:
+            process.process()
+
+        if inps.show_flag:
+            from plotdata.objects.plot_properties import PlotGrid
+            from plotdata.objects.plotters import VelocityPlot, ShadedReliefPlot, VectorsPlot
+            import matplotlib.pyplot as plt
+
+            # Create plot grid, with columns as processors and rows as files
+            pltgr = PlotGrid(processors=processors)
+
+            # Select the correct plotter and corresponding files for rows
+            plotter_map = {
+                "velocity": (VelocityPlot, ["ascending", "descending"]),
+                "horzvert": (VelocityPlot, ["horizontal", "vertical"]),
+                "vectors": (VectorsPlot, ["ascending", "descending","horizontal", "vertical"]),
+                "timeseries": (VectorsPlot, ["eos_file", "ascending", "descending"]),
+                "shaded_relief": (ShadedReliefPlot, ["velocity_file"]),  # Example
+            }
+
+            plotter_cls, file_attrs = plotter_map.get(inps.plot_type, (None, []))
+            if not plotter_cls:
+                raise ValueError(f"Unsupported plot type: {inps.plot_type}")
+
+            # Iterate over processors (columns)
+            for col_idx, process in enumerate(processors):
+                files = [getattr(process, attr, None) for attr in file_attrs]  # Extract files dynamically
+
+                # Special case for VectorsPlot: Pass all files together
+                if inps.plot_type == "vectors":
+                    if all(files):
+                        plotter_cls(
+                            ax=pltgr.axes[:, col_idx],
+                            asc_file=files[0],
+                            desc_file=files[1],
+                            horz_file=files[2],
+                            vert_file=files[3],
+                            inps=inps
+                        )
+                else:
+                    # Iterate over files (rows) for other plot types
+                    for row_idx, file in enumerate(files):
+                        if file:
+                            plotter_cls(
+                                ax=pltgr.axes[row_idx, col_idx],
+                                file=file,
+                                inps=process
+                            )
+
+            plt.show()
 
 ############################################################
 

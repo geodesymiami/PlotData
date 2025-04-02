@@ -1,4 +1,3 @@
-from plotdata.objects.create_map import Mapper, Relief
 import numpy as np
 import pandas as pd
 from plotdata.helper_functions import calculate_distance

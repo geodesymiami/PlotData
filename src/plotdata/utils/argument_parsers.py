@@ -118,10 +118,9 @@ def add_plot_parameters_arguments(parser):
                         default=12,
                         type=int,
                         help='fontsize for view.py (default: %(default)s).')
-    plot_parameters.add_argument('--plot',
-                        nargs='?',
-                        metavar = ('horizontal', 'vertical', 'horzvert'),
+    plot_parameters.add_argument('--plot-option',
                         default=None,
+                        metavar='horizontal, vertical, horzvert',
                         help='Limit the plot to horizontal or vertical component or replace ascending and descending with horizontal and vertical')
     plot_parameters.add_argument('--movement',
                         default='velocity',
