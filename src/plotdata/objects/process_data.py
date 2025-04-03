@@ -23,14 +23,15 @@ class ProcessData:
         self.descending = None
         self.horizontal = None
         self.vertical = None
-        self.directory = None
         self.velocity_file = None
-        self.project = None
+        self.directory = None  # Store directory for reference
+        self.project = None  # Store project name
 
         # Extract file names once for all cases
         self._extract_file_names()
 
     def _extract_file_names(self):
+        """Extracts necessary file names for each dataset directory."""
         self.file_info = {}
         for dir in self.data_dir:
             work_dir = prepend_scratchdir_if_needed(dir)
@@ -45,14 +46,32 @@ class ProcessData:
             }
 
     def process(self):
+        """Processes InSAR data by handling velocity files and computing horizontal/vertical components if needed."""
         os.chdir(self.root_dir)
-        for dir, files in self.file_info.items():
-            self._process_data(files)
 
-        if not  self.file_info:
+        # First pass: Process ascending and descending separately, storing results
+        for dir, files in self.file_info.items():
+            out_mskd_file = self._process_data(files)
+
+            if 'SenA' in out_mskd_file:
+                self.ascending = out_mskd_file
+            elif 'SenD' in out_mskd_file:
+                self.descending = out_mskd_file
+
+        # Assign directory and project name (assuming first dataset is representative)
+        first_project_dir = self.file_info[self.data_dir[0]]['project_base_dir']
+        self.directory = first_project_dir
+        self.project = os.path.basename(first_project_dir)
+
+        # Second pass: Compute horizontal and vertical only if both asc & desc are available
+        if self.plot_type in ['horzvert', 'vectors'] and self.ascending and self.descending:
+            self.horizontal, self.vertical = self._process_vectors(self.ascending, self.descending, first_project_dir)
+
+        if not self.file_info:
             self.velocity_file = [None]
 
     def _process_data(self, files):
+        """Processes a single dataset and returns the masked velocity file."""
         eos_file = files['eos_file']
         vel_file = files['vel_file']
         out_vel_file = files['out_vel_file'].replace('.h5', f'_{self.start_date}_{self.end_date}.h5')
@@ -62,10 +81,8 @@ class ProcessData:
             if self.start_date and self.end_date:
                 start_date, end_date = find_nearest_start_end_date(eos_file, self.start_date, self.end_date)
                 self._convert_timeseries_to_velocity(eos_file, start_date, end_date, out_vel_file)
-                self.velocity_file = out_vel_file
-            else:
-                self.velocity_file = vel_file
-            return
+                return out_vel_file
+            return vel_file
 
         temp_coh_file = out_vel_file.replace(f'velocity_{self.start_date}_{self.end_date}.h5', 'temporalCoherence.tif')
         start_date, end_date = find_nearest_start_end_date(eos_file, self.start_date, self.end_date)
@@ -80,18 +97,27 @@ class ProcessData:
 
         out_mskd_file = self._apply_mask(out_vel_file, temp_coh_file)
 
-        self.horizontal, self.vertical = self._process_vectors(out_mskd_file, project_base_dir)
-        self.velocity_file = out_vel_file
-        self.directory = project_base_dir
-        self.project = project_base_dir.split('/')[-1]
+        return out_mskd_file
 
-        if self.flag_save_gbis:
-            save_gbis_plotdata(eos_file, out_vel_file, start_date, end_date)
+    def _process_vectors(self, asc_file, desc_file, project_base_dir):
+        """Computes horizontal and vertical velocity components from ascending and descending data."""
+        horz_name = os.path.join(project_base_dir, f'hz_{self.start_date}_{self.end_date}.h5')
+        vert_name = os.path.join(project_base_dir, f'up_{self.start_date}_{self.end_date}.h5')
 
-        if 'SenA' in out_mskd_file:
-            self.ascending = out_mskd_file
-        elif 'SenD' in out_mskd_file:
-            self.descending = out_mskd_file
+        if not os.path.exists(horz_name) or not os.path.exists(vert_name):
+            if self.ref_lalo:
+                select_reference_point([asc_file, desc_file], self.window_size, self.ref_lalo)
+                self._apply_reference_point(asc_file)
+                self._apply_reference_point(desc_file)
+
+            self._convert_to_horz_vert(asc_file, desc_file, horz_name, vert_name)
+
+        if self.plot_option == 'horizontal':
+            vert_name = None
+        if self.plot_option == 'vertical':
+            horz_name = None
+
+        return horz_name, vert_name
 
     def _convert_timeseries_to_velocity(self, eos_file, start_date, end_date, output_file):
         if not os.path.exists(output_file):
@@ -118,29 +144,10 @@ class ProcessData:
             mask.main(cmd.split())
         return out_mskd_file
 
-    def _process_vectors(self, out_mskd_file, project_base_dir):
-        horz_name = os.path.join(project_base_dir, f'hz_{self.start_date}_{self.end_date}.h5')
-        vert_name = os.path.join(project_base_dir, f'up_{self.start_date}_{self.end_date}.h5')
-
-        if self.plot_type in ['horzvert', 'vectors']:
-            if not os.path.exists(horz_name) or not os.path.exists(vert_name):
-                if self.ref_lalo:
-                    select_reference_point([out_mskd_file], self.ref_lalo)
-                    self._apply_reference_point(out_mskd_file)
-
-                self._convert_to_horz_vert(out_mskd_file, horz_name, vert_name)
-
-        if self.plot_option == 'horizontal':
-            vert_name = None
-        if self.plot_option == 'vertical':
-            horz_name = None
-
-        return horz_name, vert_name
-
     def _apply_reference_point(self, out_mskd_file):
         cmd = f'{out_mskd_file} --lat {self.ref_lalo[0]} --lon {self.ref_lalo[1]}'
         reference_point.main(cmd.split())
 
-    def _convert_to_horz_vert(self, mskd_file, horz_name, vert_name):
-        cmd = f'{mskd_file} {mskd_file} --output {horz_name} {vert_name}'
+    def _convert_to_horz_vert(self, asc_file, desc_file, horz_name, vert_name):
+        cmd = f'{asc_file} {desc_file} --output {horz_name} {vert_name}'
         asc_desc2horz_vert.main(cmd.split())

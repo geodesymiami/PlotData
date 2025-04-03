@@ -28,7 +28,7 @@ class Mapper():
             self.region = region
             self.start_date = datetime.strptime(start_date, '%Y%m%d') if isinstance(end_date, str) else start_date
             self.end_date = datetime.strptime(end_date, '%Y%m%d') if isinstance(end_date, str) else end_date
-
+        # TODO this works only for geocoded
         elif file:
             self.velocity, self.metadata = readfile.read(file)
             self.start_date = datetime.strptime(self.metadata['START_DATE'], '%Y%m%d')
