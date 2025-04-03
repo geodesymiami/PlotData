@@ -87,6 +87,11 @@ class ProcessData:
         temp_coh_file = out_vel_file.replace(f'velocity_{self.start_date}_{self.end_date}.h5', 'temporalCoherence.tif')
         start_date, end_date = find_nearest_start_end_date(eos_file, self.start_date, self.end_date)
         self._convert_timeseries_to_velocity(eos_file, start_date, end_date, out_vel_file)
+
+        if self.ref_lalo:
+            self.ref_lalo = select_reference_point([out_vel_file], self.window_size, self.ref_lalo)
+            self._apply_reference_point(out_vel_file)
+
         metadata = readfile.read(out_vel_file)[1] if os.path.exists(out_vel_file) else None
 
         if not metadata or 'Y_STEP' not in metadata:
@@ -106,7 +111,7 @@ class ProcessData:
 
         if not os.path.exists(horz_name) or not os.path.exists(vert_name):
             if self.ref_lalo:
-                select_reference_point([asc_file, desc_file], self.window_size, self.ref_lalo)
+                self.ref_lalo = select_reference_point([asc_file, desc_file], self.window_size, self.ref_lalo)
                 self._apply_reference_point(asc_file)
                 self._apply_reference_point(desc_file)
 

@@ -227,24 +227,86 @@ def find_longitude_degree(ref_lat, lat_step):
     # Find the longitude step in degrees that covers the same distance as the latitude step
     return float(lat_step) / math.cos(math.radians(int(ref_lat)))
 
+# TODO old version
+
+# def select_reference_point(out_mskd_file, window_size, ref_lalo):
+#     if len(out_mskd_file) != 2:
+#         raise ValueError('horzvert plot requires two data directories')
+
+#     # Extract the subarray for each dataset with Boolean values for NaNs
+#     (subdata1, sublat1, sublon1), (subdata2, _, _) = [extract_window(velocity, ref_lalo[0], ref_lalo[1], window_size) for velocity in out_mskd_file]
+
+#     paired = list(zip(subdata1, subdata2))
+#     valid_indices = []
+
+#     # Find the overlapping indices of True (valid data points) values
+#     for ind, (i,j) in enumerate(paired):
+#         if np.logical_and(i, j).any():
+#             valid_indices.append((ind, np.where(np.logical_and(i, j))))
+
+#     # This will be used as a measure of distance from the center of the window (the input reference point)
+#     shorter = window_size*2 +1
+
+#     # Find the closest valid data point to the center of the window
+#     for ind, indices in valid_indices:
+#         distances = np.sqrt((ind - window_size) ** 2 + (indices[0] - window_size) ** 2)
+#         min_distance_index = np.argmin(distances)
+#         min_distance = distances[min_distance_index]
+
+#         if min_distance < shorter:
+#             shorter = min_distance
+#             ref_lalo = [sublat1[ind], sublon1[indices[0][min_distance_index]]]
+
+#     print('-'*50)
+#     print(f"Reference point selected: {ref_lalo[0]}, {ref_lalo[1]}")
+#     print('-'*50)
+
+#     return ref_lalo
+
 
 def select_reference_point(out_mskd_file, window_size, ref_lalo):
-    if len(out_mskd_file) != 2:
-        raise ValueError('horzvert plot requires two data directories')
+    """
+    Selects a reference point from one or two masked velocity files.
 
-    # Extract the subarray for each dataset with Boolean values for NaNs
-    (subdata1, sublat1, sublon1), (subdata2, _, _) = [extract_window(velocity, ref_lalo[0], ref_lalo[1], window_size) for velocity in out_mskd_file]
+    If only one file is provided, the function selects the nearest valid point.
+    If two files are provided, it finds the closest overlapping valid point.
 
-    paired = list(zip(subdata1, subdata2))
+    Parameters:
+    - out_mskd_file: list of one or two velocity file paths
+    - window_size: integer defining the search window size
+    - ref_lalo: list [lat, lon] defining the initial reference point
+    """
+
+    num_files = len(out_mskd_file)
+
+    if num_files not in [1, 2]:
+        raise ValueError('Function supports either one or two data directories.')
+
+    # Extract the subarray for each dataset (handling one or two cases)
+    extracted_data = [extract_window(velocity, ref_lalo[0], ref_lalo[1], window_size) for velocity in out_mskd_file]
+
+    subdata1, sublat1, sublon1 = extracted_data[0]  # First dataset
+
+    if num_files == 2:
+        subdata2, _, _ = extracted_data[1]  # Second dataset
+        paired = list(zip(subdata1, subdata2))
+    else:
+        paired = [(i, None) for i in subdata1]  # Only one dataset available
+
     valid_indices = []
 
-    # Find the overlapping indices of True (valid data points) values
-    for ind, (i,j) in enumerate(paired):
-        if np.logical_and(i, j).any():
+    # Find valid indices where data is available
+    for ind, (i, j) in enumerate(paired):
+        if num_files == 2 and np.logical_and(i, j).any():
             valid_indices.append((ind, np.where(np.logical_and(i, j))))
+        elif num_files == 1 and np.any(i):
+            valid_indices.append((ind, np.where(i)))
 
-    # This will be used as a measure of distance from the center of the window (the input reference point)
-    shorter = window_size*2 +1
+    if not valid_indices:
+        raise ValueError("No valid reference points found in the selected window.")
+
+    # Initialize shortest distance tracker
+    shortest_distance = window_size * 2 + 1  
 
     # Find the closest valid data point to the center of the window
     for ind, indices in valid_indices:
@@ -252,13 +314,15 @@ def select_reference_point(out_mskd_file, window_size, ref_lalo):
         min_distance_index = np.argmin(distances)
         min_distance = distances[min_distance_index]
 
-        if min_distance < shorter:
-            shorter = min_distance
+        if min_distance < shortest_distance:
+            shortest_distance = min_distance
             ref_lalo = [sublat1[ind], sublon1[indices[0][min_distance_index]]]
 
-    print('-'*50)
-    print(f"Reference point selected: {ref_lalo[0]}, {ref_lalo[1]}")
-    print('-'*50)
+    print('-' * 50)
+    print(f"Reference point selected: {ref_lalo[0]:.4f}, {ref_lalo[1]:.4f}")
+    print('-' * 50)
+
+    return ref_lalo 
 
 
 def draw_box(central_lat, central_lon, distance_km = 20, distance_deg = None):
