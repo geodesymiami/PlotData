@@ -24,6 +24,8 @@ class PlotGrid:
                 rows = sum(1 for file in [processor.ascending, processor.descending] if file)
             elif self.plot_type == "horzvert":
                 rows = sum(1 for file in [processor.horizontal, processor.vertical] if file)
+            elif self.plot_type == "timeseries":
+                rows = sum(1 for file in [processor.ascending, processor.descending] if file) + 1
             elif self.plot_type == "vectors":
                 return 3
             else:

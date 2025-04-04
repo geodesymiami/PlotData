@@ -222,7 +222,7 @@ def main(iargs=None):
 
         if inps.show_flag:
             from plotdata.objects.plot_properties import PlotGrid
-            from plotdata.objects.plotters import VelocityPlot, ShadedReliefPlot, VectorsPlot
+            from plotdata.objects.plotters import VelocityPlot, ShadedReliefPlot, VectorsPlot, TimeseriesPlot
             import matplotlib.pyplot as plt
 
             # Create plot grid, with columns as processors and rows as files
@@ -233,7 +233,7 @@ def main(iargs=None):
                 "velocity": (VelocityPlot, ["ascending", "descending"]),
                 "horzvert": (VelocityPlot, ["horizontal", "vertical"]),
                 "vectors": (VectorsPlot, ["ascending", "descending","horizontal", "vertical"]),
-                "timeseries": (VectorsPlot, ["eos_file", "ascending", "descending"]),
+                "timeseries": (TimeseriesPlot, ["eos_file_ascending", "eos_file_descending", "ascending", "descending"]),
                 "shaded_relief": (ShadedReliefPlot, ["velocity_file"]),  # Example
             }
 
@@ -254,8 +254,17 @@ def main(iargs=None):
                             desc_file=files[1],
                             horz_file=files[2],
                             vert_file=files[3],
-                            inps=inps
+                            inps=inps # TODO change to process
                         )
+                elif inps.plot_type == "timeseries":
+                    plotter_cls(
+                        ax=pltgr.axes[:, col_idx],
+                        eos_file_ascending=files[0],
+                        eos_file_descending=files[1],
+                        ascending=files[2],  # Ensure velocity maps are also included
+                        descending=files[3],
+                        inps=process
+                    )
                 else:
                     # Iterate over files (rows) for other plot types
                     for row_idx, file in enumerate(files):

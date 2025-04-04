@@ -1,10 +1,12 @@
 import pygmt
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
+from datetime import datetime
 from plotdata.objects.section import Section
 from plotdata.objects.create_map import Mapper, Isolines, Relief
 from plotdata.objects.earthquakes import Earthquake
+from mintpy.utils import readfile
+from mintpy.objects.coord import coordinate
+from mintpy.objects import timeseries, giantTimeseries, HDFEOS
 from plotdata.helper_functions import draw_vectors, unpack_file
 
 
@@ -89,7 +91,6 @@ class VelocityPlot:
 
 class VectorsPlot:
     """Handles the plotting of velocity maps, elevation profiles, and vector fields."""
-
     def __init__(self, ax, asc_file, desc_file, horz_file, vert_file, inps):
         self.ax = ax  # Expecting an array of axes
         self.asc_file = asc_file
@@ -219,6 +220,148 @@ class VectorsPlot:
         self.ax[2].text(start_x, start_y * 1.03, f"{round(mean_velocity, 3)} m/yr", color='black', ha='left', fontsize=8)
 
 
+class TimeseriesPlot:
+    def __init__(self, ax, ascending=None, descending=None,
+                 eos_file_ascending=None, eos_file_descending=None,
+                 lalo=None, start_date=None, end_date=None, inps=None):
+        """
+        Initialize the TimeseriesPlot class.
+
+        Parameters:
+        - ax: list of matplotlib axes for plotting (2 for velocity maps + 1 for timeseries).
+        - ascending_file: Path to the ascending velocity map file.
+        - descending_file: Path to the descending velocity map file.
+        - eos_file_ascending: Path to the ascending timeseries file.
+        - eos_file_descending: Path to the descending timeseries file.
+        - start_date: Optional start date for filtering timeseries.
+        - end_date: Optional end date for filtering timeseries.
+        - inps: Optional object containing parameters (if provided, overrides manual inputs).
+        """
+        if inps is not None:
+            for attr in dir(inps):
+                if not attr.startswith('__') and not callable(getattr(inps, attr)):
+                    setattr(self, attr, getattr(inps, attr))
+
+            self.ascending = getattr(inps, "ascending", None)
+            self.descending = getattr(inps, "descending", None)
+            self.eos_file_ascending = getattr(inps, "eos_file_ascending", None)
+            self.eos_file_descending = getattr(inps, "eos_file_descending", None)
+        else:
+            self.ascending = ascending
+            self.descending = descending
+            self.eos_file_ascending = eos_file_ascending
+            self.eos_file_descending = eos_file_descending
+            self.lalo = lalo
+            self.start_date = start_date
+            self.end_date = end_date
+
+        # Ensure at least one file for maps and at least one for timeseries
+        self.map_files = [(self.ascending, "Ascending"), (self.descending, "Descending")]
+        self.map_files = [(f, label) for f, label in self.map_files if f]  
+
+        self.ts_files = [(self.eos_file_ascending, "Ascending"), (self.eos_file_descending, "Descending")]
+        self.ts_files = [(f, label) for f, label in self.ts_files if f]  
+
+        if not self.map_files:
+            raise ValueError("At least one of ascending_file or descending_file must be provided for velocity maps.")
+        if not self.ts_files:
+            raise ValueError("At least one of eos_file_ascending or eos_file_descending must be provided for timeseries.")
+
+        self.ax = ax
+
+        # Process velocity maps and timeseries
+        self._process_velocity_maps()
+        self._plot_timeseries()
+
+    def _create_map(self, ax, file):
+        """Creates and configures a velocity map."""
+        vel_map = Mapper(ax=ax, file=file)
+
+        # Add relief if enabled
+        if not self.no_dem:
+            Relief(map=vel_map, resolution=self.resolution, cmap='terrain',
+                   interpolate=self.interpolate, no_shade=self.no_shade)
+
+        # Add velocity data
+        vel_map.add_file(style=self.style, vmin=self.vmin, vmax=self.vmax, movement=self.movement)
+
+        # Add isolines if specified
+        if self.isolines:
+            Isolines(map=vel_map, resolution=self.resolution, color=self.iso_color, 
+                     linewidth=self.linewidth, levels=self.isolines, inline=self.inline)
+
+        # Add earthquake markers if enabled
+        if self.earthquake:
+            Earthquake(map=vel_map).map()
+
+        return vel_map
+
+    def _process_velocity_maps(self):
+        """Plots ascending and/or descending velocity maps."""
+        for i, (file, label) in enumerate(self.map_files):
+            self._create_map(ax=self.ax[i], file=file)
+
+    def _extract_timeseries_data(self, file):
+        """Extracts timeseries data from the given file."""
+        atr = readfile.read_attribute(file)
+
+        # Identify file type and open it
+        if atr['FILE_TYPE'] == 'timeseries':
+            obj = timeseries(file)
+        elif atr['FILE_TYPE'] == 'giantTimeseries':
+            obj = giantTimeseries(file)
+        elif atr['FILE_TYPE'] == 'HDFEOS':
+            obj = HDFEOS(file)
+        else:
+            raise ValueError(f'Input file is {atr["FILE_TYPE"]}, not timeseries.')
+
+        obj.open(print_msg=False)
+        date_list = obj.dateList
+
+        # Filter dates if start/end dates are provided
+        start_date = self.start_date if self.start_date else date_list[0]
+        end_date = self.end_date if self.end_date else date_list[-1]
+
+        date_list = [d for d in date_list if int(start_date) <= int(d) <= int(end_date)]
+
+        # Extract timeseries data
+        data, atr = readfile.read(file, datasetName=date_list)
+
+        # Handle complex data
+        if atr['DATA_TYPE'].startswith('complex'):
+            print('Input data is complex, calculating amplitude.')
+            data = np.abs(data)
+
+        # Convert geocoordinates to radar
+        coord = coordinate(atr)
+        lalo = coord.geo2radar(lat=self.lalo[0], lon=self.lalo[1])
+
+        # Reference data to a specific point if provided
+        if self.ref_lalo:
+            ref_yx = coord.geo2radar(lat=self.ref_lalo[0], lon=self.ref_lalo[1])
+            ref_phase = data[:, ref_yx[0], ref_yx[1]]
+            data -= np.tile(ref_phase.reshape(-1, 1, 1), (1, data.shape[-2], data.shape[-1]))
+            print(f'Referenced data to point: {self.ref_lalo}')
+
+        ts = data[:, lalo[0], lalo[1]]
+        date_list = [datetime.strptime(date, "%Y%m%d") for date in date_list]
+
+        return date_list, ts
+
+    def _plot_timeseries(self):
+        """Plots timeseries data on the last axis."""
+        ax_ts = self.ax[-1]
+        colors = ['#5190cb', '#f33496b0']
+        offsets = [0, 0]
+
+        for i, (file, label) in enumerate(self.ts_files):
+            dates, ts = self._extract_timeseries_data(file)
+            ax_ts.scatter(dates, ts + offsets[i], color=colors[i], label=label, marker='o', alpha=0.5, edgecolor='black')
+
+        ax_ts.legend(fontsize='x-small')
+        ax_ts.grid()
+
+
 def point_on_globe(latitude, longitude, size='1'):
     fig = pygmt.Figure()
 
@@ -244,3 +387,10 @@ def point_on_globe(latitude, longitude, size='1'):
         fill="red",  # Marker color
         pen="1p,black"  # Outline pen
     )
+
+if __name__ == '__main__':
+    # Example usage
+    file = "/Users/giacomo/onedrive/scratch/Chiles-CerroNegroSenAT120/mintpy/S1_IW2_120_1184_1185_20170112_XXXXXXXX.he5"
+    # file = "/Users/giacomo/onedrive/scratch/AgungBaturSenAT156/mintpy/S1_IW12_156_1154_1155_20170121_XXXXXXXX.he5"
+    ref_point = [0.8389,-77.902]
+    TimeseriesPlot(file, lalo=[0.8, -77.95], ref_lalo=ref_point)

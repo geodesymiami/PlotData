@@ -55,8 +55,10 @@ class ProcessData:
 
             if 'SenA' in out_mskd_file:
                 self.ascending = out_mskd_file
+                self.eos_file_ascending = files['eos_file']
             elif 'SenD' in out_mskd_file:
                 self.descending = out_mskd_file
+                self.eos_file_descending = files['eos_file']
 
         # Assign directory and project name (assuming first dataset is representative)
         first_project_dir = self.file_info[self.data_dir[0]]['project_base_dir']
