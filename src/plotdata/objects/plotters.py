@@ -221,85 +221,15 @@ class VectorsPlot:
 
 
 class TimeseriesPlot:
-    def __init__(self, ax, ascending=None, descending=None,
-                 eos_file_ascending=None, eos_file_descending=None,
-                 lalo=None, start_date=None, end_date=None, inps=None):
-        """
-        Initialize the TimeseriesPlot class.
+    def __init__(self, ax, file, inps):
+        for attr in dir(inps):
+            if not attr.startswith('__') and not callable(getattr(inps, attr)):
+                setattr(self, attr, getattr(inps, attr))
 
-        Parameters:
-        - ax: list of matplotlib axes for plotting (2 for velocity maps + 1 for timeseries).
-        - ascending_file: Path to the ascending velocity map file.
-        - descending_file: Path to the descending velocity map file.
-        - eos_file_ascending: Path to the ascending timeseries file.
-        - eos_file_descending: Path to the descending timeseries file.
-        - start_date: Optional start date for filtering timeseries.
-        - end_date: Optional end date for filtering timeseries.
-        - inps: Optional object containing parameters (if provided, overrides manual inputs).
-        """
-        if inps is not None:
-            for attr in dir(inps):
-                if not attr.startswith('__') and not callable(getattr(inps, attr)):
-                    setattr(self, attr, getattr(inps, attr))
-
-            self.ascending = getattr(inps, "ascending", None)
-            self.descending = getattr(inps, "descending", None)
-            self.eos_file_ascending = getattr(inps, "eos_file_ascending", None)
-            self.eos_file_descending = getattr(inps, "eos_file_descending", None)
-        else:
-            self.ascending = ascending
-            self.descending = descending
-            self.eos_file_ascending = eos_file_ascending
-            self.eos_file_descending = eos_file_descending
-            self.lalo = lalo
-            self.start_date = start_date
-            self.end_date = end_date
-
-        # Ensure at least one file for maps and at least one for timeseries
-        self.map_files = [(self.ascending, "Ascending"), (self.descending, "Descending")]
-        self.map_files = [(f, label) for f, label in self.map_files if f]  
-
-        self.ts_files = [(self.eos_file_ascending, "Ascending"), (self.eos_file_descending, "Descending")]
-        self.ts_files = [(f, label) for f, label in self.ts_files if f]  
-
-        if not self.map_files:
-            raise ValueError("At least one of ascending_file or descending_file must be provided for velocity maps.")
-        if not self.ts_files:
-            raise ValueError("At least one of eos_file_ascending or eos_file_descending must be provided for timeseries.")
-
+        self.file = file
         self.ax = ax
 
-        # Process velocity maps and timeseries
-        self._process_velocity_maps()
         self._plot_timeseries()
-
-    def _create_map(self, ax, file):
-        """Creates and configures a velocity map."""
-        vel_map = Mapper(ax=ax, file=file)
-
-        # Add relief if enabled
-        if not self.no_dem:
-            Relief(map=vel_map, resolution=self.resolution, cmap='terrain',
-                   interpolate=self.interpolate, no_shade=self.no_shade)
-
-        # Add velocity data
-        vel_map.add_file(style=self.style, vmin=self.vmin, vmax=self.vmax, movement=self.movement)
-
-        # Add isolines if specified
-        if self.isolines:
-            Isolines(map=vel_map, resolution=self.resolution, color=self.iso_color, 
-                     linewidth=self.linewidth, levels=self.isolines, inline=self.inline)
-
-        # Add earthquake markers if enabled
-        if self.earthquake:
-            Earthquake(map=vel_map).map()
-
-        return vel_map
-
-    def _process_velocity_maps(self):
-        """Plots ascending and/or descending velocity maps."""
-        for i, (file, label) in enumerate(self.map_files):
-            self._create_map(ax=self.ax[i], file=file)
 
     def _extract_timeseries_data(self, file):
         """Extracts timeseries data from the given file."""
@@ -319,10 +249,14 @@ class TimeseriesPlot:
         date_list = obj.dateList
 
         # Filter dates if start/end dates are provided
-        start_date = self.start_date if self.start_date else date_list[0]
-        end_date = self.end_date if self.end_date else date_list[-1]
+        self.start_date = self.start_date if self.start_date else date_list[0]
+        self.end_date = self.end_date if self.end_date else date_list[-1]
 
-        date_list = [d for d in date_list if int(start_date) <= int(d) <= int(end_date)]
+        self.start_date = datetime.strptime(self.start_date, "%Y%m%d")
+        self.end_date = datetime.strptime(self.end_date, "%Y%m%d")
+
+        # We want the whole timeseries
+        # date_list = [d for d in date_list if int(start_date) <= int(d) <= int(end_date)]
 
         # Extract timeseries data
         data, atr = readfile.read(file, datasetName=date_list)
@@ -350,16 +284,22 @@ class TimeseriesPlot:
 
     def _plot_timeseries(self):
         """Plots timeseries data on the last axis."""
-        ax_ts = self.ax[-1]
-        colors = ['#5190cb', '#f33496b0']
-        offsets = [0, 0]
+        ax_ts = self.ax
+        color = "#f33496b0" if "SenA" in self.file else "#5190cb"
+        label = "ascending" if "SenA" in self.file else "descending"
+        offsets = 0.4
 
-        for i, (file, label) in enumerate(self.ts_files):
-            dates, ts = self._extract_timeseries_data(file)
-            ax_ts.scatter(dates, ts + offsets[i], color=colors[i], label=label, marker='o', alpha=0.5, edgecolor='black')
+        dates, ts = self._extract_timeseries_data(self.file)
+        ax_ts.scatter(dates, ts + offsets, color=color, marker='o', label=label, alpha=0.5, edgecolor='black', s=5)
+
+        # Plot vertical lines
+        ax_ts.axvline(self.start_date, color='red', linestyle='--', linewidth=0.5,alpha=0.5)
+        ax_ts.axvline(self.end_date, color='red', linestyle='--', linewidth=0.5, alpha=0.5)
+
+        # Fill area between the vertical lines with a rectangle
+        ax_ts.axvspan(self.start_date, self.end_date, color='red', alpha=0.1)
 
         ax_ts.legend(fontsize='x-small')
-        ax_ts.grid()
 
 
 def point_on_globe(latitude, longitude, size='1'):

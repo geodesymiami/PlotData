@@ -37,20 +37,20 @@ EXAMPLE = """example:
         plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=velocity --period 20220101:20230831 20200101:20220101 --resolution '01s' --isolines 2
 
         PLOT HORIZONTAL AND VERTICAL VELOCITY
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=horzvert --period 20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2
+        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=horzvert --period 20220101:20230831 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2
 
         PLOT HORIZONTAL
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=horzvert --period 20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2 --plot-option horizontal
+        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=horzvert --period 20220101:20230831 --ref-lalo 19.50068 -155.55856--resolution '01s' --isolines 2 --plot-option horizontal
 
         PLOT VECTORS
         default: ascending and descending
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=vectors --period 20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2 --section -77.968 -77.9309 0.793 0.793
+        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=vectors --period 20220101:20230831 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2 --section -77.968 -77.9309 0.793 0.793
 
         plot horizontal and vertical instead
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=vectors --period 20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2 --section -77.968 -77.9309 0.793 0.793 --plot-option horzvert
+        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=vectors --period 20220101:20230831 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2 --section -77.968 -77.9309 0.793 0.793 --plot-option horzvert
 
         ADD EARTHQUAKES
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 --plot-type=velocity --period 20220101:20230831  --ref-lalo 0.8389,-77.902 --resolution '01s' --earthquake
+        plot_data.py MaunaLoaSenDT87/mintpy_5_20 --plot-type=velocity --period 20220101:20230831  --ref-lalo 19.50068 -155.55856 --resolution '01s' --earthquake
 
         # FOR GIACOMO TO TEST
         plot_data.py Chiles-CerroNegroSenAT120/mintpy Chiles-CerroNegroSenDT142/mintpy --plot-type=horzvert --period=20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2 --section -77.968 -77.9309 0.793 0.793
@@ -233,47 +233,56 @@ def main(iargs=None):
                 "velocity": (VelocityPlot, ["ascending", "descending"]),
                 "horzvert": (VelocityPlot, ["horizontal", "vertical"]),
                 "vectors": (VectorsPlot, ["ascending", "descending","horizontal", "vertical"]),
-                "timeseries": (TimeseriesPlot, ["eos_file_ascending", "eos_file_descending", "ascending", "descending"]),
+                "timeseries": [
+                    (TimeseriesPlot, ["eos_file_ascending", "eos_file_descending"]),
+                    (VelocityPlot, ["ascending", "descending"])
+                ],
                 "shaded_relief": (ShadedReliefPlot, ["velocity_file"]),  # Example
             }
 
-            plotter_cls, file_attrs = plotter_map.get(inps.plot_type, (None, []))
-            if not plotter_cls:
+            # Get plotter configuration for the selected plot type
+            plotter_entries = plotter_map.get(inps.plot_type)
+            if not plotter_entries:
                 raise ValueError(f"Unsupported plot type: {inps.plot_type}")
+            if not isinstance(plotter_entries, list):
+                plotter_entries = [plotter_entries]
 
-            # Iterate over processors (columns)
+            # Iterate over each column (i.e., each processor)
             for col_idx, process in enumerate(processors):
-                files = [getattr(process, attr, None) for attr in file_attrs]  # Extract files dynamically
+                # For each plotter class and its corresponding file attributes
+                for plotter_cls, file_attrs in plotter_entries:
+                    files = [getattr(process, attr, None) for attr in file_attrs]
+                    files = list(filter(lambda x: x is not None, files))
 
-                # Special case for VectorsPlot: Pass all files together
-                if inps.plot_type == "vectors":
-                    if all(files):
-                        plotter_cls(
-                            ax=pltgr.axes[:, col_idx],
-                            asc_file=files[0],
-                            desc_file=files[1],
-                            horz_file=files[2],
-                            vert_file=files[3],
-                            inps=inps # TODO change to process
-                        )
-                elif inps.plot_type == "timeseries":
-                    plotter_cls(
-                        ax=pltgr.axes[:, col_idx],
-                        eos_file_ascending=files[0],
-                        eos_file_descending=files[1],
-                        ascending=files[2],  # Ensure velocity maps are also included
-                        descending=files[3],
-                        inps=process
-                    )
-                else:
-                    # Iterate over files (rows) for other plot types
-                    for row_idx, file in enumerate(files):
-                        if file:
+                    if plotter_cls is VectorsPlot:
+                        if all(files):
                             plotter_cls(
-                                ax=pltgr.axes[row_idx, col_idx],
-                                file=file,
+                                ax=pltgr.axes[:, col_idx],
+                                asc_file=files[0],
+                                desc_file=files[1],
+                                horz_file=files[2],
+                                vert_file=files[3],
                                 inps=process
                             )
+
+                    elif plotter_cls is TimeseriesPlot:
+                        for file in files:
+                            if file:
+                                plotter_cls(
+                                    ax=pltgr.axes[-1, col_idx],  # Always plot in the last row
+                                    file=file,
+                                    inps=process
+                                )
+
+                    else:  # Default case (e.g., VelocityPlot, ShadedReliefPlot)
+                        for row_idx, file in enumerate(files):
+                            print(row_idx, file)
+                            if file:
+                                plotter_cls(
+                                    ax=pltgr.axes[row_idx, col_idx],
+                                    file=file,
+                                    inps=process
+                                )
 
             plt.show()
 

@@ -276,7 +276,6 @@ def select_reference_point(out_mskd_file, window_size, ref_lalo):
     - window_size: integer defining the search window size
     - ref_lalo: list [lat, lon] defining the initial reference point
     """
-
     num_files = len(out_mskd_file)
 
     if num_files not in [1, 2]:

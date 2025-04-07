@@ -36,6 +36,7 @@ class ProcessData:
         for dir in self.data_dir:
             work_dir = prepend_scratchdir_if_needed(dir)
             eos_file, vel_file, geometry_file, project_base_dir, out_vel_file, inputs_folder = get_file_names(work_dir)
+            self.directory = project_base_dir
             self.file_info[dir] = {
                 'eos_file': eos_file,
                 'vel_file': vel_file,
@@ -60,14 +61,25 @@ class ProcessData:
                 self.descending = out_mskd_file
                 self.eos_file_descending = files['eos_file']
 
+        masked_files = list(filter(lambda x: x is not None, [self.ascending, self.descending]))
+        if self.ref_lalo:
+            self.ref_lalo = select_reference_point(masked_files, self.window_size, self.ref_lalo)
+            map(self._apply_reference_point, masked_files)
+
+
+        for file in masked_files:
+            metadata = readfile.read(file)[1] if os.path.exists(file) else None
+
+            if not metadata or 'Y_STEP' not in metadata:
+                self._geocode_velocity_file(metadata, self.directory, file)
+
         # Assign directory and project name (assuming first dataset is representative)
-        first_project_dir = self.file_info[self.data_dir[0]]['project_base_dir']
-        self.directory = first_project_dir
-        self.project = os.path.basename(first_project_dir)
+
+        self.project = os.path.basename(self.directory)
 
         # Second pass: Compute horizontal and vertical only if both asc & desc are available
         if self.plot_type in ['horzvert', 'vectors'] and self.ascending and self.descending:
-            self.horizontal, self.vertical = self._process_vectors(self.ascending, self.descending, first_project_dir)
+            self.horizontal, self.vertical = self._process_vectors(self.ascending, self.descending, self.directory)
 
         if not self.file_info:
             self.velocity_file = [None]
@@ -90,19 +102,20 @@ class ProcessData:
         start_date, end_date = find_nearest_start_end_date(eos_file, self.start_date, self.end_date)
         self._convert_timeseries_to_velocity(eos_file, start_date, end_date, out_vel_file)
 
-        if self.ref_lalo:
-            self.ref_lalo = select_reference_point([out_vel_file], self.window_size, self.ref_lalo)
-            self._apply_reference_point(out_vel_file)
-
-        metadata = readfile.read(out_vel_file)[1] if os.path.exists(out_vel_file) else None
-
-        if not metadata or 'Y_STEP' not in metadata:
-            self._geocode_velocity_file(metadata, project_base_dir, files['vel_file'])
-
-        if not os.path.exists(temp_coh_file):
-            self._save_gdal(eos_file, temp_coh_file)
-
         out_mskd_file = self._apply_mask(out_vel_file, temp_coh_file)
+
+        # if self.ref_lalo:
+        #     self.ref_lalo = select_reference_point([out_vel_file], self.window_size, self.ref_lalo)
+        #     self._apply_reference_point(out_vel_file)
+
+        # metadata = readfile.read(out_vel_file)[1] if os.path.exists(out_vel_file) else None
+
+        # if not metadata or 'Y_STEP' not in metadata:
+        #     self._geocode_velocity_file(metadata, project_base_dir, files['vel_file'])
+
+        # if not os.path.exists(temp_coh_file):
+        #     self._save_gdal(eos_file, temp_coh_file)
+
 
         return out_mskd_file
 
