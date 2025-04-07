@@ -67,6 +67,7 @@ def add_location_arguments(parser):
                         help='reference point (default:  existing reference point)')
     location.add_argument("--lalo",
                         nargs='*',
+                        default=None,
                         metavar=('LAT,LON or LAT LON or LAT1,LON1  LAT2,LON2'),
                         type=str,
                         help="lat/lon coords of  pixel for timeseries")
