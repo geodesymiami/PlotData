@@ -62,8 +62,7 @@ class VelocityPlot:
         self.inline = inps.inline
         self.earthquake = inps.earthquake
         self.no_dem = inps.no_dem
-        self.lat = inps.lalo[0]
-        self.lon = inps.lalo[1]
+        self.lalo = inps.lalo
 
         self.map = self._create_map()
 
@@ -88,7 +87,9 @@ class VelocityPlot:
         if self.earthquake:
             Earthquake(map=vel_map).map()
 
-        if self.lat and self.lon:
+        if self.lalo:
+            self.lat = self.lalo[0]
+            self.lon = self.lalo[1]
             self.ax.scatter(self.lon, self.lat, color='black', marker='x')
 
         return vel_map

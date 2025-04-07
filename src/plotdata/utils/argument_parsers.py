@@ -208,15 +208,12 @@ def add_save_arguments(parser):
     """
     save = parser.add_argument_group('Save options')
     save.add_argument('--save',
-                      choices={'volcano-name', 'volcano-id', None},
-                      dest='save',
-                      default=None,
-                      const='volcano-name',
-                      nargs='?',
-                      help='Save the plot. If --save is provided without a value, default is %(const)s.')
+                      action='store_true',
+                      default=False,
+                      help=f'Save the plots (default path: {os.getenv("SCRATCHDIR")}).')
     save.add_argument('--outdir',
                       type=str,
-                      default=os.getcwd(),
+                      default=os.getenv("SCRATCHDIR"),
                       metavar='PATH',
                       help='Folder to save the plot (default: %(default)s).')
     save.add_argument('--save-gbis',

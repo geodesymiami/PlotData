@@ -35,7 +35,7 @@ class PlotGrid:
 
     def _define_axes(self):
         """Creates figure and axes layout."""
-        fig, axs = plt.subplots(nrows=self.num_rows, ncols=self.num_cols, layout="constrained", squeeze=self.squeeze)
+        fig, axs = plt.subplots(nrows=self.num_rows, ncols=self.num_cols, figsize=(10,10), layout="constrained", squeeze=self.squeeze)
         title = self.processors[0].project
         fig.suptitle(title, fontsize=14, fontweight="bold")
         return fig, axs
