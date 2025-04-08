@@ -345,6 +345,8 @@ def point_on_globe(latitude, longitude, size='1'):
         pen="1p,black"  # Outline pen
     )
 
+    return fig
+
 if __name__ == '__main__':
     # Example usage
     file = "/Users/giacomo/onedrive/scratch/Chiles-CerroNegroSenAT120/mintpy/S1_IW2_120_1184_1185_20170112_XXXXXXXX.he5"
