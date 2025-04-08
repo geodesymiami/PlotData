@@ -129,7 +129,7 @@ class VectorsPlot:
 
     def _set_plot_files(self):
         """Determines which velocity files to use based on plot options."""
-        if self.inps.plot_option and self.inps.plot_option != 'horzvert':
+        if self.inps.plot_option != 'horzvert':
             self.plot1_file = self.asc_file
             self.plot2_file = self.desc_file
         else:
