@@ -118,6 +118,10 @@ def create_parser():
             delimiters = '[,:\-\s]'
             dates = re.split(delimiters, p)
 
+            if len(dates[0]) and len(dates[1]) != 8:
+                msg = 'Date format not valid, it must be in the format YYYYMMDD'
+                raise ValueError(msg)
+
             inps.start_date.append(dates[0])
             inps.end_date.append(dates[1])
 

@@ -63,8 +63,14 @@ class VelocityPlot:
         self.earthquake = inps.earthquake
         self.no_dem = inps.no_dem
         self.lalo = inps.lalo
+        self.ref_lalo = inps.ref_lalo
 
         self.map = self._create_map()
+
+        if self.lalo:
+            self.plot_point([self.lalo[0]], [self.lalo[1]], marker='x')
+        if self.ref_lalo:
+            self.plot_point([self.ref_lalo[0]], [self.ref_lalo[1]], marker='s')
 
     def _create_map(self):
         """Creates and configures the velocity map."""
@@ -93,6 +99,11 @@ class VelocityPlot:
             self.ax.scatter(self.lon, self.lat, color='black', marker='x')
 
         return vel_map
+
+    def plot_point(self, lat, lon, marker='o'):
+        """Plots a point on the map."""
+        for x,y in zip(lon, lat):
+            self.ax.scatter(x, y, color='black', marker=marker)
 
 
 class VectorsPlot:
