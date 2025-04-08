@@ -1,0 +1,8 @@
+# plotData dependencies  
+pandas
+cartopy
+jupyter-ai
+scipy
+scikit-learn
+simplekml
+geopandas
