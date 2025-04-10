@@ -94,7 +94,7 @@ def get_volcano_coord_name(jsonfile, volcanoId):
 
     for j in data['features']:
         if j['properties']['VolcanoNumber'] == int(volcanoId):
-            name = j['properties']['VolcanoNumber']
+            name = j['properties']['VolcanoName']
 
             coordinates = j['geometry']['coordinates']
             coordinates = coordinates[::-1]
