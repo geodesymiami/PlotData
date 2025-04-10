@@ -213,7 +213,7 @@ class VectorsPlot:
     def _plot_vectors(self):
         """Plots elevation profile and velocity vectors."""
         # Plot elevation profile
-        self.ax[2].plot(self.x, self.elevation_section.values)
+        self.ax[2].plot(self.x, self.elevation_section.values, color='#a8a8a8')
         self.ax[2].set_ylim([0, 2 * max(self.elevation_section.values)])
         self.ax[2].set_xlim([min(self.x), max(self.x)])
 
@@ -221,7 +221,7 @@ class VectorsPlot:
         self.ax[2].quiver(
             self.filtered_x, self.filtered_elevation,
             self.filtered_h * self.rescale_h, self.filtered_v * self.rescale_v,
-            color='red', scale_units='xy', width=(1 / 10**(2.5))
+            color='#ff7366', scale_units='xy', width=(1 / 10**(2.5))
         )
 
         # Add profile lines to velocity maps
@@ -233,7 +233,7 @@ class VectorsPlot:
         start_y = (2 * max(self.elevation_section.values) * 0.8)
         mean_velocity = abs(np.mean(self.filtered_h * self.rescale_h))
 
-        self.ax[2].quiver([start_x], [start_y], [mean_velocity], [0], color='red', scale_units='xy', width=(1 / 10**(2.5)))
+        self.ax[2].quiver([start_x], [start_y], [mean_velocity], [0], color='#ff7366', scale_units='xy', width=(1 / 10**(2.5)))
         self.ax[2].text(start_x, start_y * 1.03, f"{round(mean_velocity, 3)} m/yr", color='black', ha='left', fontsize=8)
 
 
@@ -302,24 +302,24 @@ class TimeseriesPlot:
     def _plot_timeseries(self):
         """Plots timeseries data on the last axis."""
         ax_ts = self.ax
-        color = "#f33496b0" if "SenA" in self.file else "#5190cb"
+        color = "#ff7366" if "SenA" in self.file else "#5190cb"
         label = "ascending" if "SenA" in self.file else "descending"
-        offsets = 0.4
+        offsets = 0
 
         dates, ts = self._extract_timeseries_data(self.file)
-        ax_ts.scatter(dates, ts + offsets, color=color, marker='o', label=label, alpha=0.5, edgecolor='black', s=5)
+        ax_ts.scatter(dates, ts + offsets, color=color, marker='o', label=label, alpha=0.5, s=7)
 
         # Plot vertical lines
-        ax_ts.axvline(self.start_date, color='red', linestyle='--', linewidth=0.5,alpha=0.5)
-        ax_ts.axvline(self.end_date, color='red', linestyle='--', linewidth=0.5, alpha=0.5)
+        ax_ts.axvline(self.start_date, color='#a8a8a8', linestyle='--', linewidth=0.2,alpha=0.5)
+        ax_ts.axvline(self.end_date, color='#a8a8a8', linestyle='--', linewidth=0.2, alpha=0.5)
 
         # Fill area between the vertical lines with a rectangle
-        ax_ts.axvspan(self.start_date, self.end_date, color='red', alpha=0.1)
-
+        ax_ts.axvspan(self.start_date, self.end_date, color='#a8a8a8', alpha=0.1)
+        ax_ts.set_ylabel('LOS displacement (m)')
         ax_ts.legend(fontsize='x-small')
 
 
-def point_on_globe(latitude, longitude, size='1'):
+def point_on_globe(latitude, longitude, names=None, size='0.7'):
     fig = pygmt.Figure()
 
     # Set up orthographic projection centered on your point
@@ -331,9 +331,9 @@ def point_on_globe(latitude, longitude, size='1'):
 
     # Add continent borders with black lines
     fig.coast(
-        shorelines="1/1p,black",  # Continent borders
-        land="white",  # Land color
-        water="white"  # Water color
+        # shorelines="1/1p,black",  # Continent borders
+        land="#f7f2f26b",  # Land color
+        water="#7cc0ff"  # Water color
     )
 
     # Plot your central point
@@ -341,9 +341,20 @@ def point_on_globe(latitude, longitude, size='1'):
         x=longitude,
         y=latitude,
         style=f"t{size}c",  # Triangle marker
-        fill="red",  # Marker color
-        pen="1p,black"  # Outline pen
+        fill="#ff7366",  # Marker color
+        # pen="1p,black"  # Outline pen
     )
+
+        # Add names if provided
+    if names:
+        fig.text(
+            x=longitude,
+            y=latitude,
+            text=names,
+            font="10p,Helvetica-Bold,black",  # Font size, style, and color
+            justify="LM",  # Left-middle alignment
+            offset="0.2c/0.2c"  # Offset to avoid overlapping with markers
+        )
 
     return fig
 
