@@ -63,7 +63,6 @@ def create_parser():
     parser = argparse.ArgumentParser(description=synopsis, epilog=epilog, formatter_class=argparse.RawTextHelpFormatter)
     
     parser.add_argument('data_dir', nargs='*', help='Directory(s) with InSAR data.\n')
-    parser.add_argument('--seismicity', dest='flag_seismicity', action='store_true', default=False, help='flag to add seismicity')
     parser.add_argument('--dem', dest='dem_file', default=None, help='external DEM file (Default: geo/geo_geometryRadar.h5)')
     parser.add_argument('--lines', dest='line_file', default=None, help='fault file (Default: None, but plotdata/data/hawaii_lines_new.mat for Hawaii)')
     parser.add_argument('--mask-thresh', dest='mask_vmin', type=float, default=0.7, help='coherence threshold for masking (Default: 0.7)')
@@ -172,7 +171,7 @@ def parse_polygon(polygon):
     """
     latitude = []
     longitude = []
-    pol = polygon.replace("POLYGON((", "").replace("))", "")
+    pol = polygon.replace("POLYGON((", "").replace("))", "").replace("'", "").replace('"', "")
 
     # Split the string into a list of coordinates
     for word in pol.split(','):
@@ -230,7 +229,7 @@ def main(iargs=None):
             import matplotlib.pyplot as plt
 
             # Create plot grid, with columns as processors and rows as files
-            pltgr = PlotGrid(processors=processors)
+            pltgr = PlotGrid(inps=processors)
 
             # Select the correct plotter and corresponding files for rows
             plotter_map = {
