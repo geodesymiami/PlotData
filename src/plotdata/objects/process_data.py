@@ -75,7 +75,7 @@ class ProcessData:
 
         # Assign directory and project name (assuming first dataset is representative)
 
-        self.project = os.path.basename(self.directory)
+        self.project = os.path.basename(self.directory) if self.directory else self.region
 
         # Second pass: Compute horizontal and vertical only if both asc & desc are available
         if self.plot_type in ['horzvert', 'vectors'] and self.ascending and self.descending:
