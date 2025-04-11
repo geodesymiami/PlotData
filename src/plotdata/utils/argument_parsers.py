@@ -116,7 +116,7 @@ def add_plot_parameters_arguments(parser):
                         help='Do not show the plot')
     plot_parameters.add_argument('--fontsize',
                         dest='font_size',
-                        default=12,
+                        default=15,
                         type=int,
                         help='fontsize for view.py (default: %(default)s).')
     plot_parameters.add_argument('--plot-option',

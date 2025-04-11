@@ -226,7 +226,7 @@ class VectorsPlot:
 
         # Add profile lines to velocity maps
         for i in range(2):
-            self.ax[i].plot(self.inps.line[0], self.inps.line[1], '-', linewidth=2, alpha=0.7, color='black')
+            self.ax[i].plot(self.inps.line[0], self.inps.line[1], '--', linewidth=1, alpha=0.7, color='black')
 
         # Mean velocity vector
         start_x = max(self.x) * 0.1
