@@ -257,3 +257,24 @@ def add_gps_arguments(parser):
                         help='GPS directory (default: %(default)s).')
 
     return parser
+
+
+def add_seismicity_arguments(parser):
+    """
+    Add seismicity arguments to the argument parser.
+
+    Args:
+        parser (argparse.ArgumentParser): The argument parser to add the seismicity arguments to.
+
+    Returns:
+        argparse.ArgumentParser: The updated argument parser.
+    """
+    seismicity = parser.add_argument_group('GPS options')
+    seismicity.add_argument('--seismicity',
+                            nargs='?',
+                            type=int,
+                            default=None,
+                            help='Add seismicity to the plot with magnitude above specified value (default: %(default)s).'
+                            )
+
+    return parser

@@ -23,7 +23,7 @@ class ShadedReliefPlot:
         self.linewidth = inps.linewidth
         self.isolines = inps.isolines
         self.inline = inps.inline
-        self.earthquake = inps.earthquake
+        self.seismicity = inps.seismicity
         self.start_date = inps.start_date if inps.start_date else None
         self.end_date = inps.end_date if inps.end_date else None
 
@@ -40,8 +40,8 @@ class ShadedReliefPlot:
                  levels=self.isolines, inline=self.inline)
 
         # Add earthquake markers if enabled
-        if self.earthquake:
-            Earthquake(map=rel_map).map()
+        if self.seismicity:
+            Earthquake(map=rel_map, magnitude=self.seismicity).map()
 
 
 class VelocityPlot:
@@ -60,7 +60,7 @@ class VelocityPlot:
         self.iso_color = inps.iso_color
         self.linewidth = inps.linewidth
         self.inline = inps.inline
-        self.earthquake = inps.earthquake
+        self.seismicity = inps.seismicity
         self.no_dem = inps.no_dem
         self.lalo = inps.lalo
         self.ref_lalo = inps.ref_lalo
@@ -90,8 +90,8 @@ class VelocityPlot:
                      linewidth=self.linewidth, levels=self.isolines, inline=self.inline)
 
         # Add earthquake markers if enabled
-        if self.earthquake:
-            Earthquake(map=vel_map).map()
+        if self.seismicity:
+            Earthquake(map=vel_map, magnitude=self.seismicity).map()
 
         if self.lalo:
             self.lat = self.lalo[0]
@@ -115,6 +115,7 @@ class VectorsPlot:
         self.horz_file = horz_file
         self.vert_file = vert_file
         self.ref_lalo = inps.ref_lalo
+        self.seismicity = inps.seismicity
         self.inps = inps
 
         # Determine which files to plot
@@ -162,8 +163,8 @@ class VectorsPlot:
                      linewidth=self.inps.linewidth, levels=self.inps.isolines, inline=self.inps.inline)
 
         # Add earthquake markers if enabled
-        if self.inps.earthquake:
-            Earthquake(map=vel_map).map()
+        if self.seismicity:
+            Earthquake(map=vel_map, magnitude=self.seismicity).map()
 
         if self.ref_lalo:
             self.plot_point([self.ref_lalo[0]], [self.ref_lalo[1]], ax, marker='s')

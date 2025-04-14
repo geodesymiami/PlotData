@@ -13,7 +13,7 @@ from osgeo import gdal, osr
 
 import argparse
 from datetime import datetime
-from plotdata.utils.argument_parsers import add_date_arguments, add_location_arguments, add_plot_parameters_arguments, add_map_parameters_arguments, add_save_arguments,add_gps_arguments
+from plotdata.utils.argument_parsers import add_date_arguments, add_location_arguments, add_plot_parameters_arguments, add_map_parameters_arguments, add_save_arguments,add_gps_arguments, add_seismicity_arguments
 
 ############################################################
 EXAMPLE = """example:
@@ -28,7 +28,8 @@ EXAMPLE = """example:
         plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=horzvert --period 20220101:20230831 --ref-lalo 19.50068 -155.55856--resolution '01s' --isolines 2 --plot-option horizontal
         plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=vectors --period 20220101:20230831 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2 --section -77.968 -77.9309 0.793 0.793
         plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=vectors --period 20220101:20230831 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2 --section -77.968 -77.9309 0.793 0.793 --plot-option horzvert
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 --plot-type=velocity --period 20220101:20230831  --ref-lalo 19.50068 -155.55856 --resolution '01s' --earthquake
+        plot_data.py MaunaLoaSenDT87/mintpy_5_20 --plot-type=velocity --period 20220101:20230831  --ref-lalo 19.50068 -155.55856 --resolution '01s' --seismicity 2
+        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type timeseries  --period 20181001:20220901 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2 --lalo 19.50068 -155.55856
 
         # FOR GIACOMO TO TEST
         plot_data.py ChilesSenAT120/mintpy ChilesSenDT142/mintpy --plot-type=horzvert --period=20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2 --section -77.968 -77.9309 0.793 0.793
@@ -48,7 +49,6 @@ def create_parser():
     # parser.add_argument("--noreference", dest="show_reference_point",  action='store_false', default=True, help="hide reference point (default: False)" )
     parser.add_argument("--section", dest="line", nargs='*', type=float, default=None, help="Section coordinates for deformation vectors")
     parser.add_argument("--resample-vector", dest="resample_vector", type=int, default=1, help="resample factor for deformation vectors (default: %(default)s).")
-    parser.add_argument("--earthquake", dest="earthquake", action='store_true', default=False, help="plot earthquakes")
 
     parser = add_date_arguments(parser)
     parser = add_location_arguments(parser)
@@ -56,6 +56,7 @@ def create_parser():
     parser = add_map_parameters_arguments(parser)
     parser = add_save_arguments(parser)
     parser = add_gps_arguments(parser)
+    parser = add_seismicity_arguments(parser)
 
     inps = parser.parse_args()
 
