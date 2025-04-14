@@ -6,7 +6,7 @@ from plotdata.objects.create_map import Mapper, Isolines, Relief
 from plotdata.objects.earthquakes import Earthquake
 from mintpy.utils import readfile
 from mintpy.objects.coord import coordinate
-from mintpy.objects import timeseries, giantTimeseries, HDFEOS
+from mintpy.objects import timeseries, HDFEOS
 from plotdata.helper_functions import draw_vectors, unpack_file
 
 
@@ -267,8 +267,6 @@ class TimeseriesPlot:
         # Identify file type and open it
         if atr['FILE_TYPE'] == 'timeseries':
             obj = timeseries(file)
-        elif atr['FILE_TYPE'] == 'giantTimeseries':
-            obj = giantTimeseries(file)
         elif atr['FILE_TYPE'] == 'HDFEOS':
             obj = HDFEOS(file)
         else:
