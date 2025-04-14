@@ -114,6 +114,7 @@ class VectorsPlot:
         self.desc_file = desc_file
         self.horz_file = horz_file
         self.vert_file = vert_file
+        self.ref_lalo = inps.ref_lalo
         self.inps = inps
 
         # Determine which files to plot
@@ -121,6 +122,7 @@ class VectorsPlot:
 
         # Process the datasets
         self._process_velocity_maps()
+
         self._process_sections()
 
         # Compute and plot vectors
@@ -135,6 +137,12 @@ class VectorsPlot:
         else:
             self.plot1_file = self.horz_file
             self.plot2_file = self.vert_file
+
+    def plot_point(self, lat, lon, ax, marker='o'):
+        """Plots a point on the map."""
+        for x,y in zip(lon, lat):
+            ax.scatter(x, y, color='black', marker=marker)
+
 
     def _create_map(self, ax, file):
         """Creates and configures a velocity map."""
@@ -156,6 +164,9 @@ class VectorsPlot:
         # Add earthquake markers if enabled
         if self.inps.earthquake:
             Earthquake(map=vel_map).map()
+
+        if self.ref_lalo:
+            self.plot_point([self.ref_lalo[0]], [self.ref_lalo[1]], ax, marker='s')
 
         return vel_map
 
