@@ -54,10 +54,10 @@ class ProcessData:
         for dir, files in self.file_info.items():
             out_mskd_file = self._process_data(files)
 
-            if 'SenA' in out_mskd_file:
+            if ('SenA' or 'CskA') in out_mskd_file:
                 self.ascending = out_mskd_file
                 self.eos_file_ascending = files['eos_file']
-            elif 'SenD' in out_mskd_file:
+            elif ('SenD' or 'CskD') in out_mskd_file:
                 self.descending = out_mskd_file
                 self.eos_file_descending = files['eos_file']
 
