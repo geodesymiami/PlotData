@@ -230,11 +230,17 @@ class VectorsPlot:
         self.ax[2].set_xlim([min(self.x), max(self.x)])
 
         # Plot velocity vectors
+        #Probably right one
         self.ax[2].quiver(
             self.filtered_x, self.filtered_elevation,
-            self.filtered_h * self.rescale_h, self.filtered_v * self.rescale_v,
+            self.filtered_h, self.filtered_v,
             color='#ff7366', scale_units='xy', width=(1 / 10**(2.5))
         )
+        # self.ax[2].quiver(
+        #     self.filtered_x, self.filtered_elevation,
+        #     self.filtered_h * self.rescale_h, self.filtered_v * self.rescale_v,
+        #     color='#ff7366', scale_units='xy', width=(1 / 10**(2.5))
+        # )
 
         # Add profile lines to velocity maps
         for i in range(2):
@@ -243,9 +249,10 @@ class VectorsPlot:
         # Mean velocity vector
         start_x = max(self.x) * 0.1
         start_y = (2 * max(self.elevation_section.values) * 0.8)
-        mean_velocity = abs(np.mean(self.filtered_h * self.rescale_h))
+        mean_velocity = abs(np.mean(self.filtered_h))
 
         self.ax[2].quiver([start_x], [start_y], [mean_velocity], [0], color='#ff7366', scale_units='xy', width=(1 / 10**(2.5)))
+        # self.ax[2].quiver([start_x], [start_y], [0], [abs(np.mean(self.filtered_v))], color='#ff7366', scale_units='xy', width=(1 / 10**(2.5)))
         self.ax[2].text(start_x, start_y * 1.03, f"{round(mean_velocity, 3)} m/yr", color='black', ha='left', fontsize=8)
 
 
