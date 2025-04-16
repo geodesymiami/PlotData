@@ -236,6 +236,8 @@ class VectorsPlot:
             self.filtered_h, self.filtered_v,
             color='#ff7366', scale_units='xy', width=(1 / 10**(2.5))
         )
+
+        # TODO test better the scaling issues
         # self.ax[2].quiver(
         #     self.filtered_x, self.filtered_elevation,
         #     self.filtered_h * self.rescale_h, self.filtered_v * self.rescale_v,
