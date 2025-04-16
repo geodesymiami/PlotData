@@ -40,8 +40,9 @@ def create_parser():
     synopsis = 'Plotting of InSAR, GPS and Seismicity data'
     epilog = EXAMPLE
     parser = argparse.ArgumentParser(description=synopsis, epilog=epilog, formatter_class=argparse.RawTextHelpFormatter)
-    
+
     parser.add_argument('data_dir', nargs='*', help='Directory(s) with InSAR data.\n')
+    parser.add_argument('--plot-type',dest='plot_type',default='velocity',choices=['velocity','horzvert', 'vectors', 'shaded_relief', 'timeseries'],help='Type of plot: (default: %(default)s).')
     parser.add_argument('--dem', dest='dem_file', default=None, help='external DEM file (Default: geo/geo_geometryRadar.h5)')
     parser.add_argument('--lines', dest='line_file', default=None, help='fault file (Default: None, but plotdata/data/hawaii_lines_new.mat for Hawaii)')
     parser.add_argument('--mask-thresh', dest='mask_vmin', type=float, default=0.7, help='coherence threshold for masking (Default: 0.7)')

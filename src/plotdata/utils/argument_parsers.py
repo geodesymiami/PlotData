@@ -96,11 +96,6 @@ def add_plot_parameters_arguments(parser):
         argparse.ArgumentParser: The argument parser object with added plot parameters arguments.
     """
     plot_parameters = parser.add_argument_group('Plot parameters')
-    plot_parameters.add_argument('--plot-type',
-                        dest='plot_type',
-                        default='velocity',
-                        choices=['velocity','horzvert', 'vectors', 'shaded_relief', 'timeseries'],
-                        help='Type of plot: (default: %(default)s).')
     plot_parameters.add_argument('--add-event',
                         nargs='*',
                         metavar=('YYYYMMDD, YYYY-MM-DD'),
