@@ -19,20 +19,20 @@ from plotdata.utils.argument_parsers import add_date_arguments, add_location_arg
 EXAMPLE = """example:
         plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=horzvert --ref-lalo 19.55,-155.45 --period 20220801:20221127 --resolution '01s' --isolines 2
         plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=horzvert --period=20220101:20230831 --ref-lalo 19.55,-155.45 --resolution '01s' --isolines 2
-        plot_data.py MaunaLoaSenAT124/mintpy_5_20 --plot-type=velocity --period 20220101:20230831 20230831:20231001 --resolution '01s' --isolines 2 --section -77.968 -77.9309 0.793 0.793
+        plot_data.py MaunaLoaSenAT124/mintpy_5_20 --plot-type=velocity --period 20220101:20230831 20230831:20231001 --resolution '01s' --isolines 2 --section 19.45,-155.75:19.45,-155.35
         plot_data.py MaunaLoaSenDT87/mintpy_5_20 --plot-type=shaded_relief --period 20220101:20230831 --resolution '01s' --isolines 2
         plot_data.py --polygon "POLYGON((-155.8 19.3,-155.4 19.3,-155.4 19.6,-155.8 19.6,-155.8 19.3))" --plot-type=shaded_relief --period 20220101:20230831 --resolution '01s' --isolines 2
         plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=velocity --period 20220101:20230831 --resolution '01s' --isolines 2
         plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=velocity --period 20220101:20230831 20200101:20220101 --resolution '01s' --isolines 2
         plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=horzvert --period 20220101:20230831 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2
         plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=horzvert --period 20220101:20230831 --ref-lalo 19.50068 -155.55856--resolution '01s' --isolines 2 --plot-option horizontal
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=vectors --period 20220101:20230831 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2 --section -77.968 -77.9309 0.793 0.793
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=vectors --period 20220101:20230831 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2 --section -77.968 -77.9309 0.793 0.793 --plot-option horzvert
+        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=vectors --period 20220101:20230831 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2 --section 19.45,-155.75:19.45,-155.35
+        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=vectors --period 20220101:20230831 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2 --section 19.45,-155.75:19.45,-155.35 --plot-option horzvert
         plot_data.py MaunaLoaSenDT87/mintpy_5_20 --plot-type=velocity --period 20181001:20191031  --ref-lalo 19.50068 -155.55856 --resolution '01s' --seismicity 2
         plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type timeseries  --period 20181001:20191031 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2 --lalo 19.461,-155.558
 
         # FOR GIACOMO TO TEST
-        plot_data.py ChilesSenAT120/mintpy ChilesSenDT142/mintpy --plot-type=horzvert --period=20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2 --section -77.968 -77.9309 0.793 0.793
+        plot_data.py ChilesSenAT120/mintpy ChilesSenDT142/mintpy --plot-type=horzvert --period=20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2 --section 0.793,-77.968:0.793,-77.9309
 
 """
 
@@ -47,7 +47,7 @@ def create_parser():
     parser.add_argument('--mask-thresh', dest='mask_vmin', type=float, default=0.7, help='coherence threshold for masking (Default: 0.7)')
     # parser.add_argument('--unit', dest='unit', default="cm", help='InSAR units (Default: cm)')
     # parser.add_argument("--noreference", dest="show_reference_point",  action='store_false', default=True, help="hide reference point (default: False)" )
-    parser.add_argument("--section", dest="line", nargs='*', type=float, default=None, help="Section coordinates for deformation vectors")
+    parser.add_argument("--section", dest="line", type=str, default=None, help="Section coordinates for deformation vectors, LAT,LON:LAT,LON")
     parser.add_argument("--resample-vector", dest="resample_vector", type=int, default=1, help="resample factor for deformation vectors (default: %(default)s).")
 
     parser = add_date_arguments(parser)
@@ -66,10 +66,6 @@ def create_parser():
 
     if len(inps.data_dir) > 2:
         parser.error('USER ERROR: To many files provided.')
-
-    if inps.line:
-        if len(inps.line) != 4:
-            parser.error('USER ERROR: Section need 4 args, LON1 LON2, LAT1, LAT2')
 
     if inps.plot_box:
         inps.plot_box = [float(val) for val in inps.plot_box.replace(':', ',').split(',')]  # converts to plot_box=[19.3, 19.6, -155.8, -155.4]
@@ -90,6 +86,9 @@ def create_parser():
 
     inps.vmax = max(inps.vlim) if inps.vlim else None
     inps.vmin = min(inps.vlim) if inps.vlim else None
+
+    if inps.line:
+        inps.line = parse_section(inps.line)
 
     if inps.period:
         for p in inps.period:
@@ -135,6 +134,27 @@ def create_parser():
 
     return inps
 ################################
+
+
+def parse_section(section):
+    """
+    Parses the section string and extracts the coordinates.
+
+    Args:
+        section (str): The section string in the format "lon1 lon2 lat1 lat2".
+
+    Returns:
+        tuple: A tuple containing the coordinates as floats.
+               The first two elements are the longitude coordinates,
+               and the last two elements are the latitude coordinates.
+    """
+    latitude = []
+    longitude = []
+    for coord in section.split(':'):
+        latitude.append(float(coord.split(',')[0]))
+        longitude.append(float(coord.split(',')[1]))
+
+    return [min(longitude), max(longitude), min(latitude), max(latitude)]
 
 def parse_polygon(polygon):
     """
