@@ -5,7 +5,7 @@ from mintpy.cli import (
 )
 from plotdata.helper_functions import (
     get_file_names, prepend_scratchdir_if_needed, find_nearest_start_end_date,
-    save_gbis_plotdata, find_longitude_degree, select_reference_point
+    find_longitude_degree, select_reference_point
 )
 
 
@@ -24,8 +24,8 @@ class ProcessData:
         self.horizontal = None
         self.vertical = None
         self.velocity_file = None
-        self.directory = None  # Store directory for reference
-        self.project = None  # Store project name
+        self.directory = None
+        self.project = None
 
         # Extract file names once for all cases
         self._extract_file_names()
@@ -88,7 +88,10 @@ class ProcessData:
         """Processes a single dataset and returns the masked velocity file."""
         eos_file = files['eos_file']
         vel_file = files['vel_file']
-        out_vel_file = files['out_vel_file'].replace('.h5', f'_{self.start_date}_{self.end_date}.h5')
+        temp_coh_file = files['out_vel_file'].replace(f'velocity.h5', 'temporalCoherence.tif')
+        date_dir = os.path.join(os.path.dirname(files['out_vel_file']), f'{self.start_date}_{self.end_date}')
+        os.makedirs(date_dir, exist_ok=True)
+        out_vel_file = os.path.join(date_dir, os.path.basename(files['out_vel_file']))
         project_base_dir = files['project_base_dir']
 
         if self.plot_type == 'shaded_relief':
@@ -98,24 +101,11 @@ class ProcessData:
                 return out_vel_file
             return vel_file
 
-        temp_coh_file = out_vel_file.replace(f'velocity_{self.start_date}_{self.end_date}.h5', 'temporalCoherence.tif')
+        self._save_gdal(eos_file, temp_coh_file)
         start_date, end_date = find_nearest_start_end_date(eos_file, self.start_date, self.end_date)
         self._convert_timeseries_to_velocity(eos_file, start_date, end_date, out_vel_file)
 
         out_mskd_file = self._apply_mask(out_vel_file, temp_coh_file)
-
-        # if self.ref_lalo:
-        #     self.ref_lalo = select_reference_point([out_vel_file], self.window_size, self.ref_lalo)
-        #     self._apply_reference_point(out_vel_file)
-
-        # metadata = readfile.read(out_vel_file)[1] if os.path.exists(out_vel_file) else None
-
-        # if not metadata or 'Y_STEP' not in metadata:
-        #     self._geocode_velocity_file(metadata, project_base_dir, files['vel_file'])
-
-        # if not os.path.exists(temp_coh_file):
-        #     self._save_gdal(eos_file, temp_coh_file)
-
 
         return out_mskd_file
 
@@ -154,6 +144,8 @@ class ProcessData:
         os.chdir(self.root_dir)
 
     def _save_gdal(self, eos_file, temp_coh_file):
+        if os.path.exists(temp_coh_file):
+            return
         cmd = f'{eos_file} --dset temporalCoherence --output {temp_coh_file}'
         save_gdal.main(cmd.split())
 
