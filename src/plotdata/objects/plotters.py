@@ -7,7 +7,7 @@ from plotdata.objects.earthquakes import Earthquake
 from mintpy.utils import readfile
 from mintpy.objects.coord import coordinate
 from mintpy.objects import timeseries, HDFEOS
-from plotdata.helper_functions import draw_vectors, unpack_file
+from plotdata.helper_functions import draw_vectors, unpack_file, calculate_distance
 
 
 class ShadedReliefPlot:
@@ -144,7 +144,6 @@ class VectorsPlot:
         for x,y in zip(lon, lat):
             ax.scatter(x, y, color='black', marker=marker)
 
-
     def _create_map(self, ax, file):
         """Creates and configures a velocity map."""
         vel_map = Mapper(ax=ax, file=file)
@@ -182,6 +181,11 @@ class VectorsPlot:
         self.vertical_data = Mapper(file=self.vert_file)
         self.elevation_data = Relief(map=self.horizontal_data, resolution=self.inps.resolution)
 
+        self.region = self.elevation_data.map.region
+
+        if not self.inps.line:
+            self.inps.line = self._set_default_section()
+
         self.horizontal_section = Section(
             self.horizontal_data.velocity, self.horizontal_data.region, self.inps.line[1], self.inps.line[0]
         )
@@ -191,6 +195,15 @@ class VectorsPlot:
         self.elevation_section = Section(
             self.elevation_data.elevation, self.elevation_data.map.region, self.inps.line[1], self.inps.line[0]
         )
+
+    def _set_default_section(self):
+        mid_lat = (max(self.region[2:4]) + min(self.region[2:4]))/2
+        mid_lon = (max(self.region[0:2]) + min(self.region[0:2]))/2
+
+        latitude = (mid_lat, mid_lat)
+        longitude = (mid_lon - 0.12, mid_lon + 0.12)
+
+        return [longitude, latitude]
 
     def _compute_vectors(self):
         """Computes velocity vectors and scaling factors."""
@@ -215,9 +228,11 @@ class VectorsPlot:
                 self.h[i] = 0
                 self.v[i] = 0
 
+        distance = calculate_distance(self.inps.line[1][0], self.inps.line[0][0], self.inps.line[1][1], self.inps.line[0][1])
+        self.xrange = np.linspace(0, distance, len(self.x))
         # Filter out zero-length vectors
         non_zero_indices = np.where((self.h != 0) | (self.v != 0))
-        self.filtered_x = self.x[non_zero_indices]
+        self.filtered_x = self.xrange[non_zero_indices]
         self.filtered_h = self.h[non_zero_indices]
         self.filtered_v = self.v[non_zero_indices]
         self.filtered_elevation = self.elevation_section.values[non_zero_indices]
@@ -225,9 +240,9 @@ class VectorsPlot:
     def _plot_vectors(self):
         """Plots elevation profile and velocity vectors."""
         # Plot elevation profile
-        self.ax[2].plot(self.x, self.elevation_section.values, color='#a8a8a8')
+        self.ax[2].plot(self.xrange, self.elevation_section.values, color='#a8a8a8')
         self.ax[2].set_ylim([0, 2 * max(self.elevation_section.values)])
-        self.ax[2].set_xlim([min(self.x), max(self.x)])
+        self.ax[2].set_xlim([min(self.xrange), max(self.xrange)])
 
         # Plot velocity vectors
         #Probably right one
@@ -249,13 +264,17 @@ class VectorsPlot:
             self.ax[i].plot(self.inps.line[0], self.inps.line[1], '--', linewidth=1, alpha=0.7, color='black')
 
         # Mean velocity vector
-        start_x = max(self.x) * 0.1
+        start_x = max(self.xrange) * 0.1
         start_y = (2 * max(self.elevation_section.values) * 0.8)
         mean_velocity = abs(np.mean(self.filtered_h))
 
         self.ax[2].quiver([start_x], [start_y], [mean_velocity], [0], color='#ff7366', scale_units='xy', width=(1 / 10**(2.5)))
         # self.ax[2].quiver([start_x], [start_y], [0], [abs(np.mean(self.filtered_v))], color='#ff7366', scale_units='xy', width=(1 / 10**(2.5)))
         self.ax[2].text(start_x, start_y * 1.03, f"{round(mean_velocity, 3)} m/yr", color='black', ha='left', fontsize=8)
+
+        # Add labels
+        self.ax[2].set_ylabel("Elevation (m)")
+        self.ax[2].set_xlabel("Distance (km)")
 
 
 class TimeseriesPlot:

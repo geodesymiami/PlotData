@@ -16,7 +16,8 @@ from datetime import datetime
 from plotdata.utils.argument_parsers import add_date_arguments, add_location_arguments, add_plot_parameters_arguments, add_map_parameters_arguments, add_save_arguments,add_gps_arguments, add_seismicity_arguments
 
 ############################################################
-EXAMPLE = """example:
+EXAMPLE = """
+example:
         plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=horzvert --ref-lalo 19.55,-155.45 --period 20220801:20221127 --resolution '01s' --isolines 2
         plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=horzvert --period=20220101:20230831 --ref-lalo 19.55,-155.45 --resolution '01s' --isolines 2
         plot_data.py MaunaLoaSenAT124/mintpy_5_20 --plot-type=velocity --period 20220101:20230831 20230831:20231001 --resolution '01s' --isolines 2 --section 19.45,-155.75:19.45,-155.35
@@ -61,9 +62,9 @@ def create_parser():
 
     inps = parser.parse_args()
 
-    if inps.plot_type == 'vectors':
-        if not inps.line:
-            parser.error('USER ERROR: Section coordinates are required for deformation vectors')
+    # if inps.plot_type == 'vectors':
+    #     if not inps.line:
+    #         parser.error('USER ERROR: Section coordinates are required for deformation vectors')
 
     if len(inps.data_dir) > 2:
         parser.error('USER ERROR: To many files provided.')
@@ -118,9 +119,6 @@ def create_parser():
     if inps.plot_type == 'ifgram':
         inps.style = 'ifgram'
 
-    if inps.line:
-        inps.line = [(inps.line[0],inps.line[1]), (inps.line[2],inps.line[3])]
-
 ##### Hardwired for Hawaii #####
     if 'GPSDIR' in os.environ:
         inps.gps_dir = os.getenv('GPSDIR') + '/data'
@@ -155,7 +153,7 @@ def parse_section(section):
         latitude.append(float(coord.split(',')[0]))
         longitude.append(float(coord.split(',')[1]))
 
-    return [min(longitude), max(longitude), min(latitude), max(latitude)]
+    return [(min(longitude), max(longitude)), (min(latitude), max(latitude))]
 
 def parse_polygon(polygon):
     """
@@ -204,7 +202,6 @@ def parse_lalo(str_lalo):
     if len(lalo) == 1:     # if given as one string containing ','
         lalo = lalo[0]
     return lalo
-
 
 ######################### MAIN #############################
 

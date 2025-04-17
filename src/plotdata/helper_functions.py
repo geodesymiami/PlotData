@@ -227,42 +227,6 @@ def find_longitude_degree(ref_lat, lat_step):
     # Find the longitude step in degrees that covers the same distance as the latitude step
     return float(lat_step) / math.cos(math.radians(int(ref_lat)))
 
-# TODO old version
-
-# def select_reference_point(out_mskd_file, window_size, ref_lalo):
-#     if len(out_mskd_file) != 2:
-#         raise ValueError('horzvert plot requires two data directories')
-
-#     # Extract the subarray for each dataset with Boolean values for NaNs
-#     (subdata1, sublat1, sublon1), (subdata2, _, _) = [extract_window(velocity, ref_lalo[0], ref_lalo[1], window_size) for velocity in out_mskd_file]
-
-#     paired = list(zip(subdata1, subdata2))
-#     valid_indices = []
-
-#     # Find the overlapping indices of True (valid data points) values
-#     for ind, (i,j) in enumerate(paired):
-#         if np.logical_and(i, j).any():
-#             valid_indices.append((ind, np.where(np.logical_and(i, j))))
-
-#     # This will be used as a measure of distance from the center of the window (the input reference point)
-#     shorter = window_size*2 +1
-
-#     # Find the closest valid data point to the center of the window
-#     for ind, indices in valid_indices:
-#         distances = np.sqrt((ind - window_size) ** 2 + (indices[0] - window_size) ** 2)
-#         min_distance_index = np.argmin(distances)
-#         min_distance = distances[min_distance_index]
-
-#         if min_distance < shorter:
-#             shorter = min_distance
-#             ref_lalo = [sublat1[ind], sublon1[indices[0][min_distance_index]]]
-
-#     print('-'*50)
-#     print(f"Reference point selected: {ref_lalo[0]}, {ref_lalo[1]}")
-#     print('-'*50)
-
-#     return ref_lalo
-
 
 def select_reference_point(out_mskd_file, window_size, ref_lalo):
     """

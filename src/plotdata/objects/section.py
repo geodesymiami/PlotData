@@ -5,7 +5,7 @@ from plotdata.helper_functions import calculate_distance
 
 
 class Section():
-    def __init__(self, data, region, latitude, longitude) -> None:
+    def __init__(self, data, region, latitude=None, longitude=None) -> None:
         self.data = data
         self.region = region
 
@@ -25,7 +25,6 @@ class Section():
         self.values = self.path_df['values']
 
         self.values = np.nan_to_num(self.values)
-
 
     def draw_line(self, data, region, latitude, longitude):
         # Calculate the resolution in degrees
