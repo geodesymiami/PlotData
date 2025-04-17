@@ -34,6 +34,7 @@ class Earthquake():
             self.start_date = map.start_date
             self.end_date = map.end_date
             self.ax = map.ax
+            self.zorder = map.get_next_zorder()
 
 
         self.get_earthquake_data(website="usgs")
@@ -56,7 +57,8 @@ class Earthquake():
                 linewidths=0.5,  # Edge width
                 marker='o',  # Circle marker
                 alpha=0.6,  # Transparency
-                label=f"{magnitude} {date}"
+                label=f"{magnitude} {date}",
+                zorder=self.zorder
             )
 
     def define_info(self, start_date, end_date, distance_km = 20, distance_deg = None, volcano=None, id=None):

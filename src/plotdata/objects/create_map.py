@@ -119,7 +119,7 @@ class Mapper():
             self.imdata = self.ax.imshow(data_wrapped, cmap=cmap, extent=self.region, origin='upper', interpolation='none',zorder=self.zorder, vmin=0, vmax=2 * np.pi)
 
         if style == 'pixel':
-            self.imdata = self.ax.imshow(data, cmap=cmap, extent=self.region, origin='upper', interpolation='none',zorder=self.zorder, vmin=vmin, vmax=vmax)
+            self.imdata = self.ax.imshow(data, cmap=cmap, extent=self.region, origin='upper', interpolation='none', zorder=self.zorder, vmin=vmin, vmax=vmax)
             # TODO this might cause issues, to test more
             self.ax.set_aspect('auto')
 
@@ -134,7 +134,7 @@ class Mapper():
             Y = np.flip(Y.flatten())
             C = data.flatten()
 
-            self.imdata = self.ax.scatter(X, Y, c=C, cmap=cmap, marker='o', zorder=zorder, s=2, vmin=vmin, vmax=vmax)
+            self.imdata = self.ax.scatter(X, Y, c=C, cmap=cmap, marker='o', zorder=self.zorder, s=2, vmin=vmin, vmax=vmax)
 
         cbar = self.ax.figure.colorbar(self.imdata, ax=self.ax, orientation='horizontal', aspect=13)
         cbar.set_label(label)
