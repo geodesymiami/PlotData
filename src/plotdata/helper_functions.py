@@ -405,10 +405,6 @@ def draw_vectors(elevation, vertical, horizontal, line):
     v = nv * tv
     h = nh * th
 
-    mean_vec = np.mean(length)
-    extent_el = abs(max(elevation) - min(elevation))
-
-    exp = (math.floor(math.log10(abs(extent_el / mean_vec))))
     x_coords = np.linspace(0, calculate_distance(line[0][0], line[1][0], line[0][1], line[1][1])*1000, len(elevation))
 
     return x_coords, v, h
