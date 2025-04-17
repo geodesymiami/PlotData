@@ -201,8 +201,10 @@ class VectorsPlot:
         mid_lat = (max(self.region[2:4]) + min(self.region[2:4]))/2
         mid_lon = (max(self.region[0:2]) + min(self.region[0:2]))/2
 
+        size = (max(self.region[0:2]) - min(self.region[0:2]))*0.25
+
         latitude = (mid_lat, mid_lat)
-        longitude = (mid_lon - 0.12, mid_lon + 0.12)
+        longitude = (mid_lon - size, mid_lon + size)
 
         return [longitude, latitude]
 
