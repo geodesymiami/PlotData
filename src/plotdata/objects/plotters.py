@@ -128,6 +128,7 @@ class VectorsPlot:
 
         # Compute and plot vectors
         self._compute_vectors()
+
         self._plot_vectors()
 
     def _set_plot_files(self):

@@ -11,6 +11,7 @@ from mintpy.utils import readfile
 from datetime import datetime
 from matplotlib import pyplot as plt
 from matplotlib.colors import LightSource
+import matplotlib.ticker as ticker
 from plotdata.helper_functions import parse_polygon, get_bounding_box
 
 
@@ -135,6 +136,8 @@ class Mapper():
 
         cbar = self.ax.figure.colorbar(self.imdata, ax=self.ax, orientation='horizontal', aspect=13)
         cbar.set_label(label)
+        cbar.locator = ticker.MaxNLocator(3)
+        cbar.update_ticks()
 
 class Isolines:
         def __init__(self, map: Mapper, resolution = '01m', color = 'black', linewidth = 0.5, levels = 10, inline = False, zorder = None):
