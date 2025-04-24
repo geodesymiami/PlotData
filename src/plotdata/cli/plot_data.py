@@ -155,6 +155,7 @@ def parse_section(section):
 
     return [(min(longitude), max(longitude)), (min(latitude), max(latitude))]
 
+
 def parse_polygon(polygon):
     """
     Parses a polygon string retrieved from ASF vertex tool and extracts the latitude and longitude coordinates.
