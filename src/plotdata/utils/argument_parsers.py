@@ -71,7 +71,7 @@ def add_location_arguments(parser):
                         metavar=('LAT,LON or LAT LON or LAT1,LON1  LAT2,LON2'),
                         type=str,
                         help="lat/lon coords of  pixel for timeseries")
-    location.add_argument('--window_size',
+    location.add_argument('--window-size',
                         dest='window_size',
                         type=int,
                         default=3,
