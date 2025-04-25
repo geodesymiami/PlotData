@@ -63,26 +63,11 @@ class Mapper():
         plt.show()
 
 
-    def add_location(self, latitude, longitude, label='', type='earthquake', size=10, zorder=None):
+    def plot_point(self, lat, lon, marker='o', color='black', size=5, alpha=1, zorder=None):
         if not zorder:
             zorder = self.get_next_zorder()
 
-        if type == 'earthquake':
-            marker = 'o'
-            color = 'purple'
-            alpha = 0.5
-
-        else:
-            marker = '^'
-            color = 'red'
-            alpha = 1
-
-        self.ax.plot(longitude, latitude, marker, color=color, markersize=size, alpha=alpha, zorder=zorder)
-        self.ax.text(longitude, latitude, label, fontsize=7, ha='right', zorder=zorder, color=color)
-
-        # Track location types for legend
-        if type not in self.location_types:
-            self.location_types[type] = {'marker': marker, 'color': color}
+        self.ax.plot(lon, lat, marker, color=color, markersize=size, alpha=alpha, zorder=zorder)
 
 
     def add_legend(self):
