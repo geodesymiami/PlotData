@@ -94,7 +94,19 @@ class VelocityPlot:
         if self.ref_lalo:
             vel_map.plot_point([self.ref_lalo[0]], [self.ref_lalo[1]], marker='s')
 
+        # Add interactive click functionality
+        def on_click(event):
+            if event.inaxes == self.ax:  # Ensure the click is within the correct axis
+                self._on_click(event)
+
+        self.ax.figure.canvas.mpl_connect('button_press_event', on_click)
         return vel_map
+
+    def _on_click(self, event):
+        """Callback function to handle mouse click events."""
+        if event.inaxes == self.ax:  # Ensure the click is within the plot
+            print(f"--lalo={event.ydata},{event.xdata}\n")
+            print(f"--ref-lalo={event.ydata},{event.xdata}\n")
 
 
 class VectorsPlot:
