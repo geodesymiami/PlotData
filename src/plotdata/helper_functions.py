@@ -8,11 +8,16 @@ from mintpy.objects import HDFEOS
 from scipy.interpolate import interp1d
 import numpy as np
 from pathlib import Path
+from minsar.utils.extract_hdfeos5 import determine_coordinates, extract_geometry
 
-EXAMPLE = """example:
-  plot_data.py  MaunaLoaSenDT87 MaunaLoaSenAT124
-  plot_data.py  MaunaLoaSenDT87
-"""
+
+def create_geometry_file(eos_file, out_folder):
+    workdir = os.getcwd()
+
+    print(f'Creating geometry file in: {out_folder}\n')
+    os.chdir(out_folder)
+    extract_geometry(eos_file, determine_coordinates(eos_file))
+    os.chdir(workdir)
 
 
 def get_file_names(path):

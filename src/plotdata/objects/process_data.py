@@ -5,7 +5,7 @@ from mintpy.cli import (
 )
 from plotdata.helper_functions import (
     get_file_names, prepend_scratchdir_if_needed, find_nearest_start_end_date,
-    find_longitude_degree, select_reference_point
+    find_longitude_degree, select_reference_point, create_geometry_file
 )
 
 
@@ -66,7 +66,6 @@ class ProcessData:
             self.ref_lalo = select_reference_point(masked_files, self.window_size, self.ref_lalo)
             map(self._apply_reference_point, masked_files)
 
-
         for file in masked_files:
             metadata = readfile.read(file)[1] if os.path.exists(file) else None
 
@@ -101,6 +100,7 @@ class ProcessData:
                 return out_vel_file
             return vel_file
 
+        create_geometry_file(eos_file, os.path.dirname(files['out_vel_file']))
         self._save_gdal(eos_file, temp_coh_file)
         start_date, end_date = find_nearest_start_end_date(eos_file, self.start_date, self.end_date)
         self._convert_timeseries_to_velocity(eos_file, start_date, end_date, out_vel_file)
