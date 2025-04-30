@@ -204,6 +204,10 @@ def extract_window(vel_file, lat, lon, window_size=3):
     if lat < min(lat_edges) or lat > max(lat_edges) or lon < min(lon_edges) or lon > max(lon_edges):
         raise ValueError('input reference point is OUT of data coverage on file: ' + vel_file)
 
+    if window_size * 2 + 1 > round(length * 0.1) or window_size * 2 + 1 > round(width * 0.1):
+        window_size = round(min(round(length * 0.1), round(width * 0.1))/2)
+        print(f"Window size is too large, reducing value for consistency to {window_size}\n")
+
     # Find the indices of the specified point
     lat_idx = np.searchsorted(lat_edges, lat)
     lon_idx = np.searchsorted(lon_edges, lon)
