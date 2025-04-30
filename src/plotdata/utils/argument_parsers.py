@@ -186,6 +186,11 @@ def add_map_parameters_arguments(parser):
     map_parameters.add_argument('--no-shade',
                         action='store_true',
                         help='Shade the dem')
+    map_parameters.add_argument('--offset',
+                        nargs='?',
+                        type=float,
+                        default=0,
+                        help='Timeseries offset (default: %(default)s).')
 
 
     return parser
