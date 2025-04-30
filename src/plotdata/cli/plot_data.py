@@ -267,13 +267,11 @@ def main(iargs=None):
                             )
 
                     elif plotter_cls is TimeseriesPlot:
-                        for file in files:
-                            if file:
-                                plotter_cls(
-                                    ax=pltgr.axes[-1, col_idx],  # Always plot in the last row
-                                    file=file,
-                                    inps=process
-                                )
+                        plotter_cls(
+                            ax=pltgr.axes[-1, col_idx],  # Always plot in the last row
+                            files=files,
+                            inps=process
+                        )
 
                     else:  # Default case (e.g., VelocityPlot, ShadedReliefPlot)
                         for row_idx, file in enumerate(files):
