@@ -294,6 +294,8 @@ class TimeseriesPlot:
         for file in self.files:
             self._plot_timeseries(file)
 
+        self._plot_event(inps)
+
     def _extract_timeseries_data(self, file):
         """Extracts timeseries data from the given file."""
         atr = readfile.read_attribute(file)
@@ -362,6 +364,11 @@ class TimeseriesPlot:
         ax_ts.axvspan(self.start_date, self.end_date, color='#a8a8a8', alpha=0.1)
         ax_ts.set_ylabel('LOS displacement (m)')
         ax_ts.legend(fontsize='x-small')
+
+    def _plot_event(self, inps):
+        for event in inps.add_event:
+            event = datetime.strptime(event, "%Y%m%d") if type(event) == str else event
+            self.ax.axvline(event, color='#900C3F', linestyle='--', linewidth=0.5, alpha=0.5)
 
 
 def point_on_globe(latitude, longitude, names=None, size='0.7'):
