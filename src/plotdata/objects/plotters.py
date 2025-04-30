@@ -284,15 +284,15 @@ class VectorsPlot:
 
 
 class TimeseriesPlot:
-    def __init__(self, ax, file, inps):
+    def __init__(self, ax, files, inps):
         for attr in dir(inps):
             if not attr.startswith('__') and not callable(getattr(inps, attr)):
                 setattr(self, attr, getattr(inps, attr))
 
-        self.file = file
+        self.files = files
         self.ax = ax
-
-        self._plot_timeseries()
+        for file in self.files:
+            self._plot_timeseries(file)
 
     def _extract_timeseries_data(self, file):
         """Extracts timeseries data from the given file."""
@@ -313,8 +313,8 @@ class TimeseriesPlot:
         self.start_date = self.start_date if self.start_date else date_list[0]
         self.end_date = self.end_date if self.end_date else date_list[-1]
 
-        self.start_date = datetime.strptime(self.start_date, "%Y%m%d")
-        self.end_date = datetime.strptime(self.end_date, "%Y%m%d")
+        self.start_date = datetime.strptime(self.start_date, "%Y%m%d") if type(self.start_date) == str else self.start_date
+        self.end_date = datetime.strptime(self.end_date, "%Y%m%d") if type(self.end_date) == str else self.end_date
 
         # We want the whole timeseries
         # date_list = [d for d in date_list if int(start_date) <= int(d) <= int(end_date)]
@@ -343,15 +343,16 @@ class TimeseriesPlot:
 
         return date_list, ts
 
-    def _plot_timeseries(self):
+    def _plot_timeseries(self, file):
         """Plots timeseries data on the last axis."""
         ax_ts = self.ax
-        color = "#ff7366" if "SenA" in self.file else "#5190cb"
-        label = "ascending" if "SenA" in self.file else "descending"
-        offsets = 0
+        color = "#ff7366" if "SenA" in file else "#5190cb"
+        label = "ascending" if "SenA" in file else "descending"
 
-        dates, ts = self._extract_timeseries_data(self.file)
-        ax_ts.scatter(dates, ts + offsets, color=color, marker='o', label=label, alpha=0.5, s=7)
+        dates, ts = self._extract_timeseries_data(file)
+        ax_ts.scatter(dates, ts + self.offset, color=color, marker='o', label=label, alpha=0.5, s=7)
+
+        self.offset = 0
 
         # Plot vertical lines
         ax_ts.axvline(self.start_date, color='#a8a8a8', linestyle='--', linewidth=0.2,alpha=0.5)
