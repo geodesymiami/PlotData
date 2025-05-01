@@ -32,6 +32,9 @@ example:
         plot_data.py MaunaLoaSenDT87/mintpy_5_20 --plot-type=velocity --period 20181001:20191031  --ref-lalo 19.50068 -155.55856 --resolution '01s' --seismicity 2
         plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type timeseries  --period 20181001:20191031 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2 --lalo 19.461,-155.558
 
+        Add events on timeseries plot:
+        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type timeseries  --period 20181001:20191031 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2 --lalo 19.461,-155.558 --add-event 20181201 --magnitude 5.0
+
         # FOR GIACOMO TO TEST
         plot_data.py ChilesSenAT120/mintpy ChilesSenDT142/mintpy --plot-type=horzvert --period=20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2 --section 0.793,-77.968:0.793,-77.9309
 
@@ -118,6 +121,13 @@ def create_parser():
 
     if inps.plot_type == 'ifgram':
         inps.style = 'ifgram'
+
+    if inps.add_event:
+        if not inps.magnitude:
+            inps.magnitude = [None] * len(inps.add_event)
+        elif len(inps.add_event) != len(inps.magnitude):
+            msg = 'Number of events and magnitudes do not match'
+            raise ValueError(msg)
 
 ##### Hardwired for Hawaii #####
     if 'GPSDIR' in os.environ:

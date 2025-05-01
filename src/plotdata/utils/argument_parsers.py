@@ -269,12 +269,17 @@ def add_seismicity_arguments(parser):
     Returns:
         argparse.ArgumentParser: The updated argument parser.
     """
-    seismicity = parser.add_argument_group('GPS options')
+    seismicity = parser.add_argument_group('Earthquakes options')
     seismicity.add_argument('--seismicity',
                             nargs='?',
                             type=int,
                             default=None,
                             help='Add seismicity to the plot with magnitude above specified value (default: %(default)s).'
+                            )
+    seismicity.add_argument('--magnitude',
+                            nargs='*',
+                            type=float,
+                            help='Minimum magnitude for the earthquake events in the timeeries'
                             )
 
     return parser
