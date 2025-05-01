@@ -6,6 +6,7 @@ from plotdata.objects.create_map import Mapper, Isolines, Relief
 from plotdata.objects.earthquakes import Earthquake
 from mintpy.utils import readfile
 from mintpy.objects.coord import coordinate
+from matplotlib.patheffects import withStroke
 from mintpy.objects import timeseries, HDFEOS
 from plotdata.helper_functions import draw_vectors, unpack_file, calculate_distance
 
@@ -366,9 +367,14 @@ class TimeseriesPlot:
         ax_ts.legend(fontsize='x-small')
 
     def _plot_event(self, inps):
-        for event in inps.add_event:
+        for event, magnitude in zip(inps.add_event, inps.magnitude):
             event = datetime.strptime(event, "%Y%m%d") if type(event) == str else event
-            self.ax.axvline(event, color='#900C3F', linestyle='--', linewidth=0.5, alpha=0.5)
+            self.ax.axvline(event, color='#900C3F', linestyle='--', linewidth=1, alpha=0.3)
+
+            # Add a number near the top of the line
+            if magnitude:
+                # self.ax.text(event, self.ax.get_ylim()[1], magnitude, color='#900C3F', fontsize=7, ha='center', va='bottom', alpha=0.5)
+                self.ax.text(event, self.ax.get_ylim()[1] * (magnitude/10), f"{magnitude}Mw", color='#900C3F', fontsize=7, alpha=1, ha='center',  path_effects=[withStroke(linewidth=0.5, foreground='black')])
 
 
 def point_on_globe(latitude, longitude, names=None, size='0.7'):
