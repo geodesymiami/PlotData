@@ -358,7 +358,7 @@ class TimeseriesPlot:
         self.offset = 0
 
         # Plot vertical lines
-        ax_ts.axvline(self.start_date, color='#a8a8a8', linestyle='--', linewidth=0.2,alpha=0.5)
+        ax_ts.axvline(self.start_date, color='#a8a8a8', linestyle='--', linewidth=0.2, alpha=0.5)
         ax_ts.axvline(self.end_date, color='#a8a8a8', linestyle='--', linewidth=0.2, alpha=0.5)
 
         # Fill area between the vertical lines with a rectangle
@@ -374,48 +374,8 @@ class TimeseriesPlot:
 
                 # Add a number near the top of the line
                 if magnitude:
-                    # self.ax.text(event, self.ax.get_ylim()[1], magnitude, color='#900C3F', fontsize=7, ha='center', va='bottom', alpha=0.5)
                     self.ax.text(event, self.ax.get_ylim()[1] * (magnitude/10), f"{magnitude}Mw", color='#900C3F', fontsize=7, alpha=1, ha='center',  path_effects=[withStroke(linewidth=0.5, foreground='black')])
 
-
-def point_on_globe(latitude, longitude, names=None, size='0.7'):
-    fig = pygmt.Figure()
-
-    # Set up orthographic projection centered on your point
-    fig.basemap(
-        region="d",  # Global domain
-        projection=f"G{np.mean(longitude)}/{np.mean(latitude)}/15c",  # Centered on your coordinates
-        frame="g"  # Show gridlines only
-    )
-
-    # Add continent borders with black lines
-    fig.coast(
-        # shorelines="1/1p,black",  # Continent borders
-        land="#f7f2f26b",  # Land color
-        water="#7cc0ff"  # Water color
-    )
-
-    # Plot your central point
-    fig.plot(
-        x=longitude,
-        y=latitude,
-        style=f"t{size}c",  # Triangle marker
-        fill="#ff7366",  # Marker color
-        # pen="1p,black"  # Outline pen
-    )
-
-        # Add names if provided
-    if names:
-        fig.text(
-            x=longitude,
-            y=latitude,
-            text=names,
-            font="10p,Helvetica-Bold,black",  # Font size, style, and color
-            justify="LM",  # Left-middle alignment
-            offset="0.2c/0.2c"  # Offset to avoid overlapping with markers
-        )
-
-    return fig
 
 if __name__ == '__main__':
     # Example usage
