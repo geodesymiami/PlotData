@@ -367,14 +367,15 @@ class TimeseriesPlot:
         ax_ts.legend(fontsize='x-small')
 
     def _plot_event(self, inps):
-        for event, magnitude in zip(inps.add_event, inps.magnitude):
-            event = datetime.strptime(event, "%Y%m%d") if type(event) == str else event
-            self.ax.axvline(event, color='#900C3F', linestyle='--', linewidth=1, alpha=0.3)
+        if inps.add_event:
+            for event, magnitude in zip(inps.add_event, inps.magnitude):
+                event = datetime.strptime(event, "%Y%m%d") if type(event) == str else event
+                self.ax.axvline(event, color='#900C3F', linestyle='--', linewidth=1, alpha=0.3)
 
-            # Add a number near the top of the line
-            if magnitude:
-                # self.ax.text(event, self.ax.get_ylim()[1], magnitude, color='#900C3F', fontsize=7, ha='center', va='bottom', alpha=0.5)
-                self.ax.text(event, self.ax.get_ylim()[1] * (magnitude/10), f"{magnitude}Mw", color='#900C3F', fontsize=7, alpha=1, ha='center',  path_effects=[withStroke(linewidth=0.5, foreground='black')])
+                # Add a number near the top of the line
+                if magnitude:
+                    # self.ax.text(event, self.ax.get_ylim()[1], magnitude, color='#900C3F', fontsize=7, ha='center', va='bottom', alpha=0.5)
+                    self.ax.text(event, self.ax.get_ylim()[1] * (magnitude/10), f"{magnitude}Mw", color='#900C3F', fontsize=7, alpha=1, ha='center',  path_effects=[withStroke(linewidth=0.5, foreground='black')])
 
 
 def point_on_globe(latitude, longitude, names=None, size='0.7'):
