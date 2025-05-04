@@ -97,6 +97,11 @@ class Mapper():
         data = self.displacement if movement == 'displacement' else self.velocity
         label = 'Displacement (m)' if movement == 'displacement' else 'Velocity (m/yr)'
 
+        if not vmin and not vmax:
+            lim = max(abs(np.nanmin(data)), abs(np.nanmax(data)))
+            vmin, vmax = -lim, lim
+            print(f"Setting vmin and vmax to {vmin} and {vmax}")
+
         if style == 'ifgram':
             label = 'Displacement (m)'
             data_phase = (2 * np.pi / float(self.metadata['WAVELENGTH'])) *  self.displacement #(self.displacement + float(self.metadata['HEIGHT']))
@@ -110,7 +115,6 @@ class Mapper():
 
         elif style == 'scatter':
             # Assuming self.velocity is a 2D numpy array
-            data = data
             nrows, ncols = data.shape
             x = np.linspace(self.region[0], self.region[1], ncols)
             y = np.linspace(self.region[2], self.region[3], nrows)
