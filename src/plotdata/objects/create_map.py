@@ -98,7 +98,7 @@ class Mapper():
         label = 'Displacement (m)' if movement == 'displacement' else 'Velocity (m/yr)'
 
         if not vmin and not vmax:
-            lim = max(abs(np.nanmin(data)), abs(np.nanmax(data)))
+            lim = max(abs(np.nanmin(data)), abs(np.nanmax(data))) * 1.2
             vmin, vmax = -lim, lim
 
         if style == 'ifgram':
