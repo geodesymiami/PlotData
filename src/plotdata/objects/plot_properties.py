@@ -45,8 +45,8 @@ class PlotGrid:
         for row in self.axes:
             for ax in row:
                 ax.set_box_aspect(0.5)
-                ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=3))
-                ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=3))
+                ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=4))
+                ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=4))
 
                 # Set the size of the tick labels
                 ax.tick_params(axis='x', labelsize=self.inps[0].font_size)

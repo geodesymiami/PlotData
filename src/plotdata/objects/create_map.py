@@ -100,7 +100,6 @@ class Mapper():
         if not vmin and not vmax:
             lim = max(abs(np.nanmin(data)), abs(np.nanmax(data)))
             vmin, vmax = -lim, lim
-            print(f"Setting vmin and vmax to {vmin} and {vmax}")
 
         if style == 'ifgram':
             label = 'Displacement (m)'
