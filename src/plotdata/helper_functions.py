@@ -234,7 +234,7 @@ def extract_window(vel_file, lat, lon, window_size=3):
 
 def find_longitude_degree(ref_lat, lat_step):
     # Find the longitude step in degrees that covers the same distance as the latitude step
-    return float(lat_step) / math.cos(math.radians(int(ref_lat)))
+    return round(float(lat_step) / math.cos(math.radians(float(ref_lat))), 5)
 
 
 def select_reference_point(out_mskd_file, window_size, ref_lalo):
