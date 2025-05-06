@@ -8,7 +8,7 @@ from mintpy.objects import HDFEOS
 from scipy.interpolate import interp1d
 import numpy as np
 from pathlib import Path
-from minsar.utils.extract_hdfeos5 import determine_coordinates, extract_geometry
+from minsar.utils.extract_hdfeos5 import determine_coordinates, extract_geometry, extract_mask
 
 
 def create_geometry_file(eos_file, out_folder):
@@ -17,6 +17,15 @@ def create_geometry_file(eos_file, out_folder):
     print(f'Creating geometry file in: {out_folder}\n')
     os.chdir(out_folder)
     extract_geometry(eos_file, determine_coordinates(eos_file))
+    os.chdir(workdir)
+
+
+def create_mask_file(eos_file, out_folder):
+    workdir = os.getcwd()
+
+    print(f'Creating mask file in: {out_folder}\n')
+    os.chdir(out_folder)
+    extract_mask(eos_file, determine_coordinates(eos_file))
     os.chdir(workdir)
 
 
@@ -69,7 +78,7 @@ def get_file_names(path):
 
     project_base_dir = os.path.join(scratch, project_base_dir)
     vel_file = os.path.join(eos_file.rsplit('/', 1)[0], velocity_file)
-    geometry_file = os.path.join(eos_file.rsplit('/', 1)[0], geometryRadar_file)
+    geometry_file = os.path.join(project_base_dir, track_dir, geometryRadar_file)
 
     inputs_folder = os.path.join(scratch, project_dir)
     out_vel_file = os.path.join(project_base_dir, track_dir, velocity_file.split(os.sep)[-1])
@@ -121,9 +130,12 @@ def find_nearest_start_end_date(fname, start_date, end_date):
     if start_date and end_date:
 
         if int(start_date) < int(dateList[0]):
-            raise Exception("USER ERROR: No date found earlier than ", start_date )
+            print(f"No date found earlier than {start_date}" )
+            mod_start_date = dateList[0]
+
         if int(end_date) > int(dateList[-1]):
-            raise Exception("USER ERROR:  No date found later than ", end_date )
+            print(f"No date found later than {end_date}" )
+            mod_end_date = dateList[-1]
 
         for date in reversed(dateList):
             if int(date) <= int(start_date):
@@ -190,6 +202,7 @@ def get_dem_extent(atr_dem):
 
 def extract_window(vel_file, lat, lon, window_size=3):
     data, metadata = readfile.read(vel_file)
+    # data = np.flipud(data)
 
     length = int(metadata['LENGTH'])
     width = int(metadata['WIDTH'])
@@ -197,8 +210,11 @@ def extract_window(vel_file, lat, lon, window_size=3):
     latitude, longitude = get_bounding_box(metadata)
 
     # Define the latitude and longitude edges
-    lat_edges = np.linspace(min(latitude), max(latitude), length)
+    lat_edges = np.linspace(max(latitude), min(latitude), length)
     lon_edges = np.linspace(min(longitude), max(longitude), width)
+
+    # lat_edges = np.round(lat_edges, 5)
+    # lon_edges = np.round(lon_edges, 5)
 
     # Check if the reference point is within the data coverage
     if lat < min(lat_edges) or lat > max(lat_edges) or lon < min(lon_edges) or lon > max(lon_edges):
@@ -209,8 +225,8 @@ def extract_window(vel_file, lat, lon, window_size=3):
         print(f"Window size is too large, reducing value for consistency to {window_size}\n")
 
     # Find the indices of the specified point
-    lat_idx = np.searchsorted(lat_edges, lat)
-    lon_idx = np.searchsorted(lon_edges, lon)
+    lat_idx = np.abs(lat_edges - (lat)).argmin()
+    lon_idx = np.abs(lon_edges - (lon)).argmin()
 
     # Extract the subarray
     lat_start = max(lat_idx - window_size, 0)
@@ -294,7 +310,7 @@ def select_reference_point(out_mskd_file, window_size, ref_lalo):
     print(f"Reference point selected: {ref_lalo[0]:.4f}, {ref_lalo[1]:.4f}")
     print('-' * 50)
 
-    return ref_lalo 
+    return ref_lalo
 
 
 def draw_box(central_lat, central_lon, distance_km = 20, distance_deg = None):

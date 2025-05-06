@@ -16,7 +16,7 @@ from plotdata.helper_functions import parse_polygon, get_bounding_box
 
 
 class Mapper():
-    def __init__(self, region=None, polygon=None, start_date=None, end_date=None,location_types: dict = {}, ax=None, file=None):
+    def __init__(self, region=None, polygon=None, start_date=None, end_date=None, location_types: dict = {}, ax=None, file=None):
         if not ax:
             # self.fig = plt.figure(figsize=(8, 8))
             # self.ax = self.fig.add_subplot(111)

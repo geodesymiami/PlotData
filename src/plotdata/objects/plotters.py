@@ -1,4 +1,4 @@
-import pygmt
+import os
 import numpy as np
 from datetime import datetime
 from plotdata.objects.section import Section
@@ -330,8 +330,13 @@ class TimeseriesPlot:
             print('Input data is complex, calculating amplitude.')
             data = np.abs(data)
 
+        if 'X_FIRST' not in atr:
+            geometry = self.ascending_geometry if 'SenA' in file else self.descending_geometry
+        else:
+            geometry = None
+
         # Convert geocoordinates to radar
-        coord = coordinate(atr)
+        coord = coordinate(atr, lookup_file=geometry)
         lalo = coord.geo2radar(lat=self.lalo[0], lon=self.lalo[1])
 
         # Reference data to a specific point if provided
