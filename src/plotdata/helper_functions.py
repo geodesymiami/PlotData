@@ -58,7 +58,7 @@ def get_file_names(path):
 
     metadata = readfile.read(eos_file)[1]
     velocity_file = 'geo/geo_velocity.h5'
-    geometryRadar_file = 'geo/geo_geometryRadar.h5'
+    geometryRadar_file = 'geo_geometryRadar.h5'
 
     # Check if geocoded
     if 'Y_STEP' not in metadata:
@@ -409,8 +409,8 @@ def get_bounding_box(metadata):
 
 
 def draw_vectors(elevation, vertical, horizontal, line):
-    v = interpolate(elevation, vertical)
-    h = interpolate(elevation, horizontal)
+    v = interpolate(elevation, vertical) if elevation.shape[0]>vertical.shape[0] else vertical[:len(elevation)]
+    h = interpolate(elevation, horizontal) if elevation.shape[0]>horizontal.shape[0] else horizontal[:len(elevation)]
 
     length = np.sqrt(v**2 + h**2)
 
