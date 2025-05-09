@@ -68,7 +68,7 @@ class ProcessData:
                 self.descending_geometry = files['geometry_file']
 
         masked_files = list(filter(lambda x: x is not None, [self.ascending, self.descending]))
-        geo_masked_files = [file for file in masked_files if file.startswith('geo_')]
+        geo_masked_files = [file for file in masked_files if os.path.basename(file).startswith('geo_')]
         geometry_files = list(filter(lambda x: x is not None, [self.ascending_geometry, self.descending_geometry]))
 
         for file, geometry in zip(masked_files, geometry_files):
@@ -115,7 +115,7 @@ class ProcessData:
                 return out_vel_file
             return vel_file
 
-        create_geometry_file(eos_file, os.path.dirname(files['out_vel_file']))
+        create_geometry_file(eos_file, os.path.dirname(files['geometry_file']))
         create_mask_file(eos_file, os.path.dirname(files['out_vel_file']))
 
         mask = glob.glob(os.path.join(os.path.dirname(files['out_vel_file']), '*mask.h5'))[0]
