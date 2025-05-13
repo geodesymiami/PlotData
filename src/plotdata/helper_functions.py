@@ -8,6 +8,7 @@ from mintpy.objects import HDFEOS
 from scipy.interpolate import interp1d
 import numpy as np
 from pathlib import Path
+from mintpy.utils import utils
 from minsar.utils.extract_hdfeos5 import determine_coordinates, extract_geometry, extract_mask
 
 
@@ -194,7 +195,6 @@ def get_data_type(file):
 
 def get_dem_extent(atr_dem):
     # get the extent which is required for plotting
-    # [-156.0, -154.99, 18.99, 20.00]
     dem_extent = [float(atr_dem['X_FIRST']), float(atr_dem['X_FIRST']) + int(atr_dem['WIDTH'])*float(atr_dem['X_STEP']),
         float(atr_dem['Y_FIRST']) + int(atr_dem['FILE_LENGTH'])*float(atr_dem['Y_STEP']), float(atr_dem['Y_FIRST'])]
     return(dem_extent)
@@ -202,37 +202,26 @@ def get_dem_extent(atr_dem):
 
 def extract_window(vel_file, lat, lon, window_size=3):
     data, metadata = readfile.read(vel_file)
-    # data = np.flipud(data)
+    coord = utils.coordinate(metadata=metadata)
 
     length = int(metadata['LENGTH'])
     width = int(metadata['WIDTH'])
-
-    latitude, longitude = get_bounding_box(metadata)
-
-    # Define the latitude and longitude edges
-    lat_edges = np.linspace(max(latitude), min(latitude), length)
-    lon_edges = np.linspace(min(longitude), max(longitude), width)
-
-    # lat_edges = np.round(lat_edges, 5)
-    # lon_edges = np.round(lon_edges, 5)
-
-    # Check if the reference point is within the data coverage
-    if lat < min(lat_edges) or lat > max(lat_edges) or lon < min(lon_edges) or lon > max(lon_edges):
-        raise ValueError('input reference point is OUT of data coverage on file: ' + vel_file)
 
     if window_size * 2 + 1 > round(length * 0.1) or window_size * 2 + 1 > round(width * 0.1):
         window_size = round(min(round(length * 0.1), round(width * 0.1))/2)
         print(f"Window size is too large, reducing value for consistency to {window_size}\n")
 
-    # Find the indices of the specified point
-    lat_idx = np.abs(lat_edges - (lat)).argmin()
-    lon_idx = np.abs(lon_edges - (lon)).argmin()
+    lat_idx, lon_idx = coord.geo2radar(lat,lon)[0:2]
+
+    # Check if the reference point is within the data coverage
+    # if lat_idx < min(length) or lat_idx > max(length) or lon_idx < min(width) or lon_idx > max(width):
+    #     raise ValueError('input reference point is OUT of data coverage on file: ' + vel_file)
 
     # Extract the subarray
     lat_start = max(lat_idx - window_size, 0)
-    lat_end = min(lat_idx + window_size + 1, len(lat_edges))
+    lat_end = min(lat_idx + window_size + 1, length)
     lon_start = max(lon_idx - window_size, 0)
-    lon_end = min(lon_idx + window_size + 1, len(lon_edges))
+    lon_end = min(lon_idx + window_size + 1, width)
 
     # Check if the window outfit the data coverage
     if lat_start<0 or lat_end>length:
@@ -242,8 +231,12 @@ def extract_window(vel_file, lat, lon, window_size=3):
         raise ValueError('Longitude range is too large for the data coverage on file: ' + vel_file)
 
     subarray = data[lat_start:lat_end, lon_start:lon_end]
-    sublat = lat_edges[lat_start:lat_end]
-    sublon = lon_edges[lon_start:lon_end]
+    sublat = []
+    sublon = []
+    for az, rg in zip(range(lat_start, lat_end + 1), range(lon_start, lon_end + 1)):
+        la, lo = coord.radar2geo(az, rg)[0:2]
+        sublat.append(la)
+        sublon.append(lo)
 
     return ~np.isnan(subarray) ,sublat, sublon
 
@@ -276,7 +269,7 @@ def select_reference_point(out_mskd_file, window_size, ref_lalo):
     subdata1, sublat1, sublon1 = extracted_data[0]  # First dataset
 
     if num_files == 2:
-        subdata2, _, _ = extracted_data[1]  # Second dataset
+        subdata2, sublat2, sublon2 = extracted_data[1]  # Second dataset
         paired = list(zip(subdata1, subdata2))
     else:
         paired = [(i, None) for i in subdata1]  # Only one dataset available
@@ -304,13 +297,15 @@ def select_reference_point(out_mskd_file, window_size, ref_lalo):
 
         if min_distance < shortest_distance:
             shortest_distance = min_distance
-            ref_lalo = [sublat1[ind], sublon1[indices[0][min_distance_index]]]
+            ref_lalo1 = [sublat1[ind], sublon1[indices[0][min_distance_index]]]
+
+    ref_lalo2 = [ref_lalo1[0] + (sublat1[0] - sublat2[0]) , ref_lalo1[1] + sublon1[0] - sublon2[0]] if num_files == 2 else None
 
     print('-' * 50)
-    print(f"Reference point selected: {ref_lalo[0]:.4f}, {ref_lalo[1]:.4f}")
+    print(f"Reference point selected: {ref_lalo1[0]:.4f}, {ref_lalo1[1]:.4f}")
     print('-' * 50)
 
-    return ref_lalo
+    return [ref_lalo1, ref_lalo2]
 
 
 def draw_box(central_lat, central_lon, distance_km = 20, distance_deg = None):
