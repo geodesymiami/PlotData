@@ -84,12 +84,11 @@ class ProcessData:
 
         if self.ref_lalo:
             self.ref_lalo = select_reference_point(geo_masked_files, self.window_size, self.ref_lalo)
-            for file in geo_masked_files:
-                self._apply_reference_point(file)
-            # map(self._apply_reference_point, geo_masked_files)
+            for file, ref_lalo in zip(geo_masked_files, self.ref_lalo):
+                self._apply_reference_point(file, ref_lalo)
+            self.ref_lalo = self.ref_lalo[0]
 
         # Assign directory and project name (assuming first dataset is representative)
-
         self.project = os.path.basename(self.directory) if self.directory else self.region
 
         # Second pass: Compute horizontal and vertical only if both asc & desc are available
@@ -172,8 +171,8 @@ class ProcessData:
             mask.main(cmd.split())
         return out_mskd_file
 
-    def _apply_reference_point(self, out_mskd_file):
-        cmd = f'{out_mskd_file} --lat {self.ref_lalo[0]} --lon {self.ref_lalo[1]}'
+    def _apply_reference_point(self, out_mskd_file, ref_lalo):
+        cmd = f'{out_mskd_file} --lat {ref_lalo[0]} --lon {ref_lalo[1]}'
         reference_point.main(cmd.split())
 
     def _convert_to_horz_vert(self, asc_file, desc_file, horz_name, vert_name):
