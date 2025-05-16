@@ -70,7 +70,7 @@ def create_parser():
     #         parser.error('USER ERROR: Section coordinates are required for deformation vectors')
 
     if len(inps.data_dir) > 2:
-        parser.error('USER ERROR: To many files provided.')
+        parser.error('USER ERROR: Too many files provided.')
 
     if inps.plot_box:
         inps.plot_box = [float(val) for val in inps.plot_box.replace(':', ',').split(',')]  # converts to plot_box=[19.3, 19.6, -155.8, -155.4]
@@ -163,7 +163,7 @@ def parse_section(section):
         latitude.append(float(coord.split(',')[0]))
         longitude.append(float(coord.split(',')[1]))
 
-    return [(min(longitude), max(longitude)), (min(latitude), max(latitude))]
+    return [(min(longitude), max(longitude)), (latitude[0], latitude[1])]
 
 
 def parse_polygon(polygon):
@@ -231,7 +231,7 @@ def main(iargs=None):
         for process in processors:
             process.process()
 
-        if inps.show_flag:
+        if inps.show_flag or inps.save:
             from plotdata.objects.plot_properties import PlotGrid
             from plotdata.objects.plotters import VelocityPlot, ShadedReliefPlot, VectorsPlot, TimeseriesPlot
             import matplotlib.pyplot as plt
@@ -293,12 +293,14 @@ def main(iargs=None):
                                     inps=process
                                 )
 
+
             if inps.save:
                 saving_path = os.path.join(inps.outdir, processors[0].project,processors[0].project + '_' + inps.plot_type + '_' + inps.start_date[0] + '_' + inps.end_date[-1]) + ".pdf"
                 print(f"Saving image in {saving_path}")
                 plt.savefig(saving_path, bbox_inches='tight', dpi=200)
 
-            plt.show()
+            if inps.show_flag:
+                plt.show()
 
 ############################################################
 

@@ -247,7 +247,7 @@ class VectorsPlot:
     def _plot_vectors(self):
         """Plots elevation profile and velocity vectors."""
         # Plot elevation profile
-        self.ax[2].plot(self.xrange, self.elevation_section.values, color='#a8a8a8')
+        self.ax[2].plot(self.xrange, self.elevation_section.values, color='#a8a8a8', alpha=0.5)
         self.ax[2].set_ylim([0, 2 * max(self.elevation_section.values)])
         self.ax[2].set_xlim([min(self.xrange), max(self.xrange)])
 

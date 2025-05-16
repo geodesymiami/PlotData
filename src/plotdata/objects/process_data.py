@@ -133,10 +133,15 @@ class ProcessData:
         vert_name = os.path.join(project_base_dir, f'up_{self.start_date}_{self.end_date}.h5')
 
         if not os.path.exists(horz_name) or not os.path.exists(vert_name):
-            if self.ref_lalo:
-                self.ref_lalo = select_reference_point([asc_file, desc_file], self.window_size, self.ref_lalo)
-                self._apply_reference_point(asc_file)
-                self._apply_reference_point(desc_file)
+            # self.ref_lalo = select_reference_point(geo_masked_files, self.window_size, self.ref_lalo)
+            # for file, ref_lalo in zip(geo_masked_files, self.ref_lalo):
+            #     self._apply_reference_point(file, ref_lalo)
+            # self.ref_lalo = self.ref_lalo[0]
+
+            # if self.ref_lalo:
+            #     self.ref_lalo = select_reference_point([asc_file, desc_file], self.window_size, self.ref_lalo)
+            #     self._apply_reference_point(asc_file)
+            #     self._apply_reference_point(desc_file)
 
             self._convert_to_horz_vert(asc_file, desc_file, horz_name, vert_name)
 
