@@ -297,7 +297,7 @@ def main(iargs=None):
             if inps.save:
                 saving_path = os.path.join(inps.outdir, processors[0].project,processors[0].project + '_' + inps.plot_type + '_' + inps.start_date[0] + '_' + inps.end_date[-1]) + ".pdf"
                 print(f"Saving image in {saving_path}")
-                plt.savefig(saving_path, bbox_inches='tight', dpi=200)
+                plt.savefig(saving_path, bbox_inches='tight', dpi=inps.dpi, transparent=True)
 
             if inps.show_flag:
                 plt.show()
