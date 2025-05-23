@@ -122,6 +122,10 @@ def add_plot_parameters_arguments(parser):
                         default='velocity',
                         choices=['velocity', 'displacement'],
                         help='Type of movement (default: %(default)s).')
+    plot_parameters.add_argument('--dpi',
+                        default=100,
+                        type=int,
+                        help='DPI of the plot (default: %(default)s).')
     return parser
 
 
