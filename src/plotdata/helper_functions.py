@@ -9,7 +9,8 @@ from scipy.interpolate import interp1d
 import numpy as np
 from pathlib import Path
 from mintpy.utils import utils
-from minsar.utils.extract_hdfeos5 import determine_coordinates, extract_geometry, extract_mask
+from mintpy.cli import generate_mask
+from minsar.utils.extract_hdfeos5 import determine_coordinates, extract_geometry, extract_mask, extract_temporalCoherence
 
 
 def create_geometry_file(eos_file, out_folder):
@@ -21,13 +22,22 @@ def create_geometry_file(eos_file, out_folder):
     os.chdir(workdir)
 
 
-def create_mask_file(eos_file, out_folder):
+def create_mask_file(eos_file, out_folder, mask_trehshold=0.55):
     workdir = os.getcwd()
-
+    # TODO change with extract_temporalCoherence
     print(f'Creating mask file in: {out_folder}\n')
     os.chdir(out_folder)
-    extract_mask(eos_file, determine_coordinates(eos_file))
+    temporal_coherence = extract_temporalCoherence(eos_file, determine_coordinates(eos_file))
+    mask_temporalCoherence = 'geo_maskTempCoh' if 'geo_' in temporal_coherence else 'maskTempCoh'
+
+    cmd = f'{temporal_coherence} -m {mask_trehshold} -o {mask_temporalCoherence}.h5'
+
+    print(f'Running --> generate_mask.py {cmd}\n')
+    generate_mask.main(cmd.split())
+
     os.chdir(workdir)
+
+    return os.path.join(out_folder, mask_temporalCoherence + '.h5')
 
 
 def get_file_names(path):
@@ -404,10 +414,9 @@ def get_bounding_box(metadata):
 
 
 def draw_vectors(elevation, vertical, horizontal, line):
-    v = interpolate(elevation, vertical) if elevation.shape[0]>vertical.shape[0] else vertical[:len(elevation)]
-    h = interpolate(elevation, horizontal) if elevation.shape[0]>horizontal.shape[0] else horizontal[:len(elevation)]
-
-    length = np.sqrt(v**2 + h**2)
+    v = interpolate(elevation, vertical) if elevation.shape[0]>vertical.shape[0] else vertical
+    h = interpolate(elevation, horizontal) if elevation.shape[0]>horizontal.shape[0] else horizontal
+    z = interpolate(vertical, elevation) if elevation.shape[0]<vertical.shape[0] else elevation
 
     #Normalization
     nv = [1 if val > 0 else -1 if val < 0 else 0 for val in v]
@@ -425,9 +434,9 @@ def draw_vectors(elevation, vertical, horizontal, line):
     v = nv * tv
     h = nh * th
 
-    x_coords = np.linspace(0, calculate_distance(line[0][0], line[1][0], line[0][1], line[1][1])*1000, len(elevation))
+    x_coords = np.linspace(0, calculate_distance(line[0][0], line[1][0], line[0][1], line[1][1])*1000, len(z))
 
-    return x_coords, v, h
+    return x_coords, v, h, z
 
 
 def interpolate(x, y):

@@ -115,11 +115,8 @@ class ProcessData:
             return vel_file
 
         create_geometry_file(eos_file, os.path.dirname(files['geometry_file']))
-        create_mask_file(eos_file, os.path.dirname(files['out_vel_file']))
+        mask = create_mask_file(eos_file, os.path.dirname(files['out_vel_file']), self.mask_vmin)
 
-        mask = glob.glob(os.path.join(os.path.dirname(files['out_vel_file']), '*mask.h5'))[0]
-
-        # self._save_gdal(eos_file, temp_coh_file)
         start_date, end_date = find_nearest_start_end_date(eos_file, self.start_date, self.end_date)
         self._convert_timeseries_to_velocity(eos_file, start_date, end_date, out_vel_file)
 
@@ -171,9 +168,9 @@ class ProcessData:
 
     def _apply_mask(self, out_vel_file, temp_coh_file):
         out_mskd_file = out_vel_file.replace('.h5', '_msk.h5')
-        if not os.path.exists(out_mskd_file):
-            cmd = f'{out_vel_file} --mask {temp_coh_file} --mask-vmin {self.mask_vmin} --outfile {out_mskd_file}'
-            mask.main(cmd.split())
+
+        cmd = f'{out_vel_file} --mask {temp_coh_file} --mask-vmin {self.mask_vmin} --outfile {out_mskd_file}'
+        mask.main(cmd.split())
         return out_mskd_file
 
     def _apply_reference_point(self, out_mskd_file, ref_lalo):
