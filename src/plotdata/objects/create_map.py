@@ -26,6 +26,7 @@ class Mapper():
             self.fig = ax.get_figure()
 
         if region:
+            region = [lon + 360 if i < 2 and lon < 0 else lon for i, lon in enumerate(region)]
             self.region = region
             self.start_date = datetime.strptime(start_date, '%Y%m%d') if isinstance(end_date, str) else start_date
             self.end_date = datetime.strptime(end_date, '%Y%m%d') if isinstance(end_date, str) else end_date
@@ -157,7 +158,12 @@ class Isolines:
             lines[:] = grid_np
 
             # Plot the data
-            cont = self.map.ax.contour(lines, levels=self.levels, colors=self.color, extent=self.map.region, linewidths=self.linewidth, zorder=self.zorder)
+            lon = lines.coords["lon"].values
+            lat = lines.coords["lat"].values
+            z = lines.values
+
+            cont = self.map.ax.contour(lon, lat, z, levels=self.levels, colors=self.color,
+                                    linewidths=self.linewidth, zorder=self.zorder)
 
             if inline:
                 self.map.ax.clabel(cont, inline=inline, fontsize=8)
@@ -186,7 +192,7 @@ class Relief:
             self.interpolate_relief(self.resolution)
 
         # Set all negative values to 0
-        self.elevation = np.where(self.elevation >= 0, self.elevation, 0)
+        self.elevation = self.elevation.where(self.elevation >= 0, 0)
 
         if hasattr(map, 'ax'):
             if not no_shade:
@@ -210,8 +216,22 @@ class Relief:
     def shade_elevation(self, vert_exag=1.5, zorder=None):
         # Create hillshade
         print("Shading the elevation data...\n")
-        ls = LightSource(azdeg=315, altdeg=45)
-        hillshade = ls.hillshade(self.elevation, vert_exag=vert_exag, dx=1, dy=1)
 
-        # Plot the elevation data with hillshading
-        self.im = self.map.ax.imshow(hillshade, cmap='gray', extent=self.map.region, origin='lower', alpha=0.5, zorder=zorder, aspect='auto')
+        # Get the coordinates and data
+        elev = self.elevation.values.astype(float)
+        lon = self.elevation.coords["lon"].values
+        lat = self.elevation.coords["lat"].values
+
+        # Compute spacing for hillshade
+        dlon = lon[1] - lon[0]
+        dlat = lat[1] - lat[0]
+
+        # Compute hillshade with real spacing
+        ls = LightSource(azdeg=315, altdeg=45)
+        hillshade = ls.hillshade(elev, vert_exag=vert_exag, dx=dlon, dy=dlat)
+
+        # Create meshgrid of lon/lat edges for pcolormesh
+        lon2d, lat2d = np.meshgrid(lon, lat)
+
+        # Use pcolormesh to plot hillshade using real coordinates
+        self.im = self.map.ax.pcolormesh(lon2d,lat2d,hillshade,cmap='gray',shading='auto',zorder=zorder,alpha=0.5,)
