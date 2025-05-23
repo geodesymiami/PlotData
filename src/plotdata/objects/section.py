@@ -11,8 +11,8 @@ class Section():
 
         lat_indices, lon_indices = self.draw_line(self.data, self.region, latitude, longitude)
 
-        # TODO test if data needs to be flipped (apparantly needs to be flipped)
-        if True:
+        # TODO test if data needs to be flipped (Elevation does not need to be flipped, but velocity does)
+        if False:
             data = np.flipud(data)
 
         # Extract the values data along the snapped path
