@@ -161,13 +161,11 @@ class Earthquake():
 
 if __name__ == "__main__":
     from plotdata.helper_functions import parse_polygon
-    region = parse_polygon("POLYGON((-78.0068 0.7843,-77.8049 0.7843,-77.8049 1.0059,-78.0068 1.0059,-78.0068 0.7843))")
+    region = parse_polygon("POLYGON((130.3264 31.3226,130.9765 31.3226,130.9765 31.8198,130.3264 31.8198,130.3264 31.3226))")
     print(region)
-    volcano = "Kilauea"
+    volcano = "Aira"
     start = "20170101"
-    end = "20221201"
-    dis = 50
+    end = "20171010"
+    dis = 20
     eq1 = Earthquake(volcano=volcano, start_date=start, end_date=end, distance_km=dis, magnitude=4)
-    eq = Earthquake(region=region, start_date=start, end_date=end, distance_km=dis, magnitude=4)
-    eq.plot()
     eq1.plot()

@@ -43,12 +43,32 @@ def create_parser(iargs=None, namespace=None):
     parser.add_argument('id',
                         nargs='*',
                         type=str,
-                        help='Select the id of the vlocanoes you want to plot, e.g. 1234, 5678')
+                        help='Select the id of the vlocanoes you want to plot, e.g. 284305 355040')
+    parser.add_argument('--lalo',
+                        default=None,
+                        type=str,
+                        metavar='LAT1:LON1,LAT2:LON2',
+                        help='Select the latitude and longitude of the volcanoes you want to plot, e.g. 37.75:-122.25')
     parser.add_argument('--name',
                         action='store_true',
                         help='Show names of volcanoes on the map')
+    parser.add_argument('--size',
+                        default=0.7,
+                        type=float,
+                        help='Size of the volcanoes on the map')
 
     inps = parser.parse_args(iargs, namespace)
+
+    inps.coords = []
+
+    if inps.lalo:
+        for coords in inps.lalo.split(','):
+            try:
+                inps.coords.append(list(map(float, coords.split(':'))))
+                print(inps.coords)
+            except ValueError:
+                print(f"Invalid format for --lalo: {coords}. Use 'lat:lon' format.")
+                exit(1)
 
 
     return inps
@@ -64,18 +84,24 @@ def main(iargs=None, namespace=None):
     """
     inps = create_parser(iargs, namespace)
 
-    volcanoes = [get_volcano_coord_name(None, id_) for id_ in inps.id]
+    coords = []
 
-    coords = [v[0] for v in volcanoes]
-    names = [v[1] for v in volcanoes]
+    if inps.id:
+        volcanoes = [get_volcano_coord_name(None, id_) for id_ in inps.id]
+        coords = [v[0] for v in volcanoes]
+        names = [v[1] for v in volcanoes]
 
-    latitudes = [v[0] for v in coords]
-    longitudes = [v[1] for v in coords]
+        latitudes = [v[0] for v in coords]
+        longitudes = [v[1] for v in coords]
+
+    if inps.coords:
+        latitudes = [coord[0] for coord in inps.coords]
+        longitudes = [coord[1] for coord in inps.coords]
 
     if not inps.name:
         names = None
 
-    fig = point_on_globe(latitudes, longitudes, names=names)
+    fig = point_on_globe(latitudes, longitudes, names=names, size=inps.size)
     fig.show()
 
 
