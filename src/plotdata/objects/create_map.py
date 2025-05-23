@@ -108,7 +108,7 @@ class Mapper():
             self.imdata = self.ax.imshow(data_wrapped, cmap=cmap, extent=self.region, origin='upper', interpolation='none',zorder=self.zorder, vmin=0, vmax=2 * np.pi)
 
         if style == 'pixel':
-            self.imdata = self.ax.imshow(data, cmap=cmap, extent=self.region, origin='upper', interpolation='none', zorder=self.zorder, vmin=vmin, vmax=vmax)
+            self.imdata = self.ax.imshow(data, cmap=cmap, extent=self.region, origin='upper', interpolation='none', zorder=self.zorder, vmin=vmin, vmax=vmax, rasterized=True)
             # TODO this might cause issues, to test more
             self.ax.set_aspect('auto')
 
@@ -122,7 +122,7 @@ class Mapper():
             Y = np.flip(Y.flatten())
             C = data.flatten()
 
-            self.imdata = self.ax.scatter(X, Y, c=C, cmap=cmap, marker='o', zorder=self.zorder, s=2, vmin=vmin, vmax=vmax)
+            self.imdata = self.ax.scatter(X, Y, c=C, cmap=cmap, marker='o', zorder=self.zorder, s=2, vmin=vmin, vmax=vmax, rasterized=True)
 
         cbar = self.ax.figure.colorbar(self.imdata, ax=self.ax, orientation='horizontal', aspect=13)
         cbar.set_label(label)
@@ -193,7 +193,7 @@ class Relief:
                 self.im = self.shade_elevation(zorder=self.zorder)
             else:
                 print('here')
-                self.im = self.map.ax.imshow(self.elevation.values, cmap=self.cmap, extent=self.map.region, origin='lower', zorder=self.zorder)
+                self.im = self.map.ax.imshow(self.elevation.values, cmap=self.cmap, extent=self.map.region, origin='lower', zorder=self.zorder, rasterized=True)
 
 
     def interpolate_relief(self, resolution):
