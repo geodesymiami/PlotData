@@ -1,4 +1,4 @@
-import os
+import pygmt
 import numpy as np
 from datetime import datetime
 from plotdata.objects.section import Section
@@ -113,7 +113,7 @@ class VelocityPlot:
 class VectorsPlot:
     """Handles the plotting of velocity maps, elevation profiles, and vector fields."""
     def __init__(self, ax, asc_file, desc_file, horz_file, vert_file, inps):
-        self.ax = ax  # Expecting an array of axes
+        self.ax = ax
         self.asc_file = asc_file
         self.desc_file = desc_file
         self.horz_file = horz_file
@@ -171,7 +171,7 @@ class VectorsPlot:
             Earthquake(map=vel_map, magnitude=self.seismicity).map()
 
         if self.ref_lalo:
-            self.plot_point([self.ref_lalo[0]], [self.ref_lalo[1]], ax, marker='s')
+            vel_map.plot_point([self.ref_lalo[0]], [self.ref_lalo[1]], marker='s')
 
         return vel_map
 
@@ -192,13 +192,13 @@ class VectorsPlot:
             self.inps.line = self._set_default_section()
 
         self.horizontal_section = Section(
-            self.horizontal_data.velocity, self.horizontal_data.region, self.inps.line[1], self.inps.line[0]
+            np.flipud(self.horizontal_data.velocity), self.horizontal_data.region, self.inps.line[1], self.inps.line[0]
         )
         self.vertical_section = Section(
-            self.vertical_data.velocity, self.vertical_data.region, self.inps.line[1], self.inps.line[0]
+            np.flipud(self.vertical_data.velocity), self.vertical_data.region, self.inps.line[1], self.inps.line[0]
         )
         self.elevation_section = Section(
-            self.elevation_data.elevation, self.elevation_data.map.region, self.inps.line[1], self.inps.line[0]
+            self.elevation_data.elevation.values, self.elevation_data.map.region, self.inps.line[1], self.inps.line[0]
         )
 
     def _set_default_section(self):
@@ -214,13 +214,13 @@ class VectorsPlot:
 
     def _compute_vectors(self):
         """Computes velocity vectors and scaling factors."""
-        self.x, self.v, self.h = draw_vectors(
+        self.x, self.v, self.h, self.z = draw_vectors(
             self.elevation_section.values, self.vertical_section.values, self.horizontal_section.values, self.inps.line
         )
 
         fig = self.ax[0].get_figure()
         fig_width, fig_height = fig.get_size_inches()
-        max_elevation = max(self.elevation_section.values)
+        max_elevation = max(self.z)
         max_x = max(self.x)
 
         self.v_adj = 2 * max_elevation / max_x
@@ -242,13 +242,13 @@ class VectorsPlot:
         self.filtered_x = self.xrange[non_zero_indices]
         self.filtered_h = self.h[non_zero_indices]
         self.filtered_v = self.v[non_zero_indices]
-        self.filtered_elevation = self.elevation_section.values[non_zero_indices]
+        self.filtered_elevation = self.z[non_zero_indices]
 
     def _plot_vectors(self):
         """Plots elevation profile and velocity vectors."""
         # Plot elevation profile
-        self.ax[2].plot(self.xrange, self.elevation_section.values, color='#a8a8a8', alpha=0.5)
-        self.ax[2].set_ylim([0, 2 * max(self.elevation_section.values)])
+        self.ax[2].plot(self.xrange, self.z, color='#a8a8a8', alpha=0.5)
+        self.ax[2].set_ylim([0, 2 * max(self.z)])
         self.ax[2].set_xlim([min(self.xrange), max(self.xrange)])
 
         # Plot velocity vectors
@@ -272,8 +272,8 @@ class VectorsPlot:
 
         # Mean velocity vector
         start_x = max(self.xrange) * 0.1
-        start_y = (2 * max(self.elevation_section.values) * 0.8)
-        mean_velocity = abs(np.mean(self.filtered_h))
+        start_y = (2 * max(self.z) * 0.8)
+        mean_velocity = np.sqrt(np.mean((self.vertical_section.values))**2 + np.mean((self.horizontal_section.values))**2)
 
         self.ax[2].quiver([start_x], [start_y], [mean_velocity], [0], color='#ff7366', scale_units='xy', width=(1 / 10**(2.5)))
         # self.ax[2].quiver([start_x], [start_y], [0], [abs(np.mean(self.filtered_v))], color='#ff7366', scale_units='xy', width=(1 / 10**(2.5)))
@@ -379,7 +379,7 @@ class TimeseriesPlot:
 
                 # Add a number near the top of the line
                 if magnitude:
-                    self.ax.text(event, self.ax.get_ylim()[1] * (magnitude/10), f"{magnitude}Mw", color='#900C3F', fontsize=7, alpha=1, ha='center',  path_effects=[withStroke(linewidth=0.5, foreground='black')])
+                    self.ax.text(event, self.ax.get_ylim()[1] * (magnitude/10), f"{magnitude}", color='#900C3F', fontsize=7, alpha=1, ha='center',  path_effects=[withStroke(linewidth=0.5, foreground='black')])
 
 
 def point_on_globe(latitude, longitude, names=None, size='0.7'):
@@ -408,7 +408,7 @@ def point_on_globe(latitude, longitude, names=None, size='0.7'):
         # pen="1p,black"  # Outline pen
     )
 
-        # Add names if provided
+    # Add names if provided
     if names:
         fig.text(
             x=longitude,
