@@ -96,6 +96,10 @@ def add_plot_parameters_arguments(parser):
         argparse.ArgumentParser: The argument parser object with added plot parameters arguments.
     """
     plot_parameters = parser.add_argument_group('Plot parameters')
+    parser.add_argument('--template',
+                        default='default',
+                        type=str,
+                        help='Template for the plot (default: %(default)s).')
     plot_parameters.add_argument('--add-event',
                         nargs='*',
                         metavar=('YYYYMMDD, YYYY-MM-DD'),
@@ -212,9 +216,9 @@ def add_save_arguments(parser):
     """
     save = parser.add_argument_group('Save options')
     save.add_argument('--save',
-                      action='store_true',
-                      default=False,
-                      help=f'Save the plots (default path: {os.getenv("SCRATCHDIR")}).')
+                      choices=['png', 'pdf'],
+                      default=None,
+                      help=f'Save the plots (default path: {os.getenv("SCRATCHDIR")}). as PNG or PDF')
     save.add_argument('--outdir',
                       type=str,
                       default=os.getenv("SCRATCHDIR"),

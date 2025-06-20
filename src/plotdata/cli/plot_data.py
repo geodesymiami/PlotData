@@ -8,7 +8,7 @@ import os
 import re
 import sys
 
-# The asgeo import breaks when called by readfile.py unless I do the following
+# !!! The asgeo import breaks when called by readfile.py unless I do the following !!!
 from osgeo import gdal, osr
 
 import argparse
@@ -65,9 +65,6 @@ def create_parser():
 
     inps = parser.parse_args()
 
-    # if inps.plot_type == 'vectors':
-    #     if not inps.line:
-    #         parser.error('USER ERROR: Section coordinates are required for deformation vectors')
 
     if len(inps.data_dir) > 2:
         parser.error('USER ERROR: Too many files provided.')
@@ -221,7 +218,7 @@ def main(iargs=None):
 
     inps = create_parser()
 
-    if True:
+    if False:
         from plotdata.objects.process_data import ProcessData
 
         processors = []
@@ -301,6 +298,72 @@ def main(iargs=None):
 
             if inps.show_flag:
                 plt.show()
+
+    from plotdata.objects.process_data import ProcessData
+    from plotdata.objects.plot_properties import PlotGrid, PlotTemplate, PlotRenderer
+    from plotdata.objects.plotters import VelocityPlot, ShadedReliefPlot, VectorsPlot, TimeseriesPlot
+    from plotdata.objects.earthquakes import Earthquake
+    import matplotlib.pyplot as plt
+
+    ###### TEST ######
+    # inps.template = "test"  # Use a test template for demonstration
+    ##################
+
+    # 2. Build template object
+    template = PlotTemplate(inps.template)
+
+    # 3. Instantiate plotters with shared data
+    plotter_map = {
+        "ascending.velocity": {"class": VelocityPlot, "attributes": ["ascending"]},
+        "descending.velocity": {"class": VelocityPlot, "attributes": ["descending"]},
+        "horzvert": {"class": VelocityPlot, "attributes": ["horizontal", "vertical"]},
+        "horizontal.velocity": {"class": VelocityPlot, "attributes": ["horizontal"]},
+        "vertical.velocity": {"class": VelocityPlot, "attributes": ["vertical"]},
+        "ascending.timeseries": {"class": VelocityPlot, "attributes": ["ascending"]},
+        "descending.timeseries": {"class": VelocityPlot, "attributes": ["descending"]},
+        "timeseries": {"class": TimeseriesPlot, "attributes": ["eos_file_ascending", "eos_file_descending"]},
+        "ascending.vectors": {"class": VelocityPlot, "attributes": ["ascending"]},
+        "descending.vectors": {"class": VelocityPlot, "attributes": ["descending"]},
+        "vectors": {"class": VectorsPlot, "attributes": ["horizontal", "vertical"]},
+        "seismicity.map": {"class": ShadedReliefPlot, "attributes": ["ascending", "descending"]},
+        "seismicity.magnitude.date": {"class": Earthquake, "attributes": ["ascending", "descending"]},
+        "seismicity.magnitude.distance": {"class": Earthquake, "attributes": ["ascending", "descending"]},
+    }
+
+    figures = []
+    processors = []
+
+    for start_date, end_date in zip(inps.start_date, inps.end_date):
+        process = ProcessData(inps, template.layout, start_date, end_date)
+        processors.append(process)
+        process.process()
+
+        # 6. Use PlotRenderer to populate the axes
+        renderer = PlotRenderer(process, template, plotter_map)
+        fig = renderer.render(process)
+
+        figures.append(fig)
+
+    # 7. Save or show
+    if inps.save == 'pdf':
+        from matplotlib.backends.backend_pdf import PdfPages
+        saving_path = os.path.join(inps.outdir,processors[0].project,f"{processors[0].project}_{inps.plot_type}_{inps.start_date[0]}_{inps.end_date[-1]}.pdf")
+
+        with PdfPages(saving_path) as pdf:
+            for fig in figures:
+                pdf.savefig(fig, bbox_inches='tight', dpi=inps.dpi, transparent=True)
+                plt.close(fig)
+
+    elif inps.save == 'png':
+        # Save each figure as a PNG file
+        for start_date, end_date in zip(inps.start_date, inps.end_date):
+            png_path = os.path.join(inps.outdir,processors[0].project,f"{processors[0].project}_{inps.plot_type}_{inps.start_date}_{inps.end_date}.png")
+            fig.savefig(png_path, bbox_inches='tight', dpi=inps.dpi, transparent=True)
+            plt.close(fig)
+
+    if inps.show_flag:
+        plt.show()
+
 
 ############################################################
 

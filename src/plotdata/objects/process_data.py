@@ -1,8 +1,7 @@
 import os
-import glob
 from mintpy.utils import readfile
 from mintpy.cli import (
-    reference_point, asc_desc2horz_vert, save_gdal, mask, geocode, timeseries2velocity as ts2v
+    reference_point, asc_desc2horz_vert, mask, geocode, timeseries2velocity as ts2v
 )
 from plotdata.helper_functions import (
     get_file_names, prepend_scratchdir_if_needed, find_nearest_start_end_date,
@@ -12,7 +11,7 @@ from plotdata.helper_functions import (
 
 
 class ProcessData:
-    def __init__(self, inps, start_date=None, end_date=None):
+    def __init__(self, inps, layout, start_date=None, end_date=None):
         for attr in dir(inps):
             if not attr.startswith('__') and not callable(getattr(inps, attr)):
                 setattr(self, attr, getattr(inps, attr))
@@ -30,6 +29,7 @@ class ProcessData:
         self.velocity_file = None
         self.directory = None
         self.project = None
+        self.layout = layout
 
         # Extract file names once for all cases
         self._extract_file_names()
@@ -92,7 +92,8 @@ class ProcessData:
         self.project = os.path.basename(self.directory) if self.directory else self.region
 
         # Second pass: Compute horizontal and vertical only if both asc & desc are available
-        if self.plot_type in ['horzvert', 'vectors'] and self.ascending and self.descending:
+        # TODO Probably have to remove the condition
+        if any('vectors' in l for l in self.layout) and self.ascending and self.descending:
             self.horizontal, self.vertical = self._process_vectors(self.ascending, self.descending, self.directory)
 
         if not self.file_info:

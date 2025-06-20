@@ -17,11 +17,7 @@ from plotdata.helper_functions import parse_polygon, get_bounding_box
 
 class Mapper():
     def __init__(self, region=None, polygon=None, start_date=None, end_date=None, location_types: dict = {}, ax=None, file=None):
-        if not ax:
-            # self.fig = plt.figure(figsize=(8, 8))
-            # self.ax = self.fig.add_subplot(111)
-            pass
-        else:
+        if ax:
             self.ax = ax
             self.fig = ax.get_figure()
 
@@ -41,7 +37,6 @@ class Mapper():
         elif polygon:
             self.region = parse_polygon(polygon)
 
-        # TODO sure about zero? is it the correct?
         self.zorder = 0
         self.location_types = location_types
 
