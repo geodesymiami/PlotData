@@ -54,7 +54,7 @@ class ShadedReliefPlot:
 
         # Add earthquake markers if enabled
         if self.seismicity:
-            Earthquake(map=rel_map, magnitude=self.seismicity).map()
+            Earthquake(map=rel_map, magnitude=self.seismicity).map(self.ax)
 
 
 class VelocityPlot:
@@ -92,7 +92,7 @@ class VelocityPlot:
 
         # Add earthquake markers if enabled
         if self.seismicity:
-            Earthquake(map=vel_map, magnitude=self.seismicity).map()
+            Earthquake(map=vel_map, magnitude=self.seismicity).map(ax=self.ax)
 
         if 'ascending' in self.ax.get_label():
             label = "ASCENDING"
@@ -203,7 +203,7 @@ class VectorsPlot:
 
         # Add earthquake markers if enabled
         if self.seismicity:
-            Earthquake(map=vel_map, magnitude=self.seismicity).map()
+            Earthquake(map=vel_map, magnitude=self.seismicity).map(self.ax)
 
         if self.ref_lalo:
             vel_map.plot_point([self.ref_lalo[0]], [self.ref_lalo[1]], marker='s')

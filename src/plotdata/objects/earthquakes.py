@@ -14,13 +14,20 @@ from plotdata.objects.get_methods import DataFetcherFactory
 
 class Earthquake():
     def __init__(self, file = None, inps=None, start_date=None, end_date = None, distance_km = 20, distance_deg = None, magnitude = 1, id=None, volcano: str = None, region: list = None, map: Mapper = None):
+        for attr in dir(inps):
+            if not attr.startswith('__') and not callable(getattr(inps, attr)):
+                setattr(self, attr, getattr(inps, attr))
         # Constants
         self.API_ENDPOINT = "https://earthquake.usgs.gov/fdsnws/event/1/query.geojson"
         self.PARAMS = {
             "eventtype": "earthquake",
             "orderby": "time",
         }
-        self.magnitude = magnitude
+
+        if inps:
+            self.magnitude = inps.seismicity if inps.seismicity else magnitude
+        else:
+            self.magnitude = magnitude
 
         if volcano or id:
             self.define_info(start_date, end_date, distance_km, distance_deg, volcano, id)
@@ -43,7 +50,7 @@ class Earthquake():
         self.get_earthquake_data(website="usgs")
 
 
-    def map(self):
+    def map(self, ax):
         if not self.earthquakes['date']:
             print("No earthquake data available.")
             return
@@ -52,7 +59,7 @@ class Earthquake():
         norm = plt.Normalize(vmin=min(self.earthquakes['magnitude']), vmax=max(self.earthquakes['magnitude']))
 
         for lalo, magnitude, date in zip(self.earthquakes['lalo'], self.earthquakes['magnitude'], self.earthquakes['date']):
-            self.ax.scatter(
+            ax.scatter(
                 lalo[1], lalo[0], 
                 s=10**(magnitude*0.5),  # Size based on magnitude
                 c=cmap(norm(magnitude)),  # Color based on magnitude
@@ -127,7 +134,6 @@ class Earthquake():
             self.plot_by_distance(ax)
         else:
             self.plot_by_date(ax)
-            self.plot_by_distance(ax)
 
 
     def plot_by_date(self, ax):
@@ -147,12 +153,13 @@ class Earthquake():
         # Plot EQs
         dist = []
         for i in range(len(self.earthquakes['date'])):
+            if not hasattr(self, 'coordinates') or not self.coordinates:
+                self.coordinates = self.lalo if hasattr(self, 'lalo') else [(self.region[0]+self.region[1])/2, (self.region[2]+self.region[3])/2]
             dist.append(calculate_distance(self.earthquakes['lalo'][i][0], self.earthquakes['lalo'][i][1], self.coordinates[0], self.coordinates[1]))
             ax.plot([dist[i], dist[i]], [self.earthquakes['magnitude'][i], 0], 'k-')
 
         if not dist:
             dist = [0, 10]
-            print(self.region)
             dist1 = (self.region[0]-self.region[1])/2 * 111.32 * math.cos(math.radians(float(self.region[-1])))
             dist2 = (self.region[2]-self.region[3])/2 * 111.32
             dist = [0, (dist1**2 + dist2**2)**0.5]
