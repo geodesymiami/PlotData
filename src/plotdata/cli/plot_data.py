@@ -303,8 +303,8 @@ def main(iargs=None):
     plotter_map = {
         "ascending": {"class": VelocityPlot, "attributes": ["ascending"]},
         "descending": {"class": VelocityPlot, "attributes": ["ascending"]},
-        "horizontal": {"class": VelocityPlot, "attributes": ["ascending"]},
-        "vertical": {"class": VelocityPlot, "attributes": ["descending"]},
+        "horizontal": {"class": VelocityPlot, "attributes": ["horizontal"]},
+        "vertical": {"class": VelocityPlot, "attributes": ["vertical"]},
         "timeseries": {"class": TimeseriesPlot, "attributes": ["eos_file_ascending", "eos_file_descending"]},
         "vectors": {"class": VectorsPlot, "attributes": ["horizontal", "vertical"]},
         "seismicmap": {"class": ShadedReliefPlot, "attributes": ["ascending", "descending"]},

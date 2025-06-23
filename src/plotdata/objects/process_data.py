@@ -93,7 +93,7 @@ class ProcessData:
 
         # Second pass: Compute horizontal and vertical only if both asc & desc are available
         # TODO Probably have to remove the condition
-        if any('section' in l for l in self.layout) and self.ascending and self.descending:
+        if any(('horizontal' in l or 'vertical' in l or 'vectors' in l) for l in self.layout) and self.ascending and self.descending:
             self.horizontal, self.vertical = self._process_vectors(self.ascending, self.descending, self.directory)
 
         if not self.file_info:

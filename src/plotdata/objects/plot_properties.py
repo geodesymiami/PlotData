@@ -63,13 +63,14 @@ class PlotRenderer:
         plotters = {}
 
         for row in self.template.layout:
-            for name, configs in self.plotter_map.items():
-                if row[0].split('.')[0] in name:
-                    cls = configs["class"]
-                    files = [getattr(process_data, attr) for attr in configs["attributes"]]
+            for element in row:
+                for name, configs in self.plotter_map.items():
+                    if element.split('.')[0] in name:
+                        cls = configs["class"]
+                        files = [getattr(process_data, attr) for attr in configs["attributes"]]
 
-                    plotter_instance = cls(files, self.inps)
-                    plotters[row[0]] = plotter_instance
+                        plotter_instance = cls(files, self.inps)
+                        plotters[element] = plotter_instance
 
         return plotters
 
