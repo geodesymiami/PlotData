@@ -113,10 +113,10 @@ class VelocityPlot:
                 bbox=dict(facecolor='gray', edgecolor='none', alpha=0.6, boxstyle='round,pad=0.3')
             )
 
-        if self.lalo and 'timeseries' in self.ax.get_label():
+        if self.lalo and 'point' in self.ax.get_label():
             vel_map.plot_point([self.lalo[0]], [self.lalo[1]], marker='x')
 
-        if 'vectors' in self.ax.get_label():
+        if 'section' in self.ax.get_label():
             if not self.line:
                 self.line = self._set_default_section()
             self.ax.plot(self.line[0], self.line[1], '--', linewidth=1.5, alpha=0.7, color='black')

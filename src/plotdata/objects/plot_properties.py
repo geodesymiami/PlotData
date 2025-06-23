@@ -14,14 +14,14 @@ class PlotTemplate:
     def _get_layout(self, name):
         layouts = {
             "default": [
-                ["ascending.timeseries", "ascending.vectors", "seismicity.map"],
-                ["descending.timeseries", "descending.vectors", "seismicity.magnitude.distance"],
-                ["timeseries", "vectors", "seismicity.magnitude.date"],
+                ["ascending.point", "horizontal.point", "seismicmap"],
+                ["descending.point", "descending.point", "seismicity.distance"],
+                ["timeseries", "vectors", "seismicity.date"],
             ],
             "test": [
-                ["seismicity.map"],
-                ["seismicity.magnitude.distance"],
-                ["seismicity.magnitude.date"],
+                ["ascending.section"],
+                ["ascending.point"],
+                ["seismicity.date"],
             ]
         }
         return layouts[name]
@@ -62,14 +62,14 @@ class PlotRenderer:
         """Build plotter instances using the configured classes and required file attributes."""
         plotters = {}
 
-        for name, configs in self.plotter_map.items():
-            if any(name in row for row in self.template.layout):
-                cls = configs["class"]
-                files = [getattr(process_data, attr) for attr in configs["attributes"]]
+        for row in self.template.layout:
+            for name, configs in self.plotter_map.items():
+                if row[0].split('.')[0] in name:
+                    cls = configs["class"]
+                    files = [getattr(process_data, attr) for attr in configs["attributes"]]
 
-                # plotter_instance = cls(*files, self.inps)
-                plotter_instance = cls(files, self.inps)
-                plotters[name] = (plotter_instance)
+                    plotter_instance = cls(files, self.inps)
+                    plotters[row[0]] = plotter_instance
 
         return plotters
 

@@ -18,22 +18,10 @@ from plotdata.utils.argument_parsers import add_date_arguments, add_location_arg
 ############################################################
 EXAMPLE = """
 example:
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=horzvert --ref-lalo 19.55,-155.45 --period 20220801:20221127 --resolution '01s' --isolines 2
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=horzvert --period=20220101:20230831 --ref-lalo 19.55,-155.45 --resolution '01s' --isolines 2
-        plot_data.py MaunaLoaSenAT124/mintpy_5_20 --plot-type=velocity --period 20220101:20230831 20230831:20231001 --resolution '01s' --isolines 2 --section 19.45,-155.75:19.45,-155.35
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 --plot-type=shaded_relief --period 20220101:20230831 --resolution '01s' --isolines 2
-        plot_data.py --polygon "POLYGON((-155.8 19.3,-155.4 19.3,-155.4 19.6,-155.8 19.6,-155.8 19.3))" --plot-type=shaded_relief --period 20220101:20230831 --resolution '01s' --isolines 2
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=velocity --period 20220101:20230831 --resolution '01s' --isolines 2
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=velocity --period 20220101:20230831 20200101:20220101 --resolution '01s' --isolines 2
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=horzvert --period 20220101:20230831 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=horzvert --period 20220101:20230831 --ref-lalo 19.50068 -155.55856--resolution '01s' --isolines 2 --plot-option horizontal
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=vectors --period 20220101:20230831 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2 --section 19.45,-155.75:19.45,-155.35
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=vectors --period 20220101:20230831 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2 --section 19.45,-155.75:19.45,-155.35 --plot-option horzvert
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 --plot-type=velocity --period 20181001:20191031  --ref-lalo 19.50068 -155.55856 --resolution '01s' --seismicity 2
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type timeseries  --period 20181001:20191031 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2 --lalo 19.461,-155.558
+        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type timeseries  --period 20181001:20191031 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2 --lalo 19.461,-155.558  --section 19.45,-155.75:19.45,-155.35
 
         Add events on timeseries plot:
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type timeseries  --period 20181001:20191031 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2 --lalo 19.461,-155.558 --add-event 20181201 --magnitude 5.0
+        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --template default  --period 20181001:20191031 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2 --lalo 19.461,-155.558 --add-event 20181201 --magnitude 5.0
 
         # FOR GIACOMO TO TEST
         plot_data.py ChilesSenAT120/mintpy ChilesSenDT142/mintpy --plot-type=horzvert --period=20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2 --section 0.793,-77.968:0.793,-77.9309
@@ -46,7 +34,6 @@ def create_parser():
     parser = argparse.ArgumentParser(description=synopsis, epilog=epilog, formatter_class=argparse.RawTextHelpFormatter)
 
     parser.add_argument('data_dir', nargs='*', help='Directory(s) with InSAR data.\n')
-    parser.add_argument('--plot-type',dest='plot_type',default='velocity',choices=['velocity','horzvert', 'vectors', 'shaded_relief', 'timeseries'],help='Type of plot: (default: %(default)s).')
     parser.add_argument('--dem', dest='dem_file', default=None, help='external DEM file (Default: geo/geo_geometryRadar.h5)')
     parser.add_argument('--lines', dest='line_file', default=None, help='fault file (Default: None, but plotdata/data/hawaii_lines_new.mat for Hawaii)')
     parser.add_argument('--mask-thresh', dest='mask_vmin', type=float, default=0.55, help='coherence threshold for masking (Default: 0.7)')
@@ -115,8 +102,8 @@ def create_parser():
             except ValueError:
                 msg = 'Date format not valid, it must be in the format YYYYMMDD or YYYY-MM-DD'
                 raise ValueError(msg)
-
-    if inps.plot_type == 'ifgram':
+    # TODO to change
+    if False:
         inps.style = 'ifgram'
 
     if inps.add_event:
@@ -306,7 +293,7 @@ def main(iargs=None):
     import matplotlib.pyplot as plt
 
     ###### TEST ######
-    # inps.template = "test"  # Use a test template for demonstration
+    inps.template = "test"  # Use a test template for demonstration
     ##################
 
     # 2. Build template object
@@ -314,20 +301,14 @@ def main(iargs=None):
 
     # 3. Instantiate plotters with shared data
     plotter_map = {
-        "ascending.velocity": {"class": VelocityPlot, "attributes": ["ascending"]},
-        "descending.velocity": {"class": VelocityPlot, "attributes": ["descending"]},
-        "horzvert": {"class": VelocityPlot, "attributes": ["horizontal", "vertical"]},
-        "horizontal.velocity": {"class": VelocityPlot, "attributes": ["horizontal"]},
-        "vertical.velocity": {"class": VelocityPlot, "attributes": ["vertical"]},
-        "ascending.timeseries": {"class": VelocityPlot, "attributes": ["ascending"]},
-        "descending.timeseries": {"class": VelocityPlot, "attributes": ["descending"]},
+        "ascending": {"class": VelocityPlot, "attributes": ["ascending"]},
+        "descending": {"class": VelocityPlot, "attributes": ["ascending"]},
+        "horizontal": {"class": VelocityPlot, "attributes": ["ascending"]},
+        "vertical": {"class": VelocityPlot, "attributes": ["descending"]},
         "timeseries": {"class": TimeseriesPlot, "attributes": ["eos_file_ascending", "eos_file_descending"]},
-        "ascending.vectors": {"class": VelocityPlot, "attributes": ["ascending"]},
-        "descending.vectors": {"class": VelocityPlot, "attributes": ["descending"]},
         "vectors": {"class": VectorsPlot, "attributes": ["horizontal", "vertical"]},
-        "seismicity.map": {"class": ShadedReliefPlot, "attributes": ["ascending", "descending"]},
-        "seismicity.magnitude.date": {"class": Earthquake, "attributes": ["ascending", "descending"]},
-        "seismicity.magnitude.distance": {"class": Earthquake, "attributes": ["ascending", "descending"]},
+        "seismicmap": {"class": ShadedReliefPlot, "attributes": ["ascending", "descending"]},
+        "seismicity": {"class": Earthquake, "attributes": ["ascending", "descending"]},
     }
 
     figures = []

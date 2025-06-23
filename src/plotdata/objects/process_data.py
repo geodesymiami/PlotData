@@ -93,7 +93,7 @@ class ProcessData:
 
         # Second pass: Compute horizontal and vertical only if both asc & desc are available
         # TODO Probably have to remove the condition
-        if any('vectors' in l for l in self.layout) and self.ascending and self.descending:
+        if any('section' in l for l in self.layout) and self.ascending and self.descending:
             self.horizontal, self.vertical = self._process_vectors(self.ascending, self.descending, self.directory)
 
         if not self.file_info:
@@ -108,12 +108,13 @@ class ProcessData:
         out_vel_file = os.path.join(date_dir, os.path.basename(files['out_vel_file']))
         project_base_dir = files['project_base_dir']
 
-        if self.plot_type == 'shaded_relief':
-            if self.start_date and self.end_date:
-                start_date, end_date = find_nearest_start_end_date(eos_file, self.start_date, self.end_date)
-                self._convert_timeseries_to_velocity(eos_file, start_date, end_date, out_vel_file)
-                return out_vel_file
-            return vel_file
+        # TODO to remove
+        # if self.plot_type == 'shaded_relief':
+        #     if self.start_date and self.end_date:
+        #         start_date, end_date = find_nearest_start_end_date(eos_file, self.start_date, self.end_date)
+        #         self._convert_timeseries_to_velocity(eos_file, start_date, end_date, out_vel_file)
+        #         return out_vel_file
+        #     return vel_file
 
         create_geometry_file(eos_file, os.path.dirname(files['geometry_file']))
         mask = create_mask_file(eos_file, os.path.dirname(files['out_vel_file']), self.mask_vmin)
