@@ -15,7 +15,7 @@ class PlotTemplate:
         layouts = {
             "default": [
                 ["ascending.point", "horizontal.point", "seismicmap"],
-                ["descending.point", "descending.point", "seismicity.distance"],
+                ["descending.point", "vertical.point", "seismicity.distance"],
                 ["timeseries", "vectors", "seismicity.date"],
             ],
             "test": [

@@ -293,7 +293,7 @@ def main(iargs=None):
     import matplotlib.pyplot as plt
 
     ###### TEST ######
-    inps.template = "test"  # Use a test template for demonstration
+    # inps.template = "test"  # Use a test template for demonstration
     ##################
 
     # 2. Build template object
