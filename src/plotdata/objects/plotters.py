@@ -53,7 +53,9 @@ class ShadedReliefPlot:
                  levels=self.isolines, inline=self.inline)
 
         # Add earthquake markers if enabled
-        if self.seismicity:
+        if self.seismicity or 'seismicmap' in self.ax.get_label():
+            if not self.seismicity:
+                self.seismicity = 1
             Earthquake(map=rel_map, magnitude=self.seismicity).map(self.ax)
 
 
@@ -98,6 +100,10 @@ class VelocityPlot:
             label = "ASCENDING"
         elif 'descending' in self.ax.get_label():
             label = "DESCENDING"
+        elif 'horizontal' in self.ax.get_label():
+            label = "HORIZONTAL"
+        elif 'vertical' in self.ax.get_label():
+            label = "VERTICAL"
         else:
             label = None
 
