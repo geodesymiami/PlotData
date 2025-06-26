@@ -279,12 +279,14 @@ def add_seismicity_arguments(parser):
     """
     seismicity = parser.add_argument_group('Earthquakes options')
     seismicity.add_argument('--seismicity',
+                            metavar='MAGNITUDE',
                             nargs='?',
                             type=float,
                             default=None,
                             help='Add seismicity to the plot with magnitude above specified value (default: %(default)s).'
                             )
     seismicity.add_argument('--magnitude',
+                            metavar='MAGNITUDE',
                             nargs='*',
                             type=float,
                             help='Minimum magnitude for the earthquake events in the timeeries'
