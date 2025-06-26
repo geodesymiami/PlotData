@@ -112,7 +112,7 @@ class VelocityPlot:
                 label,
                 xy=(0.02, 0.98),
                 xycoords='axes fraction',
-                fontsize=10,
+                fontsize=5,
                 ha='left',
                 va='top',
                 color='white',

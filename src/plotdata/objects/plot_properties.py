@@ -83,7 +83,7 @@ class PlotGrid:
     def _create_axes(self, inps):
         fig, axs = plt.subplot_mosaic(
             self.template.layout,
-            figsize=(12, 10),
+            figsize=(12, 9),
             constrained_layout=self.template.constrained_layout,
         )
 
