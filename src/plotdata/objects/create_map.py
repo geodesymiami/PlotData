@@ -105,7 +105,6 @@ class Mapper():
 
         if style == 'pixel':
             self.imdata = self.ax.imshow(data, cmap=cmap, extent=self.region, origin='upper', interpolation='none', zorder=self.zorder, vmin=vmin, vmax=vmax, rasterized=True)
-            # TODO this might cause issues, to test more
             self.ax.set_aspect('auto')
 
         elif style == 'scatter':
