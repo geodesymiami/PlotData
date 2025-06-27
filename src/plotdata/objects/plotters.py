@@ -148,10 +148,9 @@ class VelocityPlot:
 class VectorsPlot:
     """Handles the plotting of velocity maps, elevation profiles, and vector fields."""
     def __init__(self, files: list, inps):
-        # TODO to add later and change self.inps references
-        # for attr in dir(inps):
-        #     if not attr.startswith('__') and not callable(getattr(inps, attr)):
-        #         setattr(self, attr, getattr(inps, attr))
+        for attr in dir(inps):
+            if not attr.startswith('__') and not callable(getattr(inps, attr)):
+                setattr(self, attr, getattr(inps, attr))
         # TODO have to add attributes to https://github.com/insarlab/MintPy/blob/main/src/mintpy/asc_desc2horz_vert.py#L261
         # for f in files:
         #     attr = readfile.read_attribute(f)
@@ -164,24 +163,13 @@ class VectorsPlot:
             elif 'up' in f:
                 self.vert_file = f
 
-        self.ref_lalo = inps.ref_lalo
-        self.seismicity = inps.seismicity
-        self.inps = inps
-
         # Determine which files to plot
         self._set_plot_files()
-
-        # Process the datasets
-        # self._process_velocity_maps()
 
         self._process_sections()
 
     def _set_plot_files(self):
         """Determines which velocity files to use based on plot options."""
-        # if self.inps.plot_option != 'horzvert':
-        #     self.plot1_file = self.asc_file
-        #     self.plot2_file = self.desc_file
-        # else:
         self.plot1_file = self.horz_file
         self.plot2_file = self.vert_file
 
@@ -189,57 +177,26 @@ class VectorsPlot:
         """Plots a point on the map."""
         for x,y in zip(lon, lat):
             ax.scatter(x, y, color='black', marker=marker)
-    # TODO to remove
-    def _create_map(self, ax, file):
-        """Creates and configures a velocity map."""
-        vel_map = Mapper(ax=ax, file=file)
-
-        # Add relief if not disabled
-        if not self.inps.no_dem:
-            Relief(map=vel_map, resolution=self.inps.resolution, cmap='terrain',
-                   interpolate=self.inps.interpolate, no_shade=self.inps.no_shade)
-
-        # Add velocity file
-        vel_map.add_file(style=self.inps.style, vmin=self.inps.vmin, vmax=self.inps.vmax, movement=self.inps.movement)
-
-        # Add isolines if specified
-        if self.inps.isolines:
-            Isolines(map=vel_map, resolution=self.inps.resolution, color=self.inps.iso_color, 
-                     linewidth=self.inps.linewidth, levels=self.inps.isolines, inline=self.inps.inline)
-
-        # Add earthquake markers if enabled
-        if self.seismicity:
-            Earthquake(map=vel_map, magnitude=self.seismicity).map(self.ax)
-
-        if self.ref_lalo:
-            vel_map.plot_point([self.ref_lalo[0]], [self.ref_lalo[1]], marker='s')
-
-        return vel_map
-    # TODO to remove
-    def _process_velocity_maps(self):
-        """Processes and plots velocity maps."""
-        self.asc_data = self._create_map(ax=self.ax[0], file=self.plot1_file)
-        self.desc_data = self._create_map(ax=self.ax[1], file=self.plot2_file)
 
     def _process_sections(self):
         """Processes horizontal, vertical, and elevation sections."""
         self.horizontal_data = Mapper(file=self.horz_file)
         self.vertical_data = Mapper(file=self.vert_file)
-        self.elevation_data = Relief(map=self.horizontal_data, resolution=self.inps.resolution)
+        self.elevation_data = Relief(map=self.horizontal_data, resolution=self.resolution)
 
         self.region = self.elevation_data.map.region
 
-        if not self.inps.line:
-            self.inps.line = self._set_default_section()
+        if not self.line:
+            self.line = self._set_default_section()
 
         self.horizontal_section = Section(
-            np.flipud(self.horizontal_data.velocity), self.horizontal_data.region, self.inps.line[1], self.inps.line[0]
+            np.flipud(self.horizontal_data.velocity), self.horizontal_data.region, self.line[1], self.line[0]
         )
         self.vertical_section = Section(
-            np.flipud(self.vertical_data.velocity), self.vertical_data.region, self.inps.line[1], self.inps.line[0]
+            np.flipud(self.vertical_data.velocity), self.vertical_data.region, self.line[1], self.line[0]
         )
         self.elevation_section = Section(
-            self.elevation_data.elevation.values, self.elevation_data.map.region, self.inps.line[1], self.inps.line[0]
+            self.elevation_data.elevation.values, self.elevation_data.map.region, self.line[1], self.line[0]
         )
 
     def _set_default_section(self):
@@ -256,7 +213,7 @@ class VectorsPlot:
     def _compute_vectors(self):
         """Computes velocity vectors and scaling factors."""
         self.x, self.v, self.h, self.z = draw_vectors(
-            self.elevation_section.values, self.vertical_section.values, self.horizontal_section.values, self.inps.line
+            self.elevation_section.values, self.vertical_section.values, self.horizontal_section.values, self.line
         )
 
         fig = self.ax.get_figure()
@@ -272,11 +229,11 @@ class VectorsPlot:
 
         # Resample vectors
         for i in range(len(self.h)):
-            if i % self.inps.resample_vector != 0:
+            if i % self.resample_vector != 0:
                 self.h[i] = 0
                 self.v[i] = 0
 
-        distance = calculate_distance(self.inps.line[1][0], self.inps.line[0][0], self.inps.line[1][1], self.inps.line[0][1])
+        distance = calculate_distance(self.ps.line[1][0], self.line[0][0], self.line[1][1], self.line[0][1])
         self.xrange = np.linspace(0, distance, len(self.x))
         # Filter out zero-length vectors
         non_zero_indices = np.where((self.h != 0) | (self.v != 0))
