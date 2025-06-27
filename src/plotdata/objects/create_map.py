@@ -165,7 +165,7 @@ class Isolines:
 
 
 class Relief:
-    def __init__(self, map: Mapper, cmap = 'terrain', resolution = '01m', interpolate=False, no_shade=False, zorder=None):
+    def __init__(self, map: Mapper, geometry = None, cmap = 'terrain', resolution = '01m', interpolate=False, no_shade=False, zorder=None):
         self.map = map
         self.cmap = cmap
         self.resolution = resolution
@@ -181,13 +181,17 @@ class Relief:
         # Plot colormap
         # Load the relief data
         print("Adding elevation\n")
-        self.elevation = pygmt.datasets.load_earth_relief(resolution=self.resolution, region=self.map.region)
+        if geometry:
+            self.elevation = readfile.read(geometry)[0]
+        else:
+            self.elevation = pygmt.datasets.load_earth_relief(resolution=self.resolution, region=self.map.region)
 
         if interpolate:
             self.interpolate_relief(self.resolution)
 
         # Set all negative values to 0
-        self.elevation = self.elevation.where(self.elevation >= 0, 0)
+        if not isinstance(self.elevation, np.ndarray):
+            self.elevation = self.elevation.where(self.elevation >= 0, 0)
 
         if hasattr(map, 'ax'):
             if not no_shade:
@@ -213,9 +217,23 @@ class Relief:
         print("Shading the elevation data...\n")
 
         # Get the coordinates and data
-        elev = self.elevation.values.astype(float)
-        lon = self.elevation.coords["lon"].values
-        lat = self.elevation.coords["lat"].values
+        if not isinstance(self.elevation, np.ndarray):
+            elev = self.elevation.values.astype(float)
+        else:
+            elev = self.elevation.astype(float)
+
+        # Extract region bounds
+        lon_min, lon_max, lat_min, lat_max = self.map.region
+
+        # Get the shape of the 2D array (e.g., elevation data)
+        n_lat, n_lon = self.elevation.shape
+
+        # Generate longitude and latitude arrays
+        lon = np.linspace(lon_min, lon_max, n_lon)
+        lat = np.linspace(lat_min, lat_max, n_lat)
+
+        # lon = self.elevation.coords["lon"].values
+        # lat = self.elevation.coords["lat"].values
 
         # Compute spacing for hillshade
         dlon = lon[1] - lon[0]
@@ -225,7 +243,7 @@ class Relief:
         ls = LightSource(azdeg=315, altdeg=45)
         hillshade = ls.hillshade(elev, vert_exag=vert_exag, dx=dlon, dy=dlat)
 
-        # Create meshgrid of lon/lat edges for pcolormesh
+        # # Create meshgrid of lon/lat edges for pcolormesh
         lon2d, lat2d = np.meshgrid(lon, lat)
 
         # Use pcolormesh to plot hillshade using real coordinates
