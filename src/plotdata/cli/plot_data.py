@@ -302,7 +302,7 @@ def main(iargs=None):
     # 3. Instantiate plotters with shared data
     plotter_map = {
         "ascending": {"class": VelocityPlot, "attributes": ["ascending"]},
-        "descending": {"class": VelocityPlot, "attributes": ["ascending"]},
+        "descending": {"class": VelocityPlot, "attributes": ["descending"]},
         "horizontal": {"class": VelocityPlot, "attributes": ["horizontal"]},
         "vertical": {"class": VelocityPlot, "attributes": ["vertical"]},
         "timeseries": {"class": TimeseriesPlot, "attributes": ["eos_file_ascending", "eos_file_descending"]},
