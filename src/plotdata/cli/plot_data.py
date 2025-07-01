@@ -328,7 +328,7 @@ def main(iargs=None):
     # 7. Save or show
     if inps.save == 'pdf':
         from matplotlib.backends.backend_pdf import PdfPages
-        saving_path = os.path.join(inps.outdir,processors[0].project,f"{processors[0].project}_{inps.plot_type}_{inps.start_date[0]}_{inps.end_date[-1]}.pdf")
+        saving_path = os.path.join(inps.outdir,processors[0].project,f"{processors[0].project}_{inps.template}_{inps.start_date[0]}_{inps.end_date[-1]}.pdf")
 
         with PdfPages(saving_path) as pdf:
             for fig in figures:
