@@ -66,6 +66,7 @@ class VelocityPlot:
             if not attr.startswith('__') and not callable(getattr(inps, attr)):
                 setattr(self, attr, getattr(inps, attr))
         self.file = file[0] if isinstance(file, list) else file
+        self.attr = readfile.read_attribute(self.file)
 
     def on_click(self, event):
         if event.inaxes == self.ax:  # Ensure the click is within the correct axis
@@ -240,7 +241,7 @@ class VectorsPlot:
                 self.h[i] = 0
                 self.v[i] = 0
 
-        distance = calculate_distance(self.ps.line[1][0], self.line[0][0], self.line[1][1], self.line[0][1])
+        distance = calculate_distance(self.line[1][0], self.line[0][0], self.line[1][1], self.line[0][1])
         self.xrange = np.linspace(0, distance, len(self.x))
         # Filter out zero-length vectors
         non_zero_indices = np.where((self.h != 0) | (self.v != 0))
