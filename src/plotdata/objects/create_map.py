@@ -181,11 +181,13 @@ class Relief:
         # Load the relief data
         print("Adding elevation\n")
         if geometry:
-            self.elevation = readfile.read(geometry)[0]
+            self.elevation = readfile.read(geometry, datasetName='height')[0]
+            self.elevation = np.flipud(self.elevation)
+            self.elevation[np.isnan(self.elevation)] = 0
         else:
             self.elevation = pygmt.datasets.load_earth_relief(resolution=self.resolution, region=self.map.region)
 
-        if interpolate:
+        if interpolate and not geometry:
             self.interpolate_relief(self.resolution)
 
         # Set all negative values to 0
