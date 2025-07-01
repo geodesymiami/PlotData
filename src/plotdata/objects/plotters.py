@@ -81,8 +81,15 @@ class VelocityPlot:
 
         # Add relief if not disabled
         if not self.no_dem:
-            Relief(map=vel_map, resolution=self.resolution, cmap='terrain',
-                   interpolate=self.interpolate, no_shade=self.no_shade)
+            if self.attr['passDirection'] == 'ASCENDING':
+                geometry = self.ascending_geometry
+            elif self.attr['passDirection'] == 'DESCENDING':
+                geometry = self.descending_geometry
+            else:
+                geometry = None
+
+            Relief(map=vel_map, geometry=geometry, resolution=self.resolution, cmap='terrain',
+                interpolate=self.interpolate, no_shade=self.no_shade)
 
         # Add velocity file
         vel_map.add_file(style=self.style, vmin=self.vmin, vmax=self.vmax, movement=self.movement)
