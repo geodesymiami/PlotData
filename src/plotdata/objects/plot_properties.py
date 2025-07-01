@@ -14,14 +14,14 @@ class PlotTemplate:
     def _get_layout(self, name):
         layouts = {
             "default": [
-                ["ascending.point", "horizontal.point", "seismicmap"],
-                ["descending.point", "vertical.point", "seismicity.distance"],
+                ["ascending.point.section", "horizontal.point.section", "seismicmap"],
+                ["descending.point.section", "vertical.point.section", "seismicity.distance"],
                 ["timeseries", "vectors", "seismicity.date"],
             ],
             "test": [
-                ["ascending.section"],
                 ["ascending.point"],
-                ["seismicity.date"],
+                ["descending.point"],
+                ["timeseries"],
             ]
         }
         return layouts[name]
