@@ -284,11 +284,12 @@ class VectorsPlot:
         # Mean velocity vector
         start_x = max(self.xrange) * 0.1
         start_y = (2 * max(self.z) * 0.8)
-        mean_velocity = np.sqrt(np.mean((self.vertical_section.values))**2 + np.mean((self.horizontal_section.values))**2)
+        mean_velocity = np.sqrt(np.mean((self.vertical_section.values[self.vertical_section.values!=0]))**2 + np.mean((self.horizontal_section.values[self.horizontal_section.values!=0]))**2)
+        rounded_mean_velocity = round(mean_velocity, 4) if mean_velocity else round(mean_velocity, 3)
 
         self.ax.quiver([start_x], [start_y], [mean_velocity], [0], color='#ff7366', scale_units='xy', width=(1 / 10**(2.5)))
         # self.ax[2].quiver([start_x], [start_y], [0], [abs(np.mean(self.filtered_v))], color='#ff7366', scale_units='xy', width=(1 / 10**(2.5)))
-        self.ax.text(start_x, start_y * 1.03, f"{round(mean_velocity, 3)} m/yr", color='black', ha='left', fontsize=8)
+        self.ax.text(start_x, start_y * 1.03, f"{round(rounded_mean_velocity, 4)} m/yr", color='black', ha='left', fontsize=8)
 
         # Add labels
         self.ax.set_ylabel("Elevation (m)")
