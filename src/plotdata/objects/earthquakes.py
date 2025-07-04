@@ -1,25 +1,33 @@
 import sys
-import os
 
 sys.path.insert(0, '/Users/giacomo/code/Plotdata/src')
 
+import math
+import numpy as np
 from datetime import datetime
 from matplotlib import pyplot as plt
 from plotdata.objects.create_map import Mapper
-from plotdata.helper_functions import draw_box, calculate_distance
+from plotdata.helper_functions import draw_box, calculate_distance, unpack_file, find_longitude_degree
 from plotdata.volcano_functions import get_volcano_coord_id, get_volcano_coord_name
 from plotdata.objects.get_methods import DataFetcherFactory
 
 
 class Earthquake():
-    def __init__(self, start_date=None, end_date = None, distance_km = 20, distance_deg = None, magnitude = 1, id=None, volcano: str = None, region: list = None, map: Mapper = None):
+    def __init__(self, file = None, inps=None, start_date=None, end_date = None, distance_km = 20, distance_deg = None, magnitude = 1, id=None, volcano: str = None, region: list = None, map: Mapper = None):
+        for attr in dir(inps):
+            if not attr.startswith('__') and not callable(getattr(inps, attr)):
+                setattr(self, attr, getattr(inps, attr))
         # Constants
         self.API_ENDPOINT = "https://earthquake.usgs.gov/fdsnws/event/1/query.geojson"
         self.PARAMS = {
             "eventtype": "earthquake",
             "orderby": "time",
         }
-        self.magnitude = magnitude
+
+        if inps:
+            self.magnitude = inps.seismicity if inps.seismicity else magnitude
+        else:
+            self.magnitude = magnitude
 
         if volcano or id:
             self.define_info(start_date, end_date, distance_km, distance_deg, volcano, id)
@@ -29,18 +37,20 @@ class Earthquake():
             self.start_date = datetime.strptime(start_date,'%Y%m%d') if isinstance(start_date, str) else start_date
             self.end_date = datetime.today() if not end_date else datetime.strptime(end_date, '%Y%m%d') if isinstance(end_date, str) else end_date
 
+        if file:
+            self.file = unpack_file(file)
+            map = Mapper(file=self.file)
+
         if map:
             self.region = map.region
             self.start_date = map.start_date
             self.end_date = map.end_date
-            self.ax = map.ax
             self.zorder = map.get_next_zorder()
-
 
         self.get_earthquake_data(website="usgs")
 
 
-    def map(self):
+    def map(self, ax):
         if not self.earthquakes['date']:
             print("No earthquake data available.")
             return
@@ -49,7 +59,7 @@ class Earthquake():
         norm = plt.Normalize(vmin=min(self.earthquakes['magnitude']), vmax=max(self.earthquakes['magnitude']))
 
         for lalo, magnitude, date in zip(self.earthquakes['lalo'], self.earthquakes['magnitude'], self.earthquakes['date']):
-            self.ax.scatter(
+            ax.scatter(
                 lalo[1], lalo[0], 
                 s=10**(magnitude*0.5),  # Size based on magnitude
                 c=cmap(norm(magnitude)),  # Color based on magnitude
@@ -117,16 +127,13 @@ class Earthquake():
             print(f"Distance from {self.volcano}: {calculate_distance(self.earthquakes['lalo'][i][0], self.earthquakes['lalo'][i][1], self.volcano['lat'], self.volcano['lon'])} km\n")
 
 
-    def plot(self):
-        if hasattr(self, 'coordinates'):
-            fig = plt.figure(figsize=(10, 10))
-            ax1 = fig.add_subplot(211)
-            ax2 = fig.add_subplot(212)
-
-            self.plot_by_date(ax1)
-            self.plot_by_distance(ax2)
-
-        plt.show()
+    def plot(self, ax):
+        if 'date' in ax.get_label():
+            self.plot_by_date(ax)
+        elif 'distance' in ax.get_label():
+            self.plot_by_distance(ax)
+        else:
+            self.plot_by_date(ax)
 
 
     def plot_by_date(self, ax):
@@ -137,7 +144,7 @@ class Earthquake():
         ax.scatter(self.earthquakes['date'], self.earthquakes['magnitude'], c='black', marker='o')
         ax.set_xlabel('Date')
         ax.set_ylabel('Magnitude')
-        ax.set_title('Earthquake Magnitudes Over Time')
+        ax.set_title('Earthquake Magnitudes Over Time at {}')
         ax.set_xlim([self.start_date.date(), self.end_date.date()])
         ax.set_ylim([0, 10])
 
@@ -146,8 +153,18 @@ class Earthquake():
         # Plot EQs
         dist = []
         for i in range(len(self.earthquakes['date'])):
+            if not hasattr(self, 'coordinates') or not self.coordinates:
+                self.coordinates = self.lalo if hasattr(self, 'lalo') else [(self.region[0]+self.region[1])/2, (self.region[2]+self.region[3])/2]
             dist.append(calculate_distance(self.earthquakes['lalo'][i][0], self.earthquakes['lalo'][i][1], self.coordinates[0], self.coordinates[1]))
             ax.plot([dist[i], dist[i]], [self.earthquakes['magnitude'][i], 0], 'k-')
+
+        if not dist:
+            dist = [0, 10]
+            dist1 = (self.region[0]-self.region[1])/2 * 111.32 * math.cos(math.radians(float(self.region[-1])))
+            dist2 = (self.region[2]-self.region[3])/2 * 111.32
+            dist = [0, (dist1**2 + dist2**2)**0.5]
+            # dist = [0, calculate_distance(abs(max(self.region[0]-self.region[1], self.region[2]-self.region[3]))/2)]
+            self.earthquakes['magnitude'] = [None, None]
 
         ax.set_xlim([0, max(dist)+ (max(dist) * 0.05)])
         ax.set_ylim([0, 10])
@@ -161,13 +178,11 @@ class Earthquake():
 
 if __name__ == "__main__":
     from plotdata.helper_functions import parse_polygon
-    region = parse_polygon("POLYGON((-78.0068 0.7843,-77.8049 0.7843,-77.8049 1.0059,-78.0068 1.0059,-78.0068 0.7843))")
+    region = parse_polygon("POLYGON((130.3264 31.3226,130.9765 31.3226,130.9765 31.8198,130.3264 31.8198,130.3264 31.3226))")
     print(region)
-    volcano = "Kilauea"
+    volcano = "Aira"
     start = "20170101"
-    end = "20221201"
-    dis = 50
+    end = "20171010"
+    dis = 20
     eq1 = Earthquake(volcano=volcano, start_date=start, end_date=end, distance_km=dis, magnitude=4)
-    eq = Earthquake(region=region, start_date=start, end_date=end, distance_km=dis, magnitude=4)
-    eq.plot()
     eq1.plot()

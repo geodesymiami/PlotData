@@ -8,7 +8,9 @@ from mintpy.objects import HDFEOS
 from scipy.interpolate import interp1d
 import numpy as np
 from pathlib import Path
-from minsar.utils.extract_hdfeos5 import determine_coordinates, extract_geometry
+from mintpy.utils import utils
+from mintpy.cli import generate_mask
+from minsar.utils.extract_hdfeos5 import determine_coordinates, extract_geometry, extract_mask, extract_temporalCoherence
 
 
 def create_geometry_file(eos_file, out_folder):
@@ -18,6 +20,24 @@ def create_geometry_file(eos_file, out_folder):
     os.chdir(out_folder)
     extract_geometry(eos_file, determine_coordinates(eos_file))
     os.chdir(workdir)
+
+
+def create_mask_file(eos_file, out_folder, mask_trehshold=0.55):
+    workdir = os.getcwd()
+    # TODO change with extract_temporalCoherence
+    print(f'Creating mask file in: {out_folder}\n')
+    os.chdir(out_folder)
+    temporal_coherence = extract_temporalCoherence(eos_file, determine_coordinates(eos_file))
+    mask_temporalCoherence = 'geo_maskTempCoh' if 'geo_' in temporal_coherence else 'maskTempCoh'
+
+    cmd = f'{temporal_coherence} -m {mask_trehshold} -o {mask_temporalCoherence}.h5'
+
+    print(f'Running --> generate_mask.py {cmd}\n')
+    generate_mask.main(cmd.split())
+
+    os.chdir(workdir)
+
+    return os.path.join(out_folder, mask_temporalCoherence + '.h5')
 
 
 def get_file_names(path):
@@ -49,7 +69,7 @@ def get_file_names(path):
 
     metadata = readfile.read(eos_file)[1]
     velocity_file = 'geo/geo_velocity.h5'
-    geometryRadar_file = 'geo/geo_geometryRadar.h5'
+    geometryRadar_file = 'geo_geometryRadar.h5'
 
     # Check if geocoded
     if 'Y_STEP' not in metadata:
@@ -69,7 +89,7 @@ def get_file_names(path):
 
     project_base_dir = os.path.join(scratch, project_base_dir)
     vel_file = os.path.join(eos_file.rsplit('/', 1)[0], velocity_file)
-    geometry_file = os.path.join(eos_file.rsplit('/', 1)[0], geometryRadar_file)
+    geometry_file = os.path.join(project_base_dir, track_dir, geometryRadar_file)
 
     inputs_folder = os.path.join(scratch, project_dir)
     out_vel_file = os.path.join(project_base_dir, track_dir, velocity_file.split(os.sep)[-1])
@@ -121,9 +141,12 @@ def find_nearest_start_end_date(fname, start_date, end_date):
     if start_date and end_date:
 
         if int(start_date) < int(dateList[0]):
-            raise Exception("USER ERROR: No date found earlier than ", start_date )
+            print(f"No date found earlier than {start_date}" )
+            mod_start_date = dateList[0]
+
         if int(end_date) > int(dateList[-1]):
-            raise Exception("USER ERROR:  No date found later than ", end_date )
+            print(f"No date found later than {end_date}" )
+            mod_end_date = dateList[-1]
 
         for date in reversed(dateList):
             if int(date) <= int(start_date):
@@ -182,7 +205,6 @@ def get_data_type(file):
 
 def get_dem_extent(atr_dem):
     # get the extent which is required for plotting
-    # [-156.0, -154.99, 18.99, 20.00]
     dem_extent = [float(atr_dem['X_FIRST']), float(atr_dem['X_FIRST']) + int(atr_dem['WIDTH'])*float(atr_dem['X_STEP']),
         float(atr_dem['Y_FIRST']) + int(atr_dem['FILE_LENGTH'])*float(atr_dem['Y_STEP']), float(atr_dem['Y_FIRST'])]
     return(dem_extent)
@@ -190,33 +212,26 @@ def get_dem_extent(atr_dem):
 
 def extract_window(vel_file, lat, lon, window_size=3):
     data, metadata = readfile.read(vel_file)
+    coord = utils.coordinate(metadata=metadata)
 
     length = int(metadata['LENGTH'])
     width = int(metadata['WIDTH'])
-
-    latitude, longitude = get_bounding_box(metadata)
-
-    # Define the latitude and longitude edges
-    lat_edges = np.linspace(min(latitude), max(latitude), length)
-    lon_edges = np.linspace(min(longitude), max(longitude), width)
-
-    # Check if the reference point is within the data coverage
-    if lat < min(lat_edges) or lat > max(lat_edges) or lon < min(lon_edges) or lon > max(lon_edges):
-        raise ValueError('input reference point is OUT of data coverage on file: ' + vel_file)
 
     if window_size * 2 + 1 > round(length * 0.1) or window_size * 2 + 1 > round(width * 0.1):
         window_size = round(min(round(length * 0.1), round(width * 0.1))/2)
         print(f"Window size is too large, reducing value for consistency to {window_size}\n")
 
-    # Find the indices of the specified point
-    lat_idx = np.searchsorted(lat_edges, lat)
-    lon_idx = np.searchsorted(lon_edges, lon)
+    lat_idx, lon_idx = coord.geo2radar(lat,lon)[0:2]
+
+    # Check if the reference point is within the data coverage
+    # if lat_idx < min(length) or lat_idx > max(length) or lon_idx < min(width) or lon_idx > max(width):
+    #     raise ValueError('input reference point is OUT of data coverage on file: ' + vel_file)
 
     # Extract the subarray
     lat_start = max(lat_idx - window_size, 0)
-    lat_end = min(lat_idx + window_size + 1, len(lat_edges))
+    lat_end = min(lat_idx + window_size + 1, length)
     lon_start = max(lon_idx - window_size, 0)
-    lon_end = min(lon_idx + window_size + 1, len(lon_edges))
+    lon_end = min(lon_idx + window_size + 1, width)
 
     # Check if the window outfit the data coverage
     if lat_start<0 or lat_end>length:
@@ -226,15 +241,19 @@ def extract_window(vel_file, lat, lon, window_size=3):
         raise ValueError('Longitude range is too large for the data coverage on file: ' + vel_file)
 
     subarray = data[lat_start:lat_end, lon_start:lon_end]
-    sublat = lat_edges[lat_start:lat_end]
-    sublon = lon_edges[lon_start:lon_end]
+    sublat = []
+    sublon = []
+    for az, rg in zip(range(lat_start, lat_end + 1), range(lon_start, lon_end + 1)):
+        la, lo = coord.radar2geo(az, rg)[0:2]
+        sublat.append(la)
+        sublon.append(lo)
 
     return ~np.isnan(subarray) ,sublat, sublon
 
 
 def find_longitude_degree(ref_lat, lat_step):
     # Find the longitude step in degrees that covers the same distance as the latitude step
-    return float(lat_step) / math.cos(math.radians(int(ref_lat)))
+    return round(float(lat_step) / math.cos(math.radians(float(ref_lat))), 5)
 
 
 def select_reference_point(out_mskd_file, window_size, ref_lalo):
@@ -260,7 +279,7 @@ def select_reference_point(out_mskd_file, window_size, ref_lalo):
     subdata1, sublat1, sublon1 = extracted_data[0]  # First dataset
 
     if num_files == 2:
-        subdata2, _, _ = extracted_data[1]  # Second dataset
+        subdata2, sublat2, sublon2 = extracted_data[1]  # Second dataset
         paired = list(zip(subdata1, subdata2))
     else:
         paired = [(i, None) for i in subdata1]  # Only one dataset available
@@ -288,13 +307,15 @@ def select_reference_point(out_mskd_file, window_size, ref_lalo):
 
         if min_distance < shortest_distance:
             shortest_distance = min_distance
-            ref_lalo = [sublat1[ind], sublon1[indices[0][min_distance_index]]]
+            ref_lalo1 = [sublat1[ind], sublon1[indices[0][min_distance_index]]]
+
+    ref_lalo2 = [ref_lalo1[0] + (sublat1[0] - sublat2[0]) , ref_lalo1[1] + sublon1[0] - sublon2[0]] if num_files == 2 else None
 
     print('-' * 50)
-    print(f"Reference point selected: {ref_lalo[0]:.4f}, {ref_lalo[1]:.4f}")
+    print(f"Reference point selected: {ref_lalo1[0]:.4f}, {ref_lalo1[1]:.4f}")
     print('-' * 50)
 
-    return ref_lalo 
+    return [ref_lalo1, ref_lalo2]
 
 
 def draw_box(central_lat, central_lon, distance_km = 20, distance_deg = None):
@@ -393,10 +414,9 @@ def get_bounding_box(metadata):
 
 
 def draw_vectors(elevation, vertical, horizontal, line):
-    v = interpolate(elevation, vertical)
-    h = interpolate(elevation, horizontal)
-
-    length = np.sqrt(v**2 + h**2)
+    v = interpolate(elevation, vertical) if elevation.shape[0]>vertical.shape[0] else vertical
+    h = interpolate(elevation, horizontal) if elevation.shape[0]>horizontal.shape[0] else horizontal
+    z = interpolate(vertical, elevation) if elevation.shape[0]<vertical.shape[0] else elevation
 
     #Normalization
     nv = [1 if val > 0 else -1 if val < 0 else 0 for val in v]
@@ -414,9 +434,9 @@ def draw_vectors(elevation, vertical, horizontal, line):
     v = nv * tv
     h = nh * th
 
-    x_coords = np.linspace(0, calculate_distance(line[0][0], line[1][0], line[0][1], line[1][1])*1000, len(elevation))
+    x_coords = np.linspace(0, calculate_distance(line[0][0], line[1][0], line[0][1], line[1][1])*1000, len(z))
 
-    return x_coords, v, h
+    return x_coords, v, h, z
 
 
 def interpolate(x, y):

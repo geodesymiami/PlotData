@@ -16,16 +16,13 @@ from plotdata.helper_functions import parse_polygon, get_bounding_box
 
 
 class Mapper():
-    def __init__(self, region=None, polygon=None, start_date=None, end_date=None,location_types: dict = {}, ax=None, file=None):
-        if not ax:
-            # self.fig = plt.figure(figsize=(8, 8))
-            # self.ax = self.fig.add_subplot(111)
-            pass
-        else:
+    def __init__(self, region=None, polygon=None, start_date=None, end_date=None, location_types: dict = {}, ax=None, file=None):
+        if ax:
             self.ax = ax
             self.fig = ax.get_figure()
 
         if region:
+            region = [lon + 360 if i < 2 and lon < 0 else lon for i, lon in enumerate(region)]
             self.region = region
             self.start_date = datetime.strptime(start_date, '%Y%m%d') if isinstance(end_date, str) else start_date
             self.end_date = datetime.strptime(end_date, '%Y%m%d') if isinstance(end_date, str) else end_date
@@ -40,7 +37,6 @@ class Mapper():
         elif polygon:
             self.region = parse_polygon(polygon)
 
-        # TODO sure about zero? is it the correct?
         self.zorder = 0
         self.location_types = location_types
 
@@ -97,6 +93,10 @@ class Mapper():
         data = self.displacement if movement == 'displacement' else self.velocity
         label = 'Displacement (m)' if movement == 'displacement' else 'Velocity (m/yr)'
 
+        if not vmin and not vmax:
+            lim = max(abs(np.nanmin(data)), abs(np.nanmax(data))) * 1.2
+            vmin, vmax = -lim, lim
+
         if style == 'ifgram':
             label = 'Displacement (m)'
             data_phase = (2 * np.pi / float(self.metadata['WAVELENGTH'])) *  self.displacement #(self.displacement + float(self.metadata['HEIGHT']))
@@ -104,13 +104,11 @@ class Mapper():
             self.imdata = self.ax.imshow(data_wrapped, cmap=cmap, extent=self.region, origin='upper', interpolation='none',zorder=self.zorder, vmin=0, vmax=2 * np.pi)
 
         if style == 'pixel':
-            self.imdata = self.ax.imshow(data, cmap=cmap, extent=self.region, origin='upper', interpolation='none', zorder=self.zorder, vmin=vmin, vmax=vmax)
-            # TODO this might cause issues, to test more
+            self.imdata = self.ax.imshow(data, cmap=cmap, extent=self.region, origin='upper', interpolation='none', zorder=self.zorder, vmin=vmin, vmax=vmax, rasterized=True)
             self.ax.set_aspect('auto')
 
         elif style == 'scatter':
             # Assuming self.velocity is a 2D numpy array
-            data = data
             nrows, ncols = data.shape
             x = np.linspace(self.region[0], self.region[1], ncols)
             y = np.linspace(self.region[2], self.region[3], nrows)
@@ -119,7 +117,7 @@ class Mapper():
             Y = np.flip(Y.flatten())
             C = data.flatten()
 
-            self.imdata = self.ax.scatter(X, Y, c=C, cmap=cmap, marker='o', zorder=self.zorder, s=2, vmin=vmin, vmax=vmax)
+            self.imdata = self.ax.scatter(X, Y, c=C, cmap=cmap, marker='o', zorder=self.zorder, s=2, vmin=vmin, vmax=vmax, rasterized=True)
 
         cbar = self.ax.figure.colorbar(self.imdata, ax=self.ax, orientation='horizontal', aspect=13)
         cbar.set_label(label)
@@ -154,14 +152,19 @@ class Isolines:
             lines[:] = grid_np
 
             # Plot the data
-            cont = self.map.ax.contour(lines, levels=self.levels, colors=self.color, extent=self.map.region, linewidths=self.linewidth, zorder=self.zorder)
+            lon = lines.coords["lon"].values
+            lat = lines.coords["lat"].values
+            z = lines.values
+
+            cont = self.map.ax.contour(lon, lat, z, levels=self.levels, colors=self.color,
+                                    linewidths=self.linewidth, zorder=self.zorder)
 
             if inline:
                 self.map.ax.clabel(cont, inline=inline, fontsize=8)
 
 
 class Relief:
-    def __init__(self, map: Mapper, cmap = 'terrain', resolution = '01m', interpolate=False, no_shade=False, zorder=None):
+    def __init__(self, map: Mapper, geometry = None, cmap = 'terrain', resolution = '01m', interpolate=False, no_shade=False, zorder=None):
         self.map = map
         self.cmap = cmap
         self.resolution = resolution
@@ -177,20 +180,26 @@ class Relief:
         # Plot colormap
         # Load the relief data
         print("Adding elevation\n")
-        self.elevation = pygmt.datasets.load_earth_relief(resolution=self.resolution, region=self.map.region)
+        if geometry:
+            self.elevation = readfile.read(geometry, datasetName='height')[0]
+            self.elevation = np.flipud(self.elevation)
+            self.elevation[np.isnan(self.elevation)] = 0
+        else:
+            self.elevation = pygmt.datasets.load_earth_relief(resolution=self.resolution, region=self.map.region)
 
-        if interpolate:
+        if interpolate and not geometry:
             self.interpolate_relief(self.resolution)
 
         # Set all negative values to 0
-        self.elevation = np.where(self.elevation >= 0, self.elevation, 0)
+        if not isinstance(self.elevation, np.ndarray):
+            self.elevation = self.elevation.where(self.elevation >= 0, 0)
 
         if hasattr(map, 'ax'):
             if not no_shade:
                 self.im = self.shade_elevation(zorder=self.zorder)
             else:
                 print('here')
-                self.im = self.map.ax.imshow(self.elevation.values, cmap=self.cmap, extent=self.map.region, origin='lower', zorder=self.zorder)
+                self.im = self.map.ax.imshow(self.elevation.values, cmap=self.cmap, extent=self.map.region, origin='lower', zorder=self.zorder, rasterized=True)
 
 
     def interpolate_relief(self, resolution):
@@ -207,8 +216,36 @@ class Relief:
     def shade_elevation(self, vert_exag=1.5, zorder=None):
         # Create hillshade
         print("Shading the elevation data...\n")
-        ls = LightSource(azdeg=315, altdeg=45)
-        hillshade = ls.hillshade(self.elevation, vert_exag=vert_exag, dx=1, dy=1)
 
-        # Plot the elevation data with hillshading
-        self.im = self.map.ax.imshow(hillshade, cmap='gray', extent=self.map.region, origin='lower', alpha=0.5, zorder=zorder, aspect='auto')
+        # Get the coordinates and data
+        if not isinstance(self.elevation, np.ndarray):
+            elev = self.elevation.values.astype(float)
+        else:
+            elev = self.elevation.astype(float)
+
+        # Extract region bounds
+        lon_min, lon_max, lat_min, lat_max = self.map.region
+
+        # Get the shape of the 2D array (e.g., elevation data)
+        n_lat, n_lon = self.elevation.shape
+
+        # Generate longitude and latitude arrays
+        lon = np.linspace(lon_min, lon_max, n_lon)
+        lat = np.linspace(lat_min, lat_max, n_lat)
+
+        # lon = self.elevation.coords["lon"].values
+        # lat = self.elevation.coords["lat"].values
+
+        # Compute spacing for hillshade
+        dlon = lon[1] - lon[0]
+        dlat = lat[1] - lat[0]
+
+        # Compute hillshade with real spacing
+        ls = LightSource(azdeg=315, altdeg=45)
+        hillshade = ls.hillshade(elev, vert_exag=vert_exag, dx=dlon, dy=dlat)
+
+        # # Create meshgrid of lon/lat edges for pcolormesh
+        lon2d, lat2d = np.meshgrid(lon, lat)
+
+        # Use pcolormesh to plot hillshade using real coordinates
+        self.im = self.map.ax.pcolormesh(lon2d,lat2d,hillshade,cmap='gray',shading='auto',zorder=zorder,alpha=0.5,)

@@ -8,7 +8,7 @@ import os
 import re
 import sys
 
-# The asgeo import breaks when called by readfile.py unless I do the following
+# !!! The asgeo import breaks when called by readfile.py unless I do the following !!!
 from osgeo import gdal, osr
 
 import argparse
@@ -18,25 +18,13 @@ from plotdata.utils.argument_parsers import add_date_arguments, add_location_arg
 ############################################################
 EXAMPLE = """
 example:
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=horzvert --ref-lalo 19.55,-155.45 --period 20220801:20221127 --resolution '01s' --isolines 2
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=horzvert --period=20220101:20230831 --ref-lalo 19.55,-155.45 --resolution '01s' --isolines 2
-        plot_data.py MaunaLoaSenAT124/mintpy_5_20 --plot-type=velocity --period 20220101:20230831 20230831:20231001 --resolution '01s' --isolines 2 --section 19.45,-155.75:19.45,-155.35
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 --plot-type=shaded_relief --period 20220101:20230831 --resolution '01s' --isolines 2
-        plot_data.py --polygon "POLYGON((-155.8 19.3,-155.4 19.3,-155.4 19.6,-155.8 19.6,-155.8 19.3))" --plot-type=shaded_relief --period 20220101:20230831 --resolution '01s' --isolines 2
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=velocity --period 20220101:20230831 --resolution '01s' --isolines 2
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=velocity --period 20220101:20230831 20200101:20220101 --resolution '01s' --isolines 2
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=horzvert --period 20220101:20230831 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=horzvert --period 20220101:20230831 --ref-lalo 19.50068 -155.55856--resolution '01s' --isolines 2 --plot-option horizontal
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=vectors --period 20220101:20230831 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2 --section 19.45,-155.75:19.45,-155.35
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type=vectors --period 20220101:20230831 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2 --section 19.45,-155.75:19.45,-155.35 --plot-option horzvert
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 --plot-type=velocity --period 20181001:20191031  --ref-lalo 19.50068 -155.55856 --resolution '01s' --seismicity 2
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type timeseries  --period 20181001:20191031 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2 --lalo 19.461,-155.558
+        plot_data.py MaunaLoaSenDT87/mintpy MaunaLoaSenAT124/mintpy --period 20181001:20191031 --ref-lalo 19.50068,-155.55856 --lalo 19.47373,-155.59617 --resolution=01s --isolines=2 --section 19.45,-155.75:19.45,-155.35 --resample-vector 40 --seismicity=3
 
         Add events on timeseries plot:
-        plot_data.py MaunaLoaSenDT87/mintpy_5_20 MaunaLoaSenAT124/mintpy_5_20 --plot-type timeseries  --period 20181001:20191031 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2 --lalo 19.461,-155.558 --add-event 20181201 --magnitude 5.0
+        plot_data.py MaunaLoaSenDT87/mintpy MaunaLoaSenAT124/mintpy --template default  --period 20181001:20191031 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2 --lalo 19.461,-155.558 --resample-vector 40 --add-event 20181201 --magnitude 5.0
 
         # FOR GIACOMO TO TEST
-        plot_data.py ChilesSenAT120/mintpy ChilesSenDT142/mintpy --plot-type=horzvert --period=20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2 --section 0.793,-77.968:0.793,-77.9309
+        plot_data.py ChilesSenAT120/mintpy ChilesSenDT142/mintpy --period=20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2 --section 0.793,-77.968:0.793,-77.9309
 
 """
 
@@ -46,10 +34,9 @@ def create_parser():
     parser = argparse.ArgumentParser(description=synopsis, epilog=epilog, formatter_class=argparse.RawTextHelpFormatter)
 
     parser.add_argument('data_dir', nargs='*', help='Directory(s) with InSAR data.\n')
-    parser.add_argument('--plot-type',dest='plot_type',default='velocity',choices=['velocity','horzvert', 'vectors', 'shaded_relief', 'timeseries'],help='Type of plot: (default: %(default)s).')
     parser.add_argument('--dem', dest='dem_file', default=None, help='external DEM file (Default: geo/geo_geometryRadar.h5)')
     parser.add_argument('--lines', dest='line_file', default=None, help='fault file (Default: None, but plotdata/data/hawaii_lines_new.mat for Hawaii)')
-    parser.add_argument('--mask-thresh', dest='mask_vmin', type=float, default=0.7, help='coherence threshold for masking (Default: 0.7)')
+    parser.add_argument('--mask-thresh', dest='mask_vmin', type=float, default=0.55, help='coherence threshold for masking (Default: 0.7)')
     # parser.add_argument('--unit', dest='unit', default="cm", help='InSAR units (Default: cm)')
     # parser.add_argument("--noreference", dest="show_reference_point",  action='store_false', default=True, help="hide reference point (default: False)" )
     parser.add_argument("--section", dest="line", type=str, default=None, help="Section coordinates for deformation vectors, LAT,LON:LAT,LON")
@@ -65,12 +52,9 @@ def create_parser():
 
     inps = parser.parse_args()
 
-    # if inps.plot_type == 'vectors':
-    #     if not inps.line:
-    #         parser.error('USER ERROR: Section coordinates are required for deformation vectors')
 
     if len(inps.data_dir) > 2:
-        parser.error('USER ERROR: To many files provided.')
+        parser.error('USER ERROR: Too many files provided.')
 
     if inps.plot_box:
         inps.plot_box = [float(val) for val in inps.plot_box.replace(':', ',').split(',')]  # converts to plot_box=[19.3, 19.6, -155.8, -155.4]
@@ -118,8 +102,8 @@ def create_parser():
             except ValueError:
                 msg = 'Date format not valid, it must be in the format YYYYMMDD or YYYY-MM-DD'
                 raise ValueError(msg)
-
-    if inps.plot_type == 'ifgram':
+    # TODO to change
+    if False:
         inps.style = 'ifgram'
 
     if inps.add_event:
@@ -163,7 +147,7 @@ def parse_section(section):
         latitude.append(float(coord.split(',')[0]))
         longitude.append(float(coord.split(',')[1]))
 
-    return [(min(longitude), max(longitude)), (min(latitude), max(latitude))]
+    return [(min(longitude), max(longitude)), (latitude[0], latitude[1])]
 
 
 def parse_polygon(polygon):
@@ -221,7 +205,7 @@ def main(iargs=None):
 
     inps = create_parser()
 
-    if True:
+    if False:
         from plotdata.objects.process_data import ProcessData
 
         processors = []
@@ -231,7 +215,7 @@ def main(iargs=None):
         for process in processors:
             process.process()
 
-        if inps.show_flag:
+        if inps.show_flag or inps.save:
             from plotdata.objects.plot_properties import PlotGrid
             from plotdata.objects.plotters import VelocityPlot, ShadedReliefPlot, VectorsPlot, TimeseriesPlot
             import matplotlib.pyplot as plt
@@ -293,12 +277,74 @@ def main(iargs=None):
                                     inps=process
                                 )
 
-            if inps.save:
-                saving_path = os.path.join(inps.outdir, processors[0].project + '_' + inps.plot_type + '_' + inps.start_date[0] + '_' + inps.end_date[-1])
-                print(f"Saving image in {saving_path}.png")
-                plt.savefig(inps.outdir)
 
-            plt.show()
+            if inps.save:
+                saving_path = os.path.join(inps.outdir, processors[0].project,processors[0].project + '_' + inps.plot_type + '_' + inps.start_date[0] + '_' + inps.end_date[-1]) + ".pdf"
+                print(f"Saving image in {saving_path}")
+                plt.savefig(saving_path, bbox_inches='tight', dpi=inps.dpi, transparent=True)
+
+            if inps.show_flag:
+                plt.show()
+
+    from plotdata.objects.process_data import ProcessData
+    from plotdata.objects.plot_properties import PlotGrid, PlotTemplate, PlotRenderer
+    from plotdata.objects.plotters import VelocityPlot, ShadedReliefPlot, VectorsPlot, TimeseriesPlot
+    from plotdata.objects.earthquakes import Earthquake
+    import matplotlib.pyplot as plt
+
+    ###### TEST ######
+    # inps.template = "test"  # Use a test template for demonstration
+    ##################
+
+    # 2. Build template object
+    template = PlotTemplate(inps.template)
+
+    # 3. Instantiate plotters with shared data
+    plotter_map = {
+        "ascending": {"class": VelocityPlot, "attributes": ["ascending"]},
+        "descending": {"class": VelocityPlot, "attributes": ["descending"]},
+        "horizontal": {"class": VelocityPlot, "attributes": ["horizontal"]},
+        "vertical": {"class": VelocityPlot, "attributes": ["vertical"]},
+        "timeseries": {"class": TimeseriesPlot, "attributes": ["eos_file_ascending", "eos_file_descending"]},
+        "vectors": {"class": VectorsPlot, "attributes": ["horizontal", "vertical"]},
+        "seismicmap": {"class": ShadedReliefPlot, "attributes": ["ascending", "descending"]},
+        "seismicity": {"class": Earthquake, "attributes": ["ascending", "descending"]},
+    }
+
+    figures = []
+    processors = []
+
+    for start_date, end_date in zip(inps.start_date, inps.end_date):
+        process = ProcessData(inps, template.layout, start_date, end_date)
+        processors.append(process)
+        process.process()
+
+        # 6. Use PlotRenderer to populate the axes
+        renderer = PlotRenderer(process, template, plotter_map)
+        fig = renderer.render(process)
+
+        figures.append(fig)
+
+    # 7. Save or show
+    if inps.save == 'pdf':
+        from matplotlib.backends.backend_pdf import PdfPages
+        saving_path = os.path.join(inps.outdir,processors[0].project,f"{processors[0].project}_{inps.template}_{inps.start_date[0]}_{inps.end_date[-1]}.pdf")
+
+        with PdfPages(saving_path) as pdf:
+            for fig in figures:
+                pdf.savefig(fig, bbox_inches='tight', dpi=inps.dpi, transparent=True)
+                plt.close(fig)
+
+    elif inps.save == 'png':
+        # Save each figure as a PNG file
+        for start_date, end_date in zip(inps.start_date, inps.end_date):
+            png_path = os.path.join(inps.outdir,processors[0].project,f"{processors[0].project}_{inps.template}_{inps.start_date[0]}_{inps.end_date[0]}.png")
+            fig.savefig(png_path, bbox_inches='tight', dpi=inps.dpi, transparent=True)
+            plt.close(fig)
+
+    if inps.show_flag:
+        plt.show()
+
 
 ############################################################
 

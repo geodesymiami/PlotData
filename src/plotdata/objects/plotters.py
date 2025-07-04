@@ -11,10 +11,23 @@ from mintpy.objects import timeseries, HDFEOS
 from plotdata.helper_functions import draw_vectors, unpack_file, calculate_distance
 
 
+# TODO Create a class to just extract data
+class DataFetcher:
+    def __init__(self, template, plotter_map, process) -> None:
+        plotters={}
+        for name, configs in self.plotter_map.items():
+            if any(name in row for row in self.template.layout):
+                cls = configs["class"]
+                files = [getattr(process, attr) for attr in configs["attributes"]]
+
+                # plotter_instance = cls(*files, self.inps)
+                plotter_instance = cls(files, self.inps)
+                plotters[name] = (plotter_instance)
+
+
 class ShadedReliefPlot:
     """Handles the generation of a shaded relief map."""
-    def __init__(self, ax, file, inps):
-        self.ax = ax
+    def __init__(self, file, inps):
         self.file = unpack_file(file)
         self.region = inps.region
         self.resolution = inps.resolution
@@ -28,9 +41,8 @@ class ShadedReliefPlot:
         self.start_date = inps.start_date if inps.start_date else None
         self.end_date = inps.end_date if inps.end_date else None
 
-        self._create_map()
-
-    def _create_map(self):
+    def plot(self, ax):
+        self.ax = ax
         """Create and configure the shaded relief map."""
         rel_map = Mapper(ax=self.ax, file=self.file, start_date=self.start_date, end_date=self.end_date, region=self.region)
 
@@ -41,42 +53,44 @@ class ShadedReliefPlot:
                  levels=self.isolines, inline=self.inline)
 
         # Add earthquake markers if enabled
-        if self.seismicity:
-            Earthquake(map=rel_map, magnitude=self.seismicity).map()
+        if self.seismicity or 'seismicmap' in self.ax.get_label():
+            if not self.seismicity:
+                self.seismicity = 1
+            Earthquake(map=rel_map, magnitude=self.seismicity).map(self.ax)
 
 
 class VelocityPlot:
     """Handles the plotting of velocity maps."""
-    def __init__(self, ax, file, inps):
-        self.ax = ax
-        self.file = file
-        self.resolution = inps.resolution
-        self.interpolate = inps.interpolate
-        self.no_shade = inps.no_shade
-        self.style = inps.style
-        self.vmin = inps.vmin
-        self.vmax = inps.vmax
-        self.movement = inps.movement
-        self.isolines = inps.isolines
-        self.iso_color = inps.iso_color
-        self.linewidth = inps.linewidth
-        self.inline = inps.inline
-        self.seismicity = inps.seismicity
-        self.no_dem = inps.no_dem
-        self.lalo = inps.lalo
-        self.ref_lalo = inps.ref_lalo
+    def __init__(self, file: str, inps):
+        for attr in dir(inps):
+            if not attr.startswith('__') and not callable(getattr(inps, attr)):
+                setattr(self, attr, getattr(inps, attr))
+        self.file = file[0] if isinstance(file, list) else file
+        self.attr = readfile.read_attribute(self.file)
 
-        self.map = self._create_map()
+    def on_click(self, event):
+        if event.inaxes == self.ax:  # Ensure the click is within the correct axis
+            if event.inaxes == self.ax:  # Ensure the click is within the plot
+                print(f"--lalo={event.ydata},{event.xdata}\n")
+                print(f"--ref-lalo={event.ydata},{event.xdata}\n")
 
-
-    def _create_map(self):
+    def plot(self, ax):
         """Creates and configures the velocity map."""
+        self.ax = ax
         vel_map = Mapper(ax=self.ax, file=self.file)
+        self.region = vel_map.region
 
         # Add relief if not disabled
         if not self.no_dem:
-            Relief(map=vel_map, resolution=self.resolution, cmap='terrain',
-                   interpolate=self.interpolate, no_shade=self.no_shade)
+            if self.attr['passDirection'] == 'ASCENDING':
+                geometry = self.ascending_geometry
+            elif self.attr['passDirection'] == 'DESCENDING':
+                geometry = self.descending_geometry
+            else:
+                geometry = None
+
+            Relief(map=vel_map, geometry=geometry, resolution=self.resolution, cmap='terrain',
+                interpolate=self.interpolate, no_shade=self.no_shade)
 
         # Add velocity file
         vel_map.add_file(style=self.style, vmin=self.vmin, vmax=self.vmax, movement=self.movement)
@@ -88,117 +102,109 @@ class VelocityPlot:
 
         # Add earthquake markers if enabled
         if self.seismicity:
-            Earthquake(map=vel_map, magnitude=self.seismicity).map()
+            Earthquake(map=vel_map, magnitude=self.seismicity).map(ax=self.ax)
 
-        if self.lalo:
+        if 'ascending' in self.ax.get_label():
+            label = "ASCENDING"
+        elif 'descending' in self.ax.get_label():
+            label = "DESCENDING"
+        elif 'horizontal' in self.ax.get_label():
+            label = "HORIZONTAL"
+        elif 'vertical' in self.ax.get_label():
+            label = "VERTICAL"
+        else:
+            label = None
+
+        if label:
+            self.ax.annotate(
+                label,
+                xy=(0.02, 0.98),
+                xycoords='axes fraction',
+                fontsize=5,
+                ha='left',
+                va='top',
+                color='white',
+                bbox=dict(facecolor='gray', edgecolor='none', alpha=0.6, boxstyle='round,pad=0.3')
+            )
+
+        if self.lalo and 'point' in self.ax.get_label():
             vel_map.plot_point([self.lalo[0]], [self.lalo[1]], marker='x')
+
+        if 'section' in self.ax.get_label():
+            if not self.line:
+                self.line = self._set_default_section()
+            self.ax.plot(self.line[0], self.line[1], '--', linewidth=1.5, alpha=0.7, color='black')
+
         if self.ref_lalo:
             vel_map.plot_point([self.ref_lalo[0]], [self.ref_lalo[1]], marker='s')
 
-        # Add interactive click functionality
-        def on_click(event):
-            if event.inaxes == self.ax:  # Ensure the click is within the correct axis
-                self._on_click(event)
-
-        self.ax.figure.canvas.mpl_connect('button_press_event', on_click)
+        self.ax.figure.canvas.mpl_connect('button_press_event', self.on_click)
         return vel_map
 
-    def _on_click(self, event):
-        """Callback function to handle mouse click events."""
-        if event.inaxes == self.ax:  # Ensure the click is within the plot
-            print(f"--lalo={event.ydata},{event.xdata}\n")
-            print(f"--ref-lalo={event.ydata},{event.xdata}\n")
+    def _set_default_section(self):
+        mid_lat = (max(self.region[2:4]) + min(self.region[2:4]))/2
+        mid_lon = (max(self.region[0:2]) + min(self.region[0:2]))/2
+
+        size = (max(self.region[0:2]) - min(self.region[0:2]))*0.25
+
+        latitude = (mid_lat, mid_lat)
+        longitude = (mid_lon - size, mid_lon + size)
+
+        return [longitude, latitude]
 
 
 class VectorsPlot:
     """Handles the plotting of velocity maps, elevation profiles, and vector fields."""
-    def __init__(self, ax, asc_file, desc_file, horz_file, vert_file, inps):
-        self.ax = ax  # Expecting an array of axes
-        self.asc_file = asc_file
-        self.desc_file = desc_file
-        self.horz_file = horz_file
-        self.vert_file = vert_file
-        self.ref_lalo = inps.ref_lalo
-        self.seismicity = inps.seismicity
-        self.inps = inps
+    def __init__(self, files: list, inps):
+        for attr in dir(inps):
+            if not attr.startswith('__') and not callable(getattr(inps, attr)):
+                setattr(self, attr, getattr(inps, attr))
+        # TODO have to add attributes to https://github.com/insarlab/MintPy/blob/main/src/mintpy/asc_desc2horz_vert.py#L261
+        # for f in files:
+        #     attr = readfile.read_attribute(f)
+        #     if attr['FILE_TYPE'] == 'VERTICAL':
+        #         self.vert_file = f
+        #         self.horz_file = None
+        for f in files:
+            if 'hz' in f:
+                self.horz_file = f
+            elif 'up' in f:
+                self.vert_file = f
 
         # Determine which files to plot
         self._set_plot_files()
 
-        # Process the datasets
-        self._process_velocity_maps()
-
         self._process_sections()
-
-        # Compute and plot vectors
-        self._compute_vectors()
-
-        self._plot_vectors()
 
     def _set_plot_files(self):
         """Determines which velocity files to use based on plot options."""
-        if self.inps.plot_option != 'horzvert':
-            self.plot1_file = self.asc_file
-            self.plot2_file = self.desc_file
-        else:
-            self.plot1_file = self.horz_file
-            self.plot2_file = self.vert_file
+        self.plot1_file = self.horz_file
+        self.plot2_file = self.vert_file
 
     def plot_point(self, lat, lon, ax, marker='o'):
         """Plots a point on the map."""
         for x,y in zip(lon, lat):
             ax.scatter(x, y, color='black', marker=marker)
 
-    def _create_map(self, ax, file):
-        """Creates and configures a velocity map."""
-        vel_map = Mapper(ax=ax, file=file)
-
-        # Add relief if not disabled
-        if not self.inps.no_dem:
-            Relief(map=vel_map, resolution=self.inps.resolution, cmap='terrain',
-                   interpolate=self.inps.interpolate, no_shade=self.inps.no_shade)
-
-        # Add velocity file
-        vel_map.add_file(style=self.inps.style, vmin=self.inps.vmin, vmax=self.inps.vmax, movement=self.inps.movement)
-
-        # Add isolines if specified
-        if self.inps.isolines:
-            Isolines(map=vel_map, resolution=self.inps.resolution, color=self.inps.iso_color, 
-                     linewidth=self.inps.linewidth, levels=self.inps.isolines, inline=self.inps.inline)
-
-        # Add earthquake markers if enabled
-        if self.seismicity:
-            Earthquake(map=vel_map, magnitude=self.seismicity).map()
-
-        if self.ref_lalo:
-            self.plot_point([self.ref_lalo[0]], [self.ref_lalo[1]], ax, marker='s')
-
-        return vel_map
-
-    def _process_velocity_maps(self):
-        """Processes and plots velocity maps."""
-        self.asc_data = self._create_map(ax=self.ax[0], file=self.plot1_file)
-        self.desc_data = self._create_map(ax=self.ax[1], file=self.plot2_file)
-
     def _process_sections(self):
         """Processes horizontal, vertical, and elevation sections."""
         self.horizontal_data = Mapper(file=self.horz_file)
         self.vertical_data = Mapper(file=self.vert_file)
-        self.elevation_data = Relief(map=self.horizontal_data, resolution=self.inps.resolution)
+        self.elevation_data = Relief(map=self.horizontal_data, resolution=self.resolution)
 
         self.region = self.elevation_data.map.region
 
-        if not self.inps.line:
-            self.inps.line = self._set_default_section()
+        if not self.line:
+            self.line = self._set_default_section()
 
         self.horizontal_section = Section(
-            self.horizontal_data.velocity, self.horizontal_data.region, self.inps.line[1], self.inps.line[0]
+            np.flipud(self.horizontal_data.velocity), self.horizontal_data.region, self.line[1], self.line[0]
         )
         self.vertical_section = Section(
-            self.vertical_data.velocity, self.vertical_data.region, self.inps.line[1], self.inps.line[0]
+            np.flipud(self.vertical_data.velocity), self.vertical_data.region, self.line[1], self.line[0]
         )
         self.elevation_section = Section(
-            self.elevation_data.elevation, self.elevation_data.map.region, self.inps.line[1], self.inps.line[0]
+            self.elevation_data.elevation.values, self.elevation_data.map.region, self.line[1], self.line[0]
         )
 
     def _set_default_section(self):
@@ -214,14 +220,14 @@ class VectorsPlot:
 
     def _compute_vectors(self):
         """Computes velocity vectors and scaling factors."""
-        self.x, self.v, self.h = draw_vectors(
-            self.elevation_section.values, self.vertical_section.values, self.horizontal_section.values, self.inps.line
+        x, v, h, self.z = draw_vectors(
+            self.elevation_section.values, self.vertical_section.values, self.horizontal_section.values, self.line
         )
 
-        fig = self.ax[0].get_figure()
+        fig = self.ax.get_figure()
         fig_width, fig_height = fig.get_size_inches()
-        max_elevation = max(self.elevation_section.values)
-        max_x = max(self.x)
+        max_elevation = max(self.z)
+        max_x = max(x)
 
         self.v_adj = 2 * max_elevation / max_x
         self.h_adj = 1 / self.v_adj
@@ -230,30 +236,35 @@ class VectorsPlot:
         self.rescale_v = self.v_adj / fig_height
 
         # Resample vectors
-        for i in range(len(self.h)):
-            if i % self.inps.resample_vector != 0:
-                self.h[i] = 0
-                self.v[i] = 0
+        for i in range(len(h)):
+            if i % self.resample_vector != 0:
+                h[i] = 0
+                v[i] = 0
 
-        distance = calculate_distance(self.inps.line[1][0], self.inps.line[0][0], self.inps.line[1][1], self.inps.line[0][1])
-        self.xrange = np.linspace(0, distance, len(self.x))
+        distance = calculate_distance(self.line[1][0], self.line[0][0], self.line[1][1], self.line[0][1])
+        self.xrange = np.linspace(0, distance, len(x))
         # Filter out zero-length vectors
-        non_zero_indices = np.where((self.h != 0) | (self.v != 0))
+        non_zero_indices = np.where((h != 0) | (v != 0))
         self.filtered_x = self.xrange[non_zero_indices]
-        self.filtered_h = self.h[non_zero_indices]
-        self.filtered_v = self.v[non_zero_indices]
-        self.filtered_elevation = self.elevation_section.values[non_zero_indices]
+        self.filtered_h = h[non_zero_indices]
+        self.filtered_v = v[non_zero_indices]
+        self.filtered_elevation = self.z[non_zero_indices]
 
-    def _plot_vectors(self):
+    def plot(self, ax):
         """Plots elevation profile and velocity vectors."""
+        self.ax = ax
+
+        # Compute and plot vectors
+        self._compute_vectors()
+
         # Plot elevation profile
-        self.ax[2].plot(self.xrange, self.elevation_section.values, color='#a8a8a8')
-        self.ax[2].set_ylim([0, 2 * max(self.elevation_section.values)])
-        self.ax[2].set_xlim([min(self.xrange), max(self.xrange)])
+        self.ax.plot(self.xrange, self.z, color='#a8a8a8', alpha=0.5)
+        self.ax.set_ylim([0, 2 * max(self.z)])
+        self.ax.set_xlim([min(self.xrange), max(self.xrange)])
 
         # Plot velocity vectors
         #Probably right one
-        self.ax[2].quiver(
+        self.ax.quiver(
             self.filtered_x, self.filtered_elevation,
             self.filtered_h, self.filtered_v,
             color='#ff7366', scale_units='xy', width=(1 / 10**(2.5))
@@ -267,35 +278,34 @@ class VectorsPlot:
         # )
 
         # Add profile lines to velocity maps
-        for i in range(2):
-            self.ax[i].plot(self.inps.line[0], self.inps.line[1], '--', linewidth=1, alpha=0.7, color='black')
+        # for i in range(2):
+        #     self.ax[i].plot(self.inps.line[0], self.inps.line[1], '--', linewidth=1, alpha=0.7, color='black')
 
         # Mean velocity vector
         start_x = max(self.xrange) * 0.1
-        start_y = (2 * max(self.elevation_section.values) * 0.8)
-        mean_velocity = abs(np.mean(self.filtered_h))
+        start_y = (2 * max(self.z) * 0.8)
+        mean_velocity = np.sqrt(np.mean((self.vertical_section.values[self.vertical_section.values!=0]))**2 + np.mean((self.horizontal_section.values[self.horizontal_section.values!=0]))**2)
+        rounded_mean_velocity = round(mean_velocity, 4) if mean_velocity else round(mean_velocity, 3)
 
-        self.ax[2].quiver([start_x], [start_y], [mean_velocity], [0], color='#ff7366', scale_units='xy', width=(1 / 10**(2.5)))
+        self.ax.quiver([start_x], [start_y], [mean_velocity], [0], color='#ff7366', scale_units='xy', width=(1 / 10**(2.5)))
         # self.ax[2].quiver([start_x], [start_y], [0], [abs(np.mean(self.filtered_v))], color='#ff7366', scale_units='xy', width=(1 / 10**(2.5)))
-        self.ax[2].text(start_x, start_y * 1.03, f"{round(mean_velocity, 3)} m/yr", color='black', ha='left', fontsize=8)
+        self.ax.text(start_x, start_y * 1.03, f"{round(rounded_mean_velocity, 4)} m/yr", color='black', ha='left', fontsize=8)
 
         # Add labels
-        self.ax[2].set_ylabel("Elevation (m)")
-        self.ax[2].set_xlabel("Distance (km)")
+        self.ax.set_ylabel("Elevation (m)")
+        self.ax.set_xlabel("Distance (km)")
 
 
 class TimeseriesPlot:
-    def __init__(self, ax, files, inps):
+    def __init__(self, files, inps):
         for attr in dir(inps):
             if not attr.startswith('__') and not callable(getattr(inps, attr)):
                 setattr(self, attr, getattr(inps, attr))
 
-        self.files = files
-        self.ax = ax
-        for file in self.files:
-            self._plot_timeseries(file)
+        self.start_date = self.start_date[0] if isinstance(self.start_date, list) else self.start_date
+        self.end_date = self.end_date[0] if isinstance(self.end_date, list) else self.end_date
 
-        self._plot_event(inps)
+        self.files = files
 
     def _extract_timeseries_data(self, file):
         """Extracts timeseries data from the given file."""
@@ -330,8 +340,13 @@ class TimeseriesPlot:
             print('Input data is complex, calculating amplitude.')
             data = np.abs(data)
 
+        if 'X_FIRST' not in atr:
+            geometry = self.ascending_geometry if 'SenA' in file else self.descending_geometry
+        else:
+            geometry = None
+
         # Convert geocoordinates to radar
-        coord = coordinate(atr)
+        coord = coordinate(atr, lookup_file=geometry)
         lalo = coord.geo2radar(lat=self.lalo[0], lon=self.lalo[1])
 
         # Reference data to a specific point if provided
@@ -358,7 +373,7 @@ class TimeseriesPlot:
         self.offset = 0
 
         # Plot vertical lines
-        ax_ts.axvline(self.start_date, color='#a8a8a8', linestyle='--', linewidth=0.2,alpha=0.5)
+        ax_ts.axvline(self.start_date, color='#a8a8a8', linestyle='--', linewidth=0.2, alpha=0.5)
         ax_ts.axvline(self.end_date, color='#a8a8a8', linestyle='--', linewidth=0.2, alpha=0.5)
 
         # Fill area between the vertical lines with a rectangle
@@ -366,18 +381,24 @@ class TimeseriesPlot:
         ax_ts.set_ylabel('LOS displacement (m)')
         ax_ts.legend(fontsize='x-small')
 
-    def _plot_event(self, inps):
-        for event, magnitude in zip(inps.add_event, inps.magnitude):
-            event = datetime.strptime(event, "%Y%m%d") if type(event) == str else event
-            self.ax.axvline(event, color='#900C3F', linestyle='--', linewidth=1, alpha=0.3)
+    def _plot_event(self):
+        if self.add_event:
+            for event, magnitude in zip(self.add_event, self.magnitude):
+                event = datetime.strptime(event, "%Y%m%d") if type(event) == str else event
+                self.ax.axvline(event, color='#900C3F', linestyle='--', linewidth=1, alpha=0.3)
 
-            # Add a number near the top of the line
-            if magnitude:
-                # self.ax.text(event, self.ax.get_ylim()[1], magnitude, color='#900C3F', fontsize=7, ha='center', va='bottom', alpha=0.5)
-                self.ax.text(event, self.ax.get_ylim()[1] * (magnitude/10), f"{magnitude}Mw", color='#900C3F', fontsize=7, alpha=1, ha='center',  path_effects=[withStroke(linewidth=0.5, foreground='black')])
+                # Add a number near the top of the line
+                if magnitude:
+                    self.ax.text(event, self.ax.get_ylim()[1] * (magnitude/10), f"{magnitude}", color='#900C3F', fontsize=7, alpha=1, ha='center',  path_effects=[withStroke(linewidth=0.5, foreground='black')])
 
+    def plot(self, ax):
+        self.ax = ax
+        for file in self.files:
+            self._plot_timeseries(file)
 
-def point_on_globe(latitude, longitude, names=None, size='0.7'):
+        self._plot_event()
+
+def point_on_globe(latitude, longitude, names=None, size='0.7', fsize=10):
     fig = pygmt.Figure()
 
     # Set up orthographic projection centered on your point
@@ -403,18 +424,19 @@ def point_on_globe(latitude, longitude, names=None, size='0.7'):
         # pen="1p,black"  # Outline pen
     )
 
-        # Add names if provided
+    # Add names if provided
     if names:
         fig.text(
             x=longitude,
             y=latitude,
             text=names,
-            font="10p,Helvetica-Bold,black",  # Font size, style, and color
+            font=f"{fsize}p,Helvetica-Bold,black",  # Font size, style, and color
             justify="LM",  # Left-middle alignment
             offset="0.2c/0.2c"  # Offset to avoid overlapping with markers
         )
 
     return fig
+
 
 if __name__ == '__main__':
     # Example usage

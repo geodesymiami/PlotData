@@ -96,6 +96,10 @@ def add_plot_parameters_arguments(parser):
         argparse.ArgumentParser: The argument parser object with added plot parameters arguments.
     """
     plot_parameters = parser.add_argument_group('Plot parameters')
+    parser.add_argument('--template',
+                        default='default',
+                        type=str,
+                        help='Template for the plot (default: %(default)s).')
     plot_parameters.add_argument('--add-event',
                         nargs='*',
                         metavar=('YYYYMMDD, YYYY-MM-DD'),
@@ -122,6 +126,10 @@ def add_plot_parameters_arguments(parser):
                         default='velocity',
                         choices=['velocity', 'displacement'],
                         help='Type of movement (default: %(default)s).')
+    plot_parameters.add_argument('--dpi',
+                        default=100,
+                        type=int,
+                        help='DPI of the plot (default: %(default)s).')
     return parser
 
 
@@ -208,9 +216,9 @@ def add_save_arguments(parser):
     """
     save = parser.add_argument_group('Save options')
     save.add_argument('--save',
-                      action='store_true',
-                      default=False,
-                      help=f'Save the plots (default path: {os.getenv("SCRATCHDIR")}).')
+                      choices=['png', 'pdf'],
+                      default=None,
+                      help=f'Save the plots (default path: {os.getenv("SCRATCHDIR")}). as PNG or PDF')
     save.add_argument('--outdir',
                       type=str,
                       default=os.getenv("SCRATCHDIR"),
@@ -271,12 +279,14 @@ def add_seismicity_arguments(parser):
     """
     seismicity = parser.add_argument_group('Earthquakes options')
     seismicity.add_argument('--seismicity',
+                            metavar='MAGNITUDE',
                             nargs='?',
-                            type=int,
+                            type=float,
                             default=None,
                             help='Add seismicity to the plot with magnitude above specified value (default: %(default)s).'
                             )
     seismicity.add_argument('--magnitude',
+                            metavar='MAGNITUDE',
                             nargs='*',
                             type=float,
                             help='Minimum magnitude for the earthquake events in the timeeries'
