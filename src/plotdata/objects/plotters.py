@@ -236,18 +236,18 @@ class VectorsPlot:
         self.rescale_v = self.v_adj / fig_height
 
         # Resample vectors
-        for i in range(len(self.h)):
+        for i in range(len(h)):
             if i % self.resample_vector != 0:
-                self.h[i] = 0
-                self.v[i] = 0
+                h[i] = 0
+                v[i] = 0
 
         distance = calculate_distance(self.line[1][0], self.line[0][0], self.line[1][1], self.line[0][1])
-        self.xrange = np.linspace(0, distance, len(self.x))
+        self.xrange = np.linspace(0, distance, len(x))
         # Filter out zero-length vectors
-        non_zero_indices = np.where((self.h != 0) | (self.v != 0))
+        non_zero_indices = np.where((h != 0) | (v != 0))
         self.filtered_x = self.xrange[non_zero_indices]
-        self.filtered_h = self.h[non_zero_indices]
-        self.filtered_v = self.v[non_zero_indices]
+        self.filtered_h = h[non_zero_indices]
+        self.filtered_v = v[non_zero_indices]
         self.filtered_elevation = self.z[non_zero_indices]
 
     def plot(self, ax):
