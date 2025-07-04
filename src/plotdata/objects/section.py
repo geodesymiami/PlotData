@@ -24,6 +24,7 @@ class Section():
         # Extract the values profile
         self.values = self.path_df['values']
 
+        # TODO recheck
         self.values = np.nan_to_num(self.values)
 
     def draw_line(self, data, region, latitude, longitude):
