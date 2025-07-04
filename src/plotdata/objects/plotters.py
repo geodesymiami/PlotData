@@ -220,14 +220,14 @@ class VectorsPlot:
 
     def _compute_vectors(self):
         """Computes velocity vectors and scaling factors."""
-        self.x, self.v, self.h, self.z = draw_vectors(
+        x, v, h, self.z = draw_vectors(
             self.elevation_section.values, self.vertical_section.values, self.horizontal_section.values, self.line
         )
 
         fig = self.ax.get_figure()
         fig_width, fig_height = fig.get_size_inches()
         max_elevation = max(self.z)
-        max_x = max(self.x)
+        max_x = max(x)
 
         self.v_adj = 2 * max_elevation / max_x
         self.h_adj = 1 / self.v_adj
