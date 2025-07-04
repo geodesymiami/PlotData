@@ -397,7 +397,7 @@ class TimeseriesPlot:
 
         self._plot_event()
 
-def point_on_globe(latitude, longitude, names=None, size='0.7'):
+def point_on_globe(latitude, longitude, names=None, size='0.7', fsize=10):
     fig = pygmt.Figure()
 
     # Set up orthographic projection centered on your point
@@ -429,7 +429,7 @@ def point_on_globe(latitude, longitude, names=None, size='0.7'):
             x=longitude,
             y=latitude,
             text=names,
-            font="10p,Helvetica-Bold,black",  # Font size, style, and color
+            font=f"{fsize}p,Helvetica-Bold,black",  # Font size, style, and color
             justify="LM",  # Left-middle alignment
             offset="0.2c/0.2c"  # Offset to avoid overlapping with markers
         )

@@ -56,6 +56,10 @@ def create_parser(iargs=None, namespace=None):
                         default=0.7,
                         type=float,
                         help='Size of the volcanoes on the map')
+    parser.add_argument('--fsize',
+                        default=10,
+                        type=int,
+                        help='Font size of the volcano names on the map')
 
     inps = parser.parse_args(iargs, namespace)
 
