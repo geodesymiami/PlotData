@@ -337,10 +337,10 @@ def main(iargs=None):
 
     elif inps.save == 'png':
         # Save each figure as a PNG file
-        for start_date, end_date in zip(inps.start_date, inps.end_date):
-            png_path = os.path.join(inps.outdir,processors[0].project,f"{processors[0].project}_{inps.template}_{inps.start_date[0]}_{inps.end_date[0]}.png")
+        for start_date, end_date, fig in zip(inps.start_date, inps.end_date, figures):
+            png_path = os.path.join(inps.outdir,processors[0].project,f"{processors[0].project}_{inps.template}_{start_date}_{end_date}.png")
             fig.savefig(png_path, bbox_inches='tight', dpi=inps.dpi, transparent=True)
-            plt.close(fig)
+            # plt.close(fig)
 
     if inps.show_flag:
         plt.show()
