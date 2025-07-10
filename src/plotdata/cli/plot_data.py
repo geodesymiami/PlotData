@@ -7,8 +7,6 @@
 import os
 import re
 import sys
-import glob
-from pathlib import Path
 
 # !!! The asgeo import breaks when called by readfile.py unless I do the following !!!
 from osgeo import gdal, osr
