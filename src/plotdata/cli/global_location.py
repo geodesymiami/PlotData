@@ -105,7 +105,7 @@ def main(iargs=None, namespace=None):
     if not inps.name:
         names = None
 
-    fig = point_on_globe(latitudes, longitudes, names=names, size=inps.size, fsize=inps.fsize)
+    fig = point_on_globe(latitudes, longitudes, names=names, size=inps.size)
     fig.show()
 
 
