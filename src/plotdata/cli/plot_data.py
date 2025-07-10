@@ -7,12 +7,16 @@
 import os
 import re
 import sys
+import glob
+from pathlib import Path
 
 # !!! The asgeo import breaks when called by readfile.py unless I do the following !!!
 from osgeo import gdal, osr
 
 import argparse
 from datetime import datetime
+from mintpy.utils import readfile
+from plotdata.helper_functions import prepend_scratchdir_if_needed, get_eos5_file
 from plotdata.utils.argument_parsers import add_date_arguments, add_location_arguments, add_plot_parameters_arguments, add_map_parameters_arguments, add_save_arguments,add_gps_arguments, add_seismicity_arguments
 
 ############################################################
@@ -205,87 +209,6 @@ def main(iargs=None):
 
     inps = create_parser()
 
-    if False:
-        from plotdata.objects.process_data import ProcessData
-
-        processors = []
-        for start_date, end_date in zip(inps.start_date, inps.end_date):
-            processors.append(ProcessData(inps, start_date, end_date))
-
-        for process in processors:
-            process.process()
-
-        if inps.show_flag or inps.save:
-            from plotdata.objects.plot_properties import PlotGrid
-            from plotdata.objects.plotters import VelocityPlot, ShadedReliefPlot, VectorsPlot, TimeseriesPlot
-            import matplotlib.pyplot as plt
-
-            # Create plot grid, with columns as processors and rows as files
-            pltgr = PlotGrid(inps=processors)
-
-            # Select the correct plotter and corresponding files for rows
-            plotter_map = {
-                "velocity": (VelocityPlot, ["ascending", "descending"]),
-                "horzvert": (VelocityPlot, ["horizontal", "vertical"]),
-                "vectors": (VectorsPlot, ["ascending", "descending","horizontal", "vertical"]),
-                "timeseries": [
-                    (TimeseriesPlot, ["eos_file_ascending", "eos_file_descending"]),
-                    (VelocityPlot, ["ascending", "descending"])
-                ],
-                "shaded_relief": (ShadedReliefPlot, ["velocity_file"]),  # Example
-            }
-
-            # Get plotter configuration for the selected plot type
-            plotter_entries = plotter_map.get(inps.plot_type)
-            if not plotter_entries:
-                raise ValueError(f"Unsupported plot type: {inps.plot_type}")
-            if not isinstance(plotter_entries, list):
-                plotter_entries = [plotter_entries]
-
-            # Iterate over each column (i.e., each processor)
-            for col_idx, process in enumerate(processors):
-                # For each plotter class and its corresponding file attributes
-                for plotter_cls, file_attrs in plotter_entries:
-                    files = [getattr(process, attr, None) for attr in file_attrs]
-                    files = list(filter(lambda x: x is not None, files))
-
-                    if plotter_cls is VectorsPlot:
-                        if all(files):
-                            plotter_cls(
-                                ax=pltgr.axes[:, col_idx],
-                                asc_file=files[0],
-                                desc_file=files[1],
-                                horz_file=files[2],
-                                vert_file=files[3],
-                                inps=process
-                            )
-
-                    elif plotter_cls is TimeseriesPlot:
-                        plotter_cls(
-                            ax=pltgr.axes[-1, col_idx],  # Always plot in the last row
-                            files=files,
-                            inps=process
-                        )
-
-                    else:  # Default case (e.g., VelocityPlot, ShadedReliefPlot)
-                        for row_idx, file in enumerate(files):
-                            print(row_idx, file)
-                            if file:
-                                plotter_cls(
-                                    ax=pltgr.axes[row_idx, col_idx],
-                                    file=file,
-                                    inps=process
-                                )
-
-
-            if inps.save:
-                saving_path = os.path.join(inps.outdir, processors[0].project,processors[0].project + '_' + inps.plot_type + '_' + inps.start_date[0] + '_' + inps.end_date[-1]) + ".pdf"
-                print(f"Saving image in {saving_path}")
-                plt.savefig(saving_path, bbox_inches='tight', dpi=inps.dpi, transparent=True)
-
-            if inps.show_flag:
-                plt.show()
-
     from plotdata.objects.process_data import ProcessData
     from plotdata.objects.plot_properties import PlotGrid, PlotTemplate, PlotRenderer
     from plotdata.objects.plotters import VelocityPlot, ShadedReliefPlot, VectorsPlot, TimeseriesPlot
@@ -313,6 +236,15 @@ def main(iargs=None):
 
     figures = []
     processors = []
+
+    if not inps.start_date or not inps.end_date:
+        for path in inps.data_dir:
+            full_path = prepend_scratchdir_if_needed(path)
+            file = get_eos5_file(full_path)
+
+            atr = readfile.read_attribute(file)
+            inps.start_date.append(atr['start_date'])
+            inps.end_date.append(atr['end_date'])
 
     for start_date, end_date in zip(inps.start_date, inps.end_date):
         process = ProcessData(inps, template.layout, start_date, end_date)
