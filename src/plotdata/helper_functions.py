@@ -10,7 +10,7 @@ import numpy as np
 from pathlib import Path
 from mintpy.utils import utils
 from mintpy.cli import generate_mask
-from minsar.utils.extract_hdfeos5 import determine_coordinates, extract_geometry, extract_temporalCoherence
+from minsar.utils.extract_hdfeos5 import determine_coordinates, extract_geometry, extract_mask, extract_temporalCoherence
 
 
 def create_geometry_file(eos_file, out_folder):
@@ -40,30 +40,6 @@ def create_mask_file(eos_file, out_folder, mask_trehshold=0.55):
     return os.path.join(out_folder, mask_temporalCoherence + '.h5')
 
 
-def get_eos5_file(path, scratch):
-    scratch = os.getenv('SCRATCHDIR')
-    files = glob.glob(path)
-    if files and os.path.isfile(files[0]):
-        eos_file = files[0]
-
-    elif os.path.isfile(os.path.join(scratch, path)):
-        eos_file = os.path.join(scratch, path)
-
-    else:
-        if 'mintpy' in path or 'network' in path:
-            files = glob.glob(path + '/*.he5')
-        else:
-            files = glob.glob(path + '/mintpy/*.he5')
-
-        if len(files) == 0:
-            raise Exception('USER ERROR: No HDF5EOS files found in ' + path)
-
-        eos_file = max(files, key=os.path.getctime)
-
-    print('HDF5EOS file used:', eos_file)
-    return eos_file
-
-
 def get_file_names(path):
     """gets the youngest eos5 file. Path can be:
     MaunaLoaSenAT124
@@ -71,7 +47,25 @@ def get_file_names(path):
     ~/onedrive/scratch/MaunaLoaSenAT124/mintpy/S1_qq.he5'
     """
     scratch = os.getenv('SCRATCHDIR')
-    eos_file = get_eos5_file(path, scratch)
+    if os.path.isfile(glob.glob(path)[0]):
+        eos_file = glob.glob(path)[0]
+
+    elif os.path.isfile(os.path.join(scratch, path)):
+        eos_file = scratch + '/' + path
+
+    else:
+        if 'mintpy' in path or 'network' in path :
+            files = glob.glob(path + '/*.he5')
+
+        else:
+            files = glob.glob( path + '/mintpy/*.he5' )
+
+        if len(files) == 0:
+            raise Exception('USER ERROR: No HDF5EOS files found in ' + path)
+
+        eos_file = max(files, key=os.path.getctime)
+
+    print('HDF5EOS file used:', eos_file)
 
     metadata = readfile.read(eos_file)[1]
     velocity_file = 'geo/geo_velocity.h5'
