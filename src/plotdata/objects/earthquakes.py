@@ -144,7 +144,7 @@ class Earthquake():
         ax.scatter(self.earthquakes['date'], self.earthquakes['magnitude'], c='black', marker='o')
         ax.set_xlabel('Date')
         ax.set_ylabel('Magnitude')
-        ax.set_title('Earthquake Magnitudes Over Time')
+        ax.set_title('Earthquake Magnitudes Over Time at {}')
         ax.set_xlim([self.start_date.date(), self.end_date.date()])
         ax.set_ylim([0, 10])
 
