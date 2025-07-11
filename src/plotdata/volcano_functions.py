@@ -102,7 +102,7 @@ def get_volcano_coord_name(jsonfile, volcanoId):
             return coordinates, name
 
 
-def get_volcano_event(jsonfile, volcanoName: str, start_date, end_date, strength = 0):
+def get_volcano_event(jsonfile, volcanoId: int, start_date=None, end_date=None, strength = 0):
     """
     Extracts information about a specific volcano from a JSON file.
 
@@ -113,23 +113,26 @@ def get_volcano_event(jsonfile, volcanoName: str, start_date, end_date, strength
     Returns:
         tuple: A tuple containing the start dates of eruptions, a date list, and the coordinates of the volcano.
     """
-    volcano = {f"{volcanoName}": {},}
+    # volcano = {f"{volcanoName}": {},}
+    volcano = {}
     column_names = ['Start', 'End', 'Max Explosivity']
     frame_data = []
     name = ''
 
     data = get_volcano_json(jsonfile, JSON_DOWNLOAD_URL)
 
-    first_day = datetime.strptime(start_date, '%Y%m%d').date() if isinstance(start_date, str) else start_date
-    last_day = datetime.strptime(end_date, '%Y%m%d').date() if isinstance(end_date, str) else end_date
+    if start_date:
+        first_day = datetime.strptime(start_date, '%Y%m%d').date() if isinstance(start_date, str) else start_date
+    if end_date:
+        last_day = datetime.strptime(end_date, '%Y%m%d').date() if isinstance(end_date, str) else end_date
 
     strength = int(strength)
 
     # Iterate over the features in the data
     for j in data['features']:
-        if j['properties']['VolcanoName'] == volcanoName:
+        if j['properties']['VolcanoNumber'] == volcanoId:
             id = j['properties']['VolcanoNumber']
-            name = (j['properties']['VolcanoName'])
+            name = j['properties']['VolcanoName']
             start = datetime.strptime((j['properties']['StartDate']), '%Y%m%d').date()
 
             try:
@@ -145,14 +148,16 @@ def get_volcano_event(jsonfile, volcanoName: str, start_date, end_date, strength
 
             print(f'{name} (id: {id}) eruption started {start} and ended {end}')
 
-            # If the start date is within the date range
-            if start >= first_day and start <= last_day:
-                # start_dates.append(start)
+            if start_date and end_date:
+                # If the start date is within the date range
+                if start >= first_day and start <= last_day:
+                    # start_dates.append(start)
+                    if j['properties']['ExplosivityIndexMax'] >= strength:
+                        frame_data.append([start, end, j['properties']['ExplosivityIndexMax']])
+            else:
+                # If no date range is specified, include all eruptions
                 if j['properties']['ExplosivityIndexMax'] >= strength:
                     frame_data.append([start, end, j['properties']['ExplosivityIndexMax']])
-
-    if name == '':
-        raise ValueError(f'Volcano {volcanoName} not found, check for typos')
 
     if frame_data != []:
         df = pd.DataFrame(frame_data, columns=column_names)

@@ -12,8 +12,10 @@ import sys
 from osgeo import gdal, osr
 
 import argparse
-from datetime import datetime
+from datetime import datetime, date
+from dateutil.relativedelta import relativedelta
 from mintpy.utils import readfile
+from plotdata.volcano_functions import get_volcano_event
 from plotdata.helper_functions import prepend_scratchdir_if_needed, get_eos5_file
 from plotdata.utils.argument_parsers import add_date_arguments, add_location_arguments, add_plot_parameters_arguments, add_map_parameters_arguments, add_save_arguments,add_gps_arguments, add_seismicity_arguments
 
@@ -43,6 +45,7 @@ def create_parser():
     # parser.add_argument("--noreference", dest="show_reference_point",  action='store_false', default=True, help="hide reference point (default: False)" )
     parser.add_argument("--section", dest="line", type=str, default=None, help="Section coordinates for deformation vectors, LAT,LON:LAT,LON")
     parser.add_argument("--resample-vector", dest="resample_vector", type=int, default=1, help="resample factor for deformation vectors (default: %(default)s).")
+    parser.add_argument("--id", type=int, default=None, help="ID of the plot volcano")
 
     parser = add_date_arguments(parser)
     parser = add_location_arguments(parser)
@@ -200,6 +203,71 @@ def parse_lalo(str_lalo):
         lalo = lalo[0]
     return lalo
 
+def initialize_dates_from_files(inps):
+    scratch = os.getenv('SCRATCHDIR')
+    for path in inps.data_dir:
+        full_path = prepend_scratchdir_if_needed(path)
+        file = get_eos5_file(full_path, scratch)
+
+        atr = readfile.read_attribute(file)
+        if atr['START_DATE'] not in inps.start_date:
+            inps.start_date.append(atr['START_DATE'])
+        if atr['END_DATE'] not in inps.end_date:
+            inps.end_date.append(atr['END_DATE'])
+
+    if inps.start_date and inps.end_date:
+        inps.start_date = [min(inps.start_date)]
+        inps.end_date = [max(inps.end_date)]
+
+
+def try_initialize_from_volcano(inps):
+    volcano = get_volcano_event(None, volcanoId=inps.id, strength=0)
+    eruptions = []
+
+    if volcano:
+        first_key = next(iter(volcano), None)
+        volcano_data = volcano.get(first_key, {})
+
+        if 'eruptions' in volcano_data and 'Start' in volcano_data['eruptions']:
+            eruptions = volcano_data['eruptions']['Start']
+        else:
+            print("Key 'eruptions' or 'Start' not found in volcano data.")
+            return False
+
+        initialize_dates_from_files(inps)
+
+        if not inps.start_date or not inps.end_date:
+            return False
+
+        start_date = datetime.strptime(inps.start_date[0], '%Y%m%d').date()
+        end_date = datetime.strptime(inps.end_date[0], '%Y%m%d').date()
+
+        for e in eruptions:
+            if start_date <= e <= end_date:
+                one_month_later = e + relativedelta(months=1)
+                end_str = one_month_later.strftime('%Y%m%d')
+                if (one_month_later < end_date):
+                    inps.end_date.append(end_str)
+                    inps.start_date.append(min(inps.start_date))
+
+        return True
+    return False
+
+
+def populate_dates(inps):
+    if inps.start_date and inps.end_date:
+        return inps
+
+    if hasattr(inps, "id") and inps.id:
+        success = try_initialize_from_volcano(inps)
+        if success:
+            return inps
+
+    # Fallback to file-based method
+    initialize_dates_from_files(inps)
+
+    return inps
+
 ######################### MAIN #############################
 
 def main(iargs=None):
@@ -235,14 +303,7 @@ def main(iargs=None):
     figures = []
     processors = []
 
-    if not inps.start_date or not inps.end_date:
-        for path in inps.data_dir:
-            full_path = prepend_scratchdir_if_needed(path)
-            file = get_eos5_file(full_path)
-
-            atr = readfile.read_attribute(file)
-            inps.start_date.append(atr['start_date'])
-            inps.end_date.append(atr['end_date'])
+    inps = populate_dates(inps)
 
     for start_date, end_date in zip(inps.start_date, inps.end_date):
         process = ProcessData(inps, template.layout, start_date, end_date)
