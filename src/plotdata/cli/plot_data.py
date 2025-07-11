@@ -12,8 +12,10 @@ import sys
 from osgeo import gdal, osr
 
 import argparse
-from datetime import datetime
+from datetime import datetime, date
+from dateutil.relativedelta import relativedelta
 from mintpy.utils import readfile
+from plotdata.volcano_functions import get_volcano_event
 from plotdata.helper_functions import prepend_scratchdir_if_needed, get_eos5_file
 from plotdata.utils.argument_parsers import add_date_arguments, add_location_arguments, add_plot_parameters_arguments, add_map_parameters_arguments, add_save_arguments,add_gps_arguments, add_seismicity_arguments
 
@@ -43,6 +45,7 @@ def create_parser():
     # parser.add_argument("--noreference", dest="show_reference_point",  action='store_false', default=True, help="hide reference point (default: False)" )
     parser.add_argument("--section", dest="line", type=str, default=None, help="Section coordinates for deformation vectors, LAT,LON:LAT,LON")
     parser.add_argument("--resample-vector", dest="resample_vector", type=int, default=1, help="resample factor for deformation vectors (default: %(default)s).")
+    parser.add_argument("--id", type=int, default=None, help="ID of the plot volcano")
 
     parser = add_date_arguments(parser)
     parser = add_location_arguments(parser)
@@ -300,14 +303,7 @@ def main(iargs=None):
     figures = []
     processors = []
 
-    if not inps.start_date or not inps.end_date:
-        for path in inps.data_dir:
-            full_path = prepend_scratchdir_if_needed(path)
-            file = get_eos5_file(full_path)
-
-            atr = readfile.read_attribute(file)
-            inps.start_date.append(atr['start_date'])
-            inps.end_date.append(atr['end_date'])
+    inps = populate_dates(inps)
 
     for start_date, end_date in zip(inps.start_date, inps.end_date):
         process = ProcessData(inps, template.layout, start_date, end_date)
