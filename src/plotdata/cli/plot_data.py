@@ -200,6 +200,71 @@ def parse_lalo(str_lalo):
         lalo = lalo[0]
     return lalo
 
+def initialize_dates_from_files(inps):
+    scratch = os.getenv('SCRATCHDIR')
+    for path in inps.data_dir:
+        full_path = prepend_scratchdir_if_needed(path)
+        file = get_eos5_file(full_path, scratch)
+
+        atr = readfile.read_attribute(file)
+        if atr['START_DATE'] not in inps.start_date:
+            inps.start_date.append(atr['START_DATE'])
+        if atr['END_DATE'] not in inps.end_date:
+            inps.end_date.append(atr['END_DATE'])
+
+    if inps.start_date and inps.end_date:
+        inps.start_date = [min(inps.start_date)]
+        inps.end_date = [max(inps.end_date)]
+
+
+def try_initialize_from_volcano(inps):
+    volcano = get_volcano_event(None, volcanoId=inps.id, strength=0)
+    eruptions = []
+
+    if volcano:
+        first_key = next(iter(volcano), None)
+        volcano_data = volcano.get(first_key, {})
+
+        if 'eruptions' in volcano_data and 'Start' in volcano_data['eruptions']:
+            eruptions = volcano_data['eruptions']['Start']
+        else:
+            print("Key 'eruptions' or 'Start' not found in volcano data.")
+            return False
+
+        initialize_dates_from_files(inps)
+
+        if not inps.start_date or not inps.end_date:
+            return False
+
+        start_date = datetime.strptime(inps.start_date[0], '%Y%m%d').date()
+        end_date = datetime.strptime(inps.end_date[0], '%Y%m%d').date()
+
+        for e in eruptions:
+            if start_date <= e <= end_date:
+                one_month_later = e + relativedelta(months=1)
+                end_str = one_month_later.strftime('%Y%m%d')
+                if (one_month_later < end_date):
+                    inps.end_date.append(end_str)
+                    inps.start_date.append(min(inps.start_date))
+
+        return True
+    return False
+
+
+def populate_dates(inps):
+    if inps.start_date and inps.end_date:
+        return inps
+
+    if hasattr(inps, "id") and inps.id:
+        success = try_initialize_from_volcano(inps)
+        if success:
+            return inps
+
+    # Fallback to file-based method
+    initialize_dates_from_files(inps)
+
+    return inps
+
 ######################### MAIN #############################
 
 def main(iargs=None):
