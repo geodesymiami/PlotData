@@ -289,7 +289,7 @@ class VectorsPlot:
 
         self.ax.quiver([start_x], [start_y], [mean_velocity], [0], color='#ff7366', scale_units='xy', width=(1 / 10**(2.5)))
         # self.ax[2].quiver([start_x], [start_y], [0], [abs(np.mean(self.filtered_v))], color='#ff7366', scale_units='xy', width=(1 / 10**(2.5)))
-        self.ax.text(start_x, start_y * 1.03, f"{round(rounded_mean_velocity, 4)} m/yr", color='black', ha='left', fontsize=8)
+        self.ax.text(start_x, start_y * 1.03, f"{rounded_mean_velocity:.4f} m/yr", color='black', ha='left', fontsize=8)
 
         # Add labels
         self.ax.set_ylabel("Elevation (m)")
