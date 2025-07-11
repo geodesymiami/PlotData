@@ -12,7 +12,7 @@ import sys
 from osgeo import gdal, osr
 
 import argparse
-from datetime import datetime, date
+from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from mintpy.utils import readfile
 from plotdata.volcano_functions import get_volcano_event
