@@ -82,7 +82,14 @@ def create_parser():
     inps.vmin = min(inps.vlim) if inps.vlim else None
 
     if inps.line:
-        inps.line = parse_section(inps.line)
+        if ":" in inps.line:
+            inps.line = parse_section(inps.line)
+        else:
+            try:
+                inps.line = float(inps.line)
+            except ValueError:
+                msg = 'Section format not corret, it must be in the format LAT,LON:LAT,LON or LAT'
+                raise ValueError(msg)
 
     if inps.period:
         for p in inps.period:
