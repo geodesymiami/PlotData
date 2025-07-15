@@ -12,7 +12,7 @@ import sys
 from osgeo import gdal, osr
 
 import argparse
-from datetime import datetime, date
+from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from mintpy.utils import readfile
 from plotdata.volcano_functions import get_volcano_event
@@ -82,7 +82,14 @@ def create_parser():
     inps.vmin = min(inps.vlim) if inps.vlim else None
 
     if inps.line:
-        inps.line = parse_section(inps.line)
+        if ":" in inps.line:
+            inps.line = parse_section(inps.line)
+        else:
+            try:
+                inps.line = float(inps.line)
+            except ValueError:
+                msg = 'Section format not corret, it must be in the format LAT,LON:LAT,LON or LAT'
+                raise ValueError(msg)
 
     if inps.period:
         for p in inps.period:

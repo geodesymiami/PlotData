@@ -131,7 +131,7 @@ class VelocityPlot:
             vel_map.plot_point([self.lalo[0]], [self.lalo[1]], marker='x')
 
         if 'section' in self.ax.get_label():
-            if not self.line:
+            if not self.line or type(self.line) == float:
                 self.line = self._set_default_section()
             self.ax.plot(self.line[0], self.line[1], '--', linewidth=1.5, alpha=0.7, color='black')
 
@@ -142,7 +142,7 @@ class VelocityPlot:
         return vel_map
 
     def _set_default_section(self):
-        mid_lat = (max(self.region[2:4]) + min(self.region[2:4]))/2
+        mid_lat = self.line if type(self.line) == float else (max(self.region[2:4]) + min(self.region[2:4]))/2
         mid_lon = (max(self.region[0:2]) + min(self.region[0:2]))/2
 
         size = (max(self.region[0:2]) - min(self.region[0:2]))*0.25
@@ -194,7 +194,7 @@ class VectorsPlot:
 
         self.region = self.elevation_data.map.region
 
-        if not self.line:
+        if not self.line or type(self.line) == float:
             self.line = self._set_default_section()
 
         self.horizontal_section = Section(
@@ -208,7 +208,7 @@ class VectorsPlot:
         )
 
     def _set_default_section(self):
-        mid_lat = (max(self.region[2:4]) + min(self.region[2:4]))/2
+        mid_lat = self.line if type(self.line) == float else (max(self.region[2:4]) + min(self.region[2:4]))/2
         mid_lon = (max(self.region[0:2]) + min(self.region[0:2]))/2
 
         size = (max(self.region[0:2]) - min(self.region[0:2]))*0.25
