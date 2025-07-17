@@ -216,9 +216,10 @@ def add_save_arguments(parser):
     """
     save = parser.add_argument_group('Save options')
     save.add_argument('--save',
-                      choices=['png', 'pdf'],
-                      default=None,
-                      help=f'Save the plots (default path: {os.getenv("SCRATCHDIR")}). as PNG or PDF')
+                        nargs='?',
+                        const='png',
+                        choices=['png', 'pdf'],
+                        help=f'Save the plots (default path: {os.getenv("SCRATCHDIR")}) as PNG (default) or PDF.')
     save.add_argument('--outdir',
                       type=str,
                       default=os.getenv("SCRATCHDIR"),
