@@ -98,6 +98,7 @@ def add_plot_parameters_arguments(parser):
     plot_parameters = parser.add_argument_group('Plot parameters')
     parser.add_argument('--template',
                         default='default',
+                        METAVAR='default, default_with_seismicity, ascending, descending, test',
                         type=str,
                         help='Template for the plot (default: %(default)s).')
     plot_parameters.add_argument('--add-event',
