@@ -96,9 +96,9 @@ def add_plot_parameters_arguments(parser):
         argparse.ArgumentParser: The argument parser object with added plot parameters arguments.
     """
     plot_parameters = parser.add_argument_group('Plot parameters')
-    parser.add_argument('--template',
+    plot_parameters.add_argument('--template',
                         default='default',
-                        METAVAR='default, default_with_seismicity, ascending, descending, test',
+                        metavar='default, default_with_seismicity, ascending, descending, test',
                         type=str,
                         help='Template for the plot (default: %(default)s).')
     plot_parameters.add_argument('--add-event',
@@ -119,14 +119,6 @@ def add_plot_parameters_arguments(parser):
                         default=15,
                         type=int,
                         help='fontsize for view.py (default: %(default)s).')
-    plot_parameters.add_argument('--plot-option',
-                        default=None,
-                        metavar='horizontal, vertical, horzvert',
-                        help='Limit the plot to horizontal or vertical component or replace ascending and descending with horizontal and vertical')
-    plot_parameters.add_argument('--movement',
-                        default='velocity',
-                        choices=['velocity', 'displacement'],
-                        help='Type of movement (default: %(default)s).')
     plot_parameters.add_argument('--dpi',
                         default=100,
                         type=int,
