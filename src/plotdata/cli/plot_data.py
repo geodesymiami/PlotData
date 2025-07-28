@@ -25,7 +25,7 @@ example:
         plot_data.py MaunaLoaSenDT87/mintpy MaunaLoaSenAT124/mintpy --period 20181001:20191031 --ref-lalo 19.50068,-155.55856 --lalo 19.47373,-155.59617 --resolution=01s --isolines=2 --section 19.45,-155.75:19.45,-155.35 --resample-vector 40 --seismicity=3
 
         Add events on timeseries plot:
-        plot_data.py MaunaLoaSenDT87/mintpy MaunaLoaSenAT124/mintpy --template default  --period 20181001:20191031 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2 --lalo 19.461,-155.558 --resample-vector 40 --add-event 20181201 --magnitude 5.0
+        plot_data.py MaunaLoaSenDT87/mintpy MaunaLoaSenAT124/mintpy --template default  --period 20181001:20191031 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2 --lalo 19.461,-155.558 --resample-vector 40 --add-event 20181201 --event-magnitude 5.0
 
         # FOR GIACOMO TO TEST
         plot_data.py ChilesSenAT120/mintpy ChilesSenDT142/mintpy --period=20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2 --section 0.793,-77.968:0.793,-77.9309
@@ -119,9 +119,9 @@ def create_parser():
         inps.style = 'ifgram'
 
     if inps.add_event:
-        if not inps.magnitude:
-            inps.magnitude = [None] * len(inps.add_event)
-        elif len(inps.add_event) != len(inps.magnitude):
+        if not inps.event_magnitude:
+            inps.event_magnitude = [None] * len(inps.add_event)
+        elif len(inps.add_event) != len(inps.event_magnitude):
             msg = 'Number of events and magnitudes do not match'
             raise ValueError(msg)
 
@@ -223,8 +223,10 @@ def initialize_dates_from_files(inps):
             inps.end_date.append(atr['END_DATE'])
 
     if inps.start_date and inps.end_date:
-        inps.start_date = [min(inps.start_date)]
-        inps.end_date = [max(inps.end_date)]
+        coupled_dates = list(zip(inps.start_date, inps.end_date))
+        if (min(inps.start_date), max(inps.end_date)) not in coupled_dates:
+            inps.start_date.append(min(inps.start_date))
+            inps.end_date.append(max(inps.end_date))
 
 
 def try_initialize_from_volcano(inps):
@@ -283,8 +285,8 @@ def main(iargs=None):
     inps = create_parser()
 
     from plotdata.objects.process_data import ProcessData
-    from plotdata.objects.plot_properties import PlotGrid, PlotTemplate, PlotRenderer
-    from plotdata.objects.plotters import VelocityPlot, ShadedReliefPlot, VectorsPlot, TimeseriesPlot
+    from plotdata.objects.plot_properties import PlotTemplate, PlotRenderer
+    from plotdata.objects.plotters import VelocityPlot, ShadedReliefPlot, VectorsPlot, TimeseriesPlot, DataExtractor, EarthquakePlot
     from plotdata.objects.earthquakes import Earthquake
     import matplotlib.pyplot as plt
 
@@ -296,6 +298,8 @@ def main(iargs=None):
     template = PlotTemplate(inps.template)
 
     # 3. Instantiate plotters with shared data
+    # The plotter_map defines the mapping of plot types to their respective classes and required attributes
+    # Attributes refer to the type of input file to get from the ProcessData object
     plotter_map = {
         "ascending": {"class": VelocityPlot, "attributes": ["ascending"]},
         "descending": {"class": VelocityPlot, "attributes": ["descending"]},
@@ -303,8 +307,12 @@ def main(iargs=None):
         "vertical": {"class": VelocityPlot, "attributes": ["vertical"]},
         "timeseries": {"class": TimeseriesPlot, "attributes": ["eos_file_ascending", "eos_file_descending"]},
         "vectors": {"class": VectorsPlot, "attributes": ["horizontal", "vertical"]},
-        "seismicmap": {"class": ShadedReliefPlot, "attributes": ["ascending", "descending"]},
-        "seismicity": {"class": Earthquake, "attributes": ["ascending", "descending"]},
+        ##TEST##
+        # "seismicmap": {"class": ShadedReliefPlot, "attributes": ["ascending", "descending"]},
+        "seismicmap": {"class": VelocityPlot, "attributes": ["ascending_geometry", "descending_geometry"]},
+        # "seismicity": {"class": Earthquake, "attributes": ["ascending", "descending"]},
+        "seismicity": {"class": EarthquakePlot, "attributes": ["ascending", "descending"]},
+        ########
     }
 
     figures = []
@@ -317,13 +325,15 @@ def main(iargs=None):
         processors.append(process)
         process.process()
 
-        # 6. Use PlotRenderer to populate the axes
-        renderer = PlotRenderer(process, template, plotter_map)
-        fig = renderer.render(process)
+        datafethched = DataExtractor(plotter_map, process)
+
+        # 4. Use PlotRenderer to populate the axes
+        renderer = PlotRenderer(datafethched, template)
+        fig = renderer.render()
 
         figures.append(fig)
 
-    # 7. Save or show
+    # 5. Save or show
     if inps.save == 'pdf':
         from matplotlib.backends.backend_pdf import PdfPages
         saving_path = os.path.join(inps.outdir,processors[0].project,f"{processors[0].project}_{inps.template}_{inps.start_date[0]}_{inps.end_date[-1]}.pdf")
@@ -347,4 +357,4 @@ def main(iargs=None):
 ############################################################
 
 if __name__ == '__main__':
-    main(iargs=sys.argv)
+     main(iargs=sys.argv)
