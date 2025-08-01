@@ -22,10 +22,8 @@ class DataFetcherFactory:
     @staticmethod
     def create_fetcher(website, **kwargs):
         if website == "usgs":
-            print("#" * 50)
-            print("USGS database")
-            print("#" * 50)
-            print()
+            print("-" * 50)
+            print("USGS database\n")
 
             return USGSDataFetcher(**kwargs)
         elif website == "anotherwebsite":

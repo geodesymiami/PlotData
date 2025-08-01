@@ -31,8 +31,9 @@ class PlotTemplate:
                 ["timeseries" ],
             ],
             "test": [
-                ["vectors"],
-                # ["ascending.point.section",],
+                # ["vectors"],
+                ["horizontal.point.section",],
+                ["vertical.point.section",],
                 # ["descending.point.section",],
                 # ["seismicity.date",],
                 # ["seismicity.distance",],

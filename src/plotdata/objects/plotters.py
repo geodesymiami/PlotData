@@ -1,6 +1,7 @@
 import math
 import pygmt
 import numpy as np
+import pandas as pd
 import xarray as xr
 from datetime import datetime
 import matplotlib.pyplot as plt
@@ -14,7 +15,7 @@ from mintpy.utils import readfile
 from mintpy.objects.coord import coordinate
 from matplotlib.patheffects import withStroke
 from mintpy.objects import timeseries, HDFEOS
-from plotdata.helper_functions import draw_vectors, unpack_file, calculate_distance, get_bounding_box, expand_bbox
+from plotdata.helper_functions import draw_vectors, unpack_file, calculate_distance, get_bounding_box, expand_bbox, parse_polygon
 
 
 # TODO Create a class to just extract data
@@ -74,13 +75,6 @@ class DataExtractor:
         if "vectors" in self.dataset:
             result = {direction: self._extract_velocity_data(file)}
 
-            # TODO prob not needed now
-            # if "geometry" in result:
-            #     self.dataset["vectors"]["geometry"] = result["geometry"]
-
-            # if "geometry" not in self.dataset["vectors"]:
-            #     geometry_file = self.ascending_geometry or self.descending_geometry
-            #     result["geometry"] = self._extract_geometry_data(geometry_file)
             return result
 
     def _extract_timeseries_data(self, file):
@@ -156,7 +150,7 @@ class DataExtractor:
         velocity = readfile.read(file)[0]
         atr = readfile.read_attribute(file)
         latitude, longitude = get_bounding_box(atr)
-        self.region = [longitude[0], longitude[1], latitude[0], latitude[1]]
+        self.region = [min(longitude), max(longitude), min(latitude), max(latitude)]
 
         if self.region:
             atr['region'] = self.region
@@ -173,17 +167,22 @@ class DataExtractor:
                     geometry["geometry"] = self._extract_geometry_data(self.ascending_geometry)
                 elif atr['passDirection'] == 'DESCENDING':
                     geometry["geometry"] = self._extract_geometry_data(self.descending_geometry)
+                    geometry["geometry"]["data"] = np.flip(geometry["geometry"]["data"])
             else:
                 if 'SenA' in file:
                     geometry["geometry"] = self._extract_geometry_data(self.ascending_geometry)
                 elif 'SenD' in file:
-                    geometry["geometry"] = self._extract_geometry_data(self.descending_geometry)
+                    geometry["geometry"] = np.flipud(self._extract_geometry_data(self.descending_geometry))
+                    geometry["geometry"]["data"] = np.flip(geometry["geometry"]["data"])
 
             dictionary.update(geometry)
 
         if self.seismicity:
             earthquakes = self._extract_earthquakes()
             dictionary['earthquakes'] = earthquakes
+
+        if not self.line or type(self.line) == float:
+            self.line = set_default_section(self.line, self.region)
 
         return dictionary
 
@@ -206,12 +205,41 @@ class DataExtractor:
         return dictionary
 
     def _extract_geometry_data(self, file=None):
-        if file:
+        # TODO REVIEW FOR GEOMETRY FILE
+        if file and False:
             atr = readfile.read_attribute(file)
             if atr['FILE_TYPE'] == 'geometry':
+                # TODO DITCHED THE GEOMETRY FILE BECAUSE SUCKS
                 elevation = readfile.read(file, datasetName='height')[0]
-                elevation = np.flipud(elevation)
-                elevation[np.isnan(elevation)] = 0
+
+                # STA ROBA NON SI GUARDA
+                # !!!!!!!!!!!!!!!!!!!!!!!!!
+                relief = pygmt.datasets.load_earth_relief(resolution=self.resolution, region=self.region)
+                elevation = relief.values.astype(float)
+                elevation[elevation < 0] = 0
+
+                lon = relief.coords["lon"].values
+                lat = relief.coords["lat"].values
+                # !!!!!!!!!!!!!!!!!!!!!!!!!
+
+                if atr['passDirection'] == 'DESCENDING' or 'SenD' in file:
+                    elevation = np.flip(elevation)
+
+                if np.isnan(elevation).any():
+                    relief = pygmt.datasets.load_earth_relief(resolution=self.resolution, region=self.region)
+                    elevation = relief.values.astype(float)
+                    elevation[elevation < 0] = 0
+
+                    lon = relief.coords["lon"].values
+                    lat = relief.coords["lat"].values
+                    atr["region"] = [min(lon), max(lon), min(lat), max(lat)]
+
+                if not isinstance(elevation, np.ndarray):
+                    self.elevation = self.elevation.where(self.elevation >= 0, 0)
+
+                atr["longitude"] = lon
+                atr["latitude"] = lat
+                atr["region"] = [min(lon), max(lon), min(lat), max(lat)]
 
                 dictionary = {
                     'data': elevation,
@@ -221,9 +249,21 @@ class DataExtractor:
                 return dictionary
             else:
                 latitude, longitude = get_bounding_box(atr)
-                self.region = [longitude[0], longitude[1], latitude[0], latitude[1]]
+                self.region = [max(longitude), max(longitude), min(latitude), max(latitude)]
 
-        elevation = pygmt.datasets.load_earth_relief(resolution=self.resolution, region=self.region)
+        atr = {}
+
+        relief = pygmt.datasets.load_earth_relief(resolution=self.resolution, region=self.region)
+        elevation = relief.values.astype(float)
+        elevation[elevation < 0] = 0
+
+        lon = relief.coords["lon"].values
+        lat = relief.coords["lat"].values
+
+        atr["longitude"] = lon
+        atr["latitude"] = lat
+        atr["region"] = [min(lon), max(lon), min(lat), max(lat)]
+
         dictionary = {
                 'data': elevation,
                 'attributes': atr,
@@ -329,30 +369,6 @@ class VelocityPlot:
             if not attr.startswith('__') and not callable(getattr(inps, attr)):
                 setattr(self, attr, getattr(inps, attr))
 
-############ # TODO Less readable??
-
-        if False:
-            self.data = dataset.get("data")
-            # Get attributes from geometry if attribute doesnt exist, else None
-            self.attributes = dataset.get("attributes", dataset.get("geometry", {}).get("attributes"))
-
-            if "region" in self.attributes:
-                self.region = self.attributes["region"]
-            elif not hasattr(self, 'region'):
-                latitude, longitude = get_bounding_box(self.attributes)
-                self.region = [longitude[0], longitude[1], latitude[0], latitude[1]]
-
-            self.geometry = None
-            if not self.no_dem:
-                self.geometry = next(
-                    (dataset[key]["data"] for key in dataset if "geometry" in key),
-                    None
-                )
-
-            self.earthquakes = dataset.get("earthquakes")
-
-############ # TODO More readable??
-
         if 'data' in dataset:
             self.data = dataset["data"]
             self.attributes = dataset["attributes"]
@@ -371,14 +387,15 @@ class VelocityPlot:
             for key in dataset:
                 if "geometry" in key: 
                     self.geometry = dataset[key]['data']
+                    self.attributes['longitude'] = dataset[key]['attributes']['longitude']
+                    self.attributes['latitude'] = dataset[key]['attributes']['latitude']
+
                     break
                 else:
                     self.geometry = None
 
         if "earthquakes" in dataset:
             self.earthquakes = dataset["earthquakes"]
-
-############
 
         self.zorder = 0
 
@@ -392,6 +409,10 @@ class VelocityPlot:
         zorder = self._get_next_zorder()
         cmap = 'jet'
 
+        if not self.vmin and not self.vmax:
+            lim = max(abs(np.nanmin(self.data)), abs(np.nanmax(self.data))) * 1.2
+            self.vmin, self.vmax = -lim, lim
+
         if self.style == 'pixel':
             self.imdata = self.ax.imshow(self.data, cmap=cmap, extent=self.region, origin='upper', interpolation='none', zorder=zorder, vmin=self.vmin, vmax=self.vmax, rasterized=True)
             self.ax.set_aspect('auto')
@@ -399,6 +420,7 @@ class VelocityPlot:
         elif self.style == 'scatter':
             # Assuming self.velocity is a 2D numpy array
             nrows, ncols = self.data.shape
+
             x = np.linspace(self.region[0], self.region[1], ncols)
             y = np.linspace(self.region[2], self.region[3], nrows)
             X, Y = np.meshgrid(x, y)
@@ -409,12 +431,12 @@ class VelocityPlot:
             self.imdata = self.ax.scatter(X, Y, c=C, cmap=cmap, marker='o', zorder=zorder, s=2, vmin=self.vmin, vmax=self.vmax, rasterized=True)
 
         cbar = self.ax.figure.colorbar(self.imdata, ax=self.ax, orientation='horizontal', aspect=13)
-        # TODO change with deformation m/yr
-        # cbar.set_label(self.label)
+
         cbar.locator = ticker.MaxNLocator(3)
         cbar.update_ticks()
 
     def _plot_dem(self):
+        print("-"*50)
         print("Plotting DEM data...\n")
 
         zorder = self._get_next_zorder()
@@ -424,16 +446,9 @@ class VelocityPlot:
         else:
             self.z = self.geometry
 
-        lon_min, lon_max, lat_min, lat_max = self.region
+        lat = self.attributes['latitude']
+        lon = self.attributes['longitude']
 
-        # Get the shape of the 2D array (e.g., elevation data)
-        n_lat, n_lon = self.z.shape
-
-        # Generate longitude and latitude arrays
-        lon = np.linspace(lon_min, lon_max, n_lon)
-        lat = np.linspace(lat_min, lat_max, n_lat)
-
-        # Compute spacing for hillshade
         dlon = lon[1] - lon[0]
         dlat = lat[1] - lat[0]
 
@@ -465,8 +480,8 @@ class VelocityPlot:
         else:
             grid_np = self.geometry
 
-            lon = np.linspace(self.region[0], self.region[1], grid_np.shape[1])
-            lat = np.linspace(self.region[2], self.region[3], grid_np.shape[0])
+            lat = self.attributes['latitude']
+            lon = self.attributes['longitude']
 
             # Remove negative values
             grid_np[grid_np < 0] = 0
@@ -531,7 +546,7 @@ class VelocityPlot:
         if self.isolines:
             self._plot_isolines()
 
-        if hasattr(self, 'earthquakes') and self.earthquakes is not None:
+        if hasattr(self, 'earthquakes') and self.earthquakes['date']:
             self._plot_earthquakes()
 
         if 'point' in self.ax.get_label():
@@ -560,6 +575,15 @@ class EarthquakePlot:
         self.earthquakes = dataset
 
     def plot(self, ax):
+        if not self.earthquakes['date']:
+            ax.set_title('No Earthquake Data Available')
+            ax.set_xlabel('Date')
+            ax.set_ylabel('Magnitude')
+            ax.set_xlim([datetime.strptime(self.start_date, '%Y%m%d').date() if isinstance(self.start_date, str) else self.start_date.date(),
+                        datetime.strptime(self.end_date, '%Y%m%d').date() if isinstance(self.end_date, str) else self.end_date.date()])
+            ax.set_ylim([0, 10])
+            return
+
         if 'date' in ax.get_label():
             self.plot_by_date(ax)
         elif 'distance' in ax.get_label():
@@ -678,11 +702,149 @@ class VectorsPlot:
         #         self.horz_file = None
         self.horz = dataset["horizontal"]["data"]
         self.vert = dataset["vertical"]["data"]
-        self.geometry = dataset["horizontal"].get("geometry") if "geometry" in dataset["horizontal"] else dataset["vertical"].get("geometry")
+        self.geometry = dataset["horizontal"].get("geometry").get("data") if "geometry" in dataset["horizontal"] else dataset["vertical"].get("geometry").get("data")
 
-        self._process_sections()
+        self.horz_attr = dataset["horizontal"]["attributes"]
+        self.vert_attr = dataset["vertical"]["attributes"]
+        self.geometry_attr = dataset["horizontal"].get("geometry", {}).get("attributes", {})
 
-####################################################################################
+        # Double check if the line is set
+        if not self.line or type(self.line) == float:
+            self.line = set_default_section(self.line, self.region)
+
+        if not self.region:
+            if "scene_footprint" in self.geometry_attr:
+                self.region = parse_polygon(self.geometry_attr["scene_footprint"])
+            elif "region" in self.geometry_attr:
+                self.region = self.geometry_attr["region"]
+            else:
+                latitude, longitude = get_bounding_box(self.geometry_attr)
+                self.region = [longitude[0], longitude[1], latitude[0], latitude[1]]
+
+        self.horizontal_section = self._process_sections(np.flipud(self.horz), self.region)
+        self.vertical_section = self._process_sections(np.flipud(self.vert), self.region)
+        self.topography_section = self._process_sections(self.geometry, self.geometry_attr["region"])
+
+    def _process_sections(self, data, region):
+        """Processes the sections for horizontal and vertical components."""
+
+        lat_indices, lon_indices = self._draw_line(data, region, self.line[1], self.line[0])
+
+        # Extract the values data along the snapped path
+        values = data[lat_indices, lon_indices]
+
+        # TODO recheck
+        return np.nan_to_num(values)
+
+    def _draw_line(self, data, region, latitude, longitude):
+        # Calculate the resolution in degrees
+        lat_res = (region[3] - region[2]) / (data.shape[0] - 1)
+        lon_res = (region[1] - region[0]) / (data.shape[1] - 1)
+
+        # Calculate the distance between start and end points
+        distance = np.sqrt((latitude[1] - latitude[0])**2 + (longitude[1] - longitude[0])**2)
+
+        # Determine the number of points based on the distance
+        num_points = int(distance / min(lat_res, lon_res))
+
+        lon_points = np.linspace(longitude[0], longitude[1], num_points)
+        lat_points = np.linspace(latitude[0], latitude[1], num_points)
+
+        # Snap points to the nearest grid points
+        lon_indices = np.round((lon_points - region[0]) / lon_res).astype(int)
+        lat_indices = np.round((lat_points - region[2]) / lat_res).astype(int)
+
+        # Ensure indices are within bounds
+        lon_indices = np.clip(lon_indices, 0, data.shape[1] - 1)
+        lat_indices = np.clip(lat_indices, 0, data.shape[0] - 1)
+
+        # TODO do i need it?
+        # Create a DataFrame to store the path data
+        self.path_df = pd.DataFrame({
+            'longitude': lon_points,
+            'latitude': lat_points,
+            'lon_index': lon_indices,
+            'lat_index': lat_indices,
+            'distance': np.linspace(0, 1, num_points)  # Normalized distance
+        })
+
+        return lat_indices, lon_indices
+
+    def _compute_vectors(self):
+        """Computes velocity vectors and scaling factors."""
+        x, v, h, self.z = draw_vectors(self.topography_section, self.vertical_section, self.horizontal_section, self.line)
+
+        fig = self.ax.get_figure()
+        fig_width, fig_height = fig.get_size_inches()
+        max_elevation = max(self.z)
+        max_x = max(x)
+
+        self.v_adj = 2 * max_elevation / max_x
+        self.h_adj = 1 / self.v_adj
+
+        self.rescale_h = self.h_adj / fig_width
+        self.rescale_v = self.v_adj / fig_height
+
+        # Resample vectors
+        for i in range(len(h)):
+            if i % self.resample_vector != 0:
+                h[i] = 0
+                v[i] = 0
+
+        distance = calculate_distance(self.line[1][0], self.line[0][0], self.line[1][1], self.line[0][1])
+        self.xrange = np.linspace(0, distance, len(x))
+        # Filter out zero-length vectors
+        non_zero_indices = np.where((h != 0) | (v != 0))
+        self.filtered_x = self.xrange[non_zero_indices]
+        self.filtered_h = h[non_zero_indices]
+        self.filtered_v = v[non_zero_indices]
+        self.filtered_elevation = self.z[non_zero_indices]
+
+    def plot(self, ax):
+        """Plots elevation profile and velocity vectors."""
+        self.ax = ax
+
+        # Compute and plot vectors
+        self._compute_vectors()
+
+        # Plot elevation profile
+        self.ax.plot(self.xrange, self.z, color='#a8a8a8', alpha=0.5)
+        self.ax.set_ylim([0, 2 * max(self.z)])
+        self.ax.set_xlim([min(self.xrange), max(self.xrange)])
+
+        # Plot velocity vectors
+        #Probably right one
+        self.ax.quiver(
+            self.filtered_x, self.filtered_elevation,
+            self.filtered_h, self.filtered_v,
+            color='#ff7366', scale_units='xy', width=(1 / 10**(2.5))
+        )
+
+        # TODO test better the scaling issues
+        # self.ax[2].quiver(
+        #     self.filtered_x, self.filtered_elevation,
+        #     self.filtered_h * self.rescale_h, self.filtered_v * self.rescale_v,
+        #     color='#ff7366', scale_units='xy', width=(1 / 10**(2.5))
+        # )
+
+        # Add profile lines to velocity maps
+        # for i in range(2):
+        #     self.ax[i].plot(self.inps.line[0], self.inps.line[1], '--', linewidth=1, alpha=0.7, color='black')
+
+        # Mean velocity vector
+        start_x = max(self.xrange) * 0.1
+        start_y = (2 * max(self.z) * 0.8)
+        mean_velocity = np.sqrt(np.mean((self.vertical_section[self.vertical_section!=0]))**2 + np.mean((self.horizontal_section[self.horizontal_section!=0]))**2)
+        rounded_mean_velocity = round(mean_velocity, 4) if mean_velocity else round(mean_velocity, 3)
+
+        self.ax.quiver([start_x], [start_y], [mean_velocity], [0], color='#ff7366', scale_units='xy', width=(1 / 10**(2.5)))
+        # self.ax[2].quiver([start_x], [start_y], [0], [abs(np.mean(self.filtered_v))], color='#ff7366', scale_units='xy', width=(1 / 10**(2.5)))
+        self.ax.text(start_x, start_y * 1.03, f"{rounded_mean_velocity:.4f} m/yr", color='black', ha='left', fontsize=8)
+
+        # Add labels
+        self.ax.set_ylabel("Elevation (m)")
+        self.ax.set_xlabel("Distance (km)")
+######################### OLD ######################################################
 
 class ShadedReliefPlot:
     """Handles the generation of a shaded relief map."""
