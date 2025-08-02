@@ -38,6 +38,53 @@ class DataExtractor:
         }
 
         self._fetch_data()
+        self._define_unit_measure()
+
+    def _define_unit_measure(self):
+        units = {
+            'mm/yr': 1000,
+            'cm/yr': 100,
+            'm/yr': 1,
+        }
+        if not hasattr(self, 'unit') or not self.unit:
+            print(f"[Warning] Unit '{self.unit}' not recognized. No conversion applied.")
+
+        for key, value in self.dataset.items():
+            attributes = value.get('attributes', {})
+            start_date_key = next((k for k in attributes if k.lower() == 'start_date'), None)
+            end_date_key = next((k for k in attributes if k.lower() == 'end_date'), None)
+
+            if start_date_key and end_date_key:
+                start_date = datetime.strptime(attributes[start_date_key], "%Y%m%d")
+                end_date = datetime.strptime(attributes[end_date_key], "%Y%m%d")
+
+                number_of_days = (end_date - start_date).days
+                attributes['days'] = number_of_days
+
+            if key == 'vectors':
+                for k, v in self.dataset[key].items():
+                    if 'horizontal' in k or 'vertical' in k:
+                        attributes = v.get('attributes', {})
+
+                        start_date_key = next((attr_key for attr_key in attributes if attr_key.lower() == 'start_date'), None)
+                        end_date_key = next((attr_key for attr_key in attributes if attr_key.lower() == 'end_date'), None)
+
+                        if start_date_key and end_date_key:
+                            start_date = datetime.strptime(attributes[start_date_key], "%Y%m%d")
+                            end_date = datetime.strptime(attributes[end_date_key], "%Y%m%d")
+
+                            number_of_days = (end_date - start_date).days
+                            attributes['days'] = number_of_days
+
+
+        for key in self.dataset.keys():
+            if 'data' in self.dataset[key]:
+                self.dataset[key]['data'] *= units[self.unit]
+                self.dataset[key]['attributes']['unit'] = self.unit
+        #     if key == 'vectors':
+        #         for k, v in self.dataset[key].items():
+        #             if 'horizontal' in k or 'vertical' in k:
+        #                 self.dataset[key][k]['data'] *= units[self.unit]
 
     def _fetch_data(self):
         self.dataset = {}
@@ -159,7 +206,7 @@ class DataExtractor:
             'data': velocity,
             'attributes': atr,
         }
-
+        # TODO if form geometryRadar flip the dem for descending
         if not self.no_dem:
             geometry = {}
             if 'passDirection' in atr:
@@ -167,13 +214,13 @@ class DataExtractor:
                     geometry["geometry"] = self._extract_geometry_data(self.ascending_geometry)
                 elif atr['passDirection'] == 'DESCENDING':
                     geometry["geometry"] = self._extract_geometry_data(self.descending_geometry)
-                    geometry["geometry"]["data"] = np.flip(geometry["geometry"]["data"])
+                    geometry["geometry"]["data"] = geometry["geometry"]["data"]
             else:
                 if 'SenA' in file:
                     geometry["geometry"] = self._extract_geometry_data(self.ascending_geometry)
                 elif 'SenD' in file:
-                    geometry["geometry"] = np.flipud(self._extract_geometry_data(self.descending_geometry))
-                    geometry["geometry"]["data"] = np.flip(geometry["geometry"]["data"])
+                    geometry["geometry"] = self._extract_geometry_data(self.descending_geometry)
+                    geometry["geometry"]["data"] = geometry["geometry"]["data"]
 
             dictionary.update(geometry)
 
@@ -204,6 +251,16 @@ class DataExtractor:
 
         return dictionary
 
+    def _get_pygmt_dem(self, region):
+        relief = pygmt.datasets.load_earth_relief(resolution=self.resolution, region=region)
+        elevation = relief.values.astype(float)
+        elevation[elevation < 0] = 0
+
+        lon = relief.coords["lon"].values
+        lat = relief.coords["lat"].values
+
+        return lon , lat, elevation
+
     def _extract_geometry_data(self, file=None):
         # TODO REVIEW FOR GEOMETRY FILE
         if file and False:
@@ -211,6 +268,8 @@ class DataExtractor:
             if atr['FILE_TYPE'] == 'geometry':
                 # TODO DITCHED THE GEOMETRY FILE BECAUSE SUCKS
                 elevation = readfile.read(file, datasetName='height')[0]
+                latitude = readfile.read(file, datasetName='latitude')[0]
+                longitude = readfile.read(file, datasetName='longitude')[0]
 
                 # STA ROBA NON SI GUARDA
                 # !!!!!!!!!!!!!!!!!!!!!!!!!
@@ -226,12 +285,7 @@ class DataExtractor:
                     elevation = np.flip(elevation)
 
                 if np.isnan(elevation).any():
-                    relief = pygmt.datasets.load_earth_relief(resolution=self.resolution, region=self.region)
-                    elevation = relief.values.astype(float)
-                    elevation[elevation < 0] = 0
-
-                    lon = relief.coords["lon"].values
-                    lat = relief.coords["lat"].values
+                    lon, lat, elevation = self._get_pygmt_dem(self.region)
                     atr["region"] = [min(lon), max(lon), min(lat), max(lat)]
 
                 if not isinstance(elevation, np.ndarray):
@@ -253,12 +307,7 @@ class DataExtractor:
 
         atr = {}
 
-        relief = pygmt.datasets.load_earth_relief(resolution=self.resolution, region=self.region)
-        elevation = relief.values.astype(float)
-        elevation[elevation < 0] = 0
-
-        lon = relief.coords["lon"].values
-        lat = relief.coords["lat"].values
+        lon, lat, elevation = self._get_pygmt_dem(self.region)
 
         atr["longitude"] = lon
         atr["latitude"] = lat
@@ -431,6 +480,7 @@ class VelocityPlot:
             self.imdata = self.ax.scatter(X, Y, c=C, cmap=cmap, marker='o', zorder=zorder, s=2, vmin=self.vmin, vmax=self.vmax, rasterized=True)
 
         cbar = self.ax.figure.colorbar(self.imdata, ax=self.ax, orientation='horizontal', aspect=13)
+        cbar.set_label(self.unit)
 
         cbar.locator = ticker.MaxNLocator(3)
         cbar.update_ticks()
@@ -599,7 +649,7 @@ class EarthquakePlot:
         ax.scatter(self.earthquakes['date'], self.earthquakes['magnitude'], c='black', marker='o')
         ax.set_xlabel('Date')
         ax.set_ylabel('Magnitude')
-        ax.set_title(f'Earthquake Magnitudes Over Time at {self.earthquakes.get("attributes", {}).get("region", "Unknown Region")}')
+        ax.set_title(f'Earthquake Magnitudes Over Time')
         s = datetime.strptime(self.start_date, '%Y%m%d') if type(self.start_date) == str else self.start_date
         e = datetime.strptime(self.end_date, '%Y%m%d') if type(self.end_date) == str else self.end_date
         ax.set_xlim([s.date(), e.date()])
@@ -666,7 +716,7 @@ class TimeseriesPlot:
 
         # Fill area between the vertical lines with a rectangle
         ax_ts.axvspan(self.start_date, self.end_date, color='#a8a8a8', alpha=0.1)
-        ax_ts.set_ylabel('LOS displacement (m)')
+        ax_ts.set_ylabel(f'LOS displacement ({self.unit.replace("/yr", "")})')
         ax_ts.legend(fontsize='x-small')
 
     def _plot_event(self):
@@ -839,7 +889,7 @@ class VectorsPlot:
 
         self.ax.quiver([start_x], [start_y], [mean_velocity], [0], color='#ff7366', scale_units='xy', width=(1 / 10**(2.5)))
         # self.ax[2].quiver([start_x], [start_y], [0], [abs(np.mean(self.filtered_v))], color='#ff7366', scale_units='xy', width=(1 / 10**(2.5)))
-        self.ax.text(start_x, start_y * 1.03, f"{rounded_mean_velocity:.4f} m/yr", color='black', ha='left', fontsize=8)
+        self.ax.text(start_x, start_y * 1.03, f"{rounded_mean_velocity:.4f} {self.unit}", color='black', ha='left', fontsize=8)
 
         # Add labels
         self.ax.set_ylabel("Elevation (m)")

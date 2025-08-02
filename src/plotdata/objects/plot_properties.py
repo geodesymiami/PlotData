@@ -31,7 +31,7 @@ class PlotTemplate:
                 ["timeseries" ],
             ],
             "test": [
-                # ["vectors"],
+                ["vectors"],
                 ["horizontal.point.section",],
                 ["vertical.point.section",],
                 # ["descending.point.section",],
@@ -110,7 +110,7 @@ class PlotGrid:
     def _create_axes(self, inps):
         fig, axs = plt.subplot_mosaic(
             self.template.layout,
-            figsize=(12, 9),
+            figsize=(20, 9),
             constrained_layout=self.template.constrained_layout,
         )
 
