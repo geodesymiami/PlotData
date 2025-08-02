@@ -493,3 +493,18 @@ def unpack_file(file):
     else:
         return file
     return None
+
+
+def set_default_section(line, region):
+    mid_lat = line if type(line) == float else (max(region[2:4]) + min(region[2:4]))/2
+    mid_lon = (max(region[0:2]) + min(region[0:2]))/2
+
+    size = (max(region[0:2]) - min(region[0:2]))*0.25
+
+    latitude = (mid_lat, mid_lat)
+    longitude = (mid_lon - size, mid_lon + size)
+
+    return [longitude, latitude]
+
+def plot_point(ax, lat, lon, marker='o', color='black', size=5, alpha=1, zorder=None):
+    ax.plot(lon, lat, marker, color=color, markersize=size, alpha=alpha, zorder=zorder)

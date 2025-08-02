@@ -286,8 +286,8 @@ def main(iargs=None):
 
     from plotdata.objects.process_data import ProcessData
     from plotdata.objects.plot_properties import PlotTemplate, PlotRenderer
-    from plotdata.objects.plotters import VelocityPlot, ShadedReliefPlot, VectorsPlot, TimeseriesPlot, DataExtractor, EarthquakePlot
-    from plotdata.objects.earthquakes import Earthquake
+    from plotdata.objects.plotters import VelocityPlot, VectorsPlot, TimeseriesPlot, DataExtractor, EarthquakePlot
+    from plotdata.objects.get_methods import DataExtractor
     import matplotlib.pyplot as plt
 
     ###### TEST ######
@@ -307,10 +307,7 @@ def main(iargs=None):
         "vertical": {"class": VelocityPlot, "attributes": ["vertical"]},
         "timeseries": {"class": TimeseriesPlot, "attributes": ["eos_file_ascending", "eos_file_descending"]},
         "vectors": {"class": VectorsPlot, "attributes": ["horizontal", "vertical"]},
-        ##TEST##
-        # "seismicmap": {"class": ShadedReliefPlot, "attributes": ["ascending", "descending"]},
         "seismicmap": {"class": VelocityPlot, "attributes": ["ascending_geometry", "descending_geometry"]},
-        # "seismicity": {"class": Earthquake, "attributes": ["ascending", "descending"]},
         "seismicity": {"class": EarthquakePlot, "attributes": ["ascending", "descending"]},
         ########
     }
