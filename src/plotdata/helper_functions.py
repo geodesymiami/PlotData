@@ -364,6 +364,31 @@ def calculate_distance(lat_1, lon_1, lat_2, lon_2):
     return (((lat_1 - lat_2)*111)**2 + ((lon_1 - lon_2)*111)**2)**0.5
 
 
+def expand_bbox(bbox):
+    """
+    Expands the bounding box to cover a distance of 150 km in both directions.
+    The bounding box is defined by the coordinates [min_lon, max_lon, min_lat, max_lat].
+    Args:
+        bbox (list): A list containing the bounding box coordinates in the 
+        format [min_lon, max_lon, min_lat, max_lat].
+    Returns:
+        list: A new bounding box that is expanded by 150 km in both directions.
+    """
+
+    min_lon, max_lon, min_lat, max_lat = bbox
+    EW = calculate_distance(max_lat, min_lon, min_lat, max_lon)
+    NS = calculate_distance(min_lat, min_lon, max_lat, min_lon)
+
+    ratio = EW / NS
+    avg_lon = (max_lon + min_lon) / 2
+    avg_lat = (max_lat + min_lat) / 2
+    dis_lon = 150 / 111  # 150 km in degrees
+    dis_lat = dis_lon / ratio
+    bbox = [avg_lon - dis_lon, avg_lon + dis_lon, avg_lat - dis_lat, avg_lat + dis_lat]
+
+    return bbox
+
+
 def parse_polygon(polygon):
     """
     Parses a polygon string retreive from ASF vertex tool and extracts the latitude and longitude coordinates.

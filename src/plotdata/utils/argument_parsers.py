@@ -279,7 +279,7 @@ def add_seismicity_arguments(parser):
                             default=None,
                             help='Add seismicity to the plot with magnitude above specified value (default: %(default)s).'
                             )
-    seismicity.add_argument('--magnitude',
+    seismicity.add_argument('--event-magnitude',
                             metavar='MAGNITUDE',
                             nargs='*',
                             type=float,

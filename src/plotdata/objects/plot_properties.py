@@ -9,7 +9,6 @@ class PlotTemplate:
         self.figsize = (10, 8)
         self.squeeze = False
         self.constrained_layout = True
-        self.metadata = self._get_metadata(name)
 
     def _get_layout(self, name):
         layouts = {
@@ -32,34 +31,32 @@ class PlotTemplate:
                 ["timeseries" ],
             ],
             "test": [
-                ["ascending.point"],
-                ["descending.point"],
-                ["timeseries"],
+                ["vectors"],
+                ["horizontal.point.section",],
+                ["vertical.point.section",],
+                # ["descending.point.section",],
+                # ["seismicity.date",],
+                # ["seismicity.distance",],
             ]
         }
         return layouts[name]
 
-    def _get_metadata(self, name):
-        return {
-            "time_series": {"font_size": 8},
-            "vector_plot": {"color": "blue"}
-            # add per-panel options if needed
-        }
-
 
 class PlotRenderer:
-    def __init__(self, inps, template: PlotTemplate, plotter_map: dict):
+    def __init__(self, inps, template: PlotTemplate):
+        self.dataset = inps.dataset
+        self.plotter_map = inps.plotter_map        # Mapping of plot types to classes + attributes
+        del inps.dataset, inps.plotter_map
         self.inps = inps                      # argparse input object
         self.template = template              # Layout, figsize, settings, etc.
-        self.plotter_map = plotter_map        # Mapping of plot types to classes + attributes
 
-    def render(self, process_data):
+    def render(self):
         # 1. Create figure and axes from the template
-        grid = PlotGrid(self.template, inps=process_data)
+        grid = PlotGrid(self.template, inps=self.inps)
         fig, axes = grid.fig, grid.axes
 
         # 2. Instantiate the plotter objects with the appropriate data
-        plotters = self._build_plotters(process_data)
+        plotters = self._build_plotters()
 
         # 3. Loop over the layout and render into matching axes
         for name, plotter in plotters.items():
@@ -71,7 +68,24 @@ class PlotRenderer:
 
         return fig
 
-    def _build_plotters(self, process_data):
+    ################ TEST ##########################
+    def _build_plotters(self):
+        """Build plotter instances using the configured classes and required file attributes."""
+        plotters = {}
+
+        for row in self.template.layout:
+            for element in row:
+                for name, configs in self.plotter_map.items():
+                    if element.split('.')[0] in name:
+                        cls = configs["class"]
+                        dataset = self.dataset[name]
+
+                        plotter_instance = cls(dataset, self.inps)
+                        plotters[element] = plotter_instance
+
+        return plotters
+
+    def _build_plotters_old(self, process_data):
         """Build plotter instances using the configured classes and required file attributes."""
         plotters = {}
 
@@ -96,7 +110,7 @@ class PlotGrid:
     def _create_axes(self, inps):
         fig, axs = plt.subplot_mosaic(
             self.template.layout,
-            figsize=(12, 9),
+            figsize=(20, 9),
             constrained_layout=self.template.constrained_layout,
         )
 
