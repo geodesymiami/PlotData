@@ -98,11 +98,6 @@ class DataExtractor:
         self._define_unit_measure()
 
     def _define_unit_measure(self):
-        units = {
-            'mm/yr': 1000,
-            'cm/yr': 100,
-            'm/yr': 1,
-        }
         if not hasattr(self, 'unit') or not self.unit:
             print(f"[Warning] Unit '{self.unit}' not recognized. No conversion applied.")
 
@@ -133,15 +128,47 @@ class DataExtractor:
                             number_of_days = (end_date - start_date).days
                             attributes['days'] = number_of_days
 
+        for key, value in self.dataset.items():
+            units = {
+                'mm/yr': 1000,
+                'cm/yr': 100,
+                'm/yr': 1,
+            }
+            if key == 'timeseries':
+                if ('mm' or 'cm') in self.unit:
+                    conversion_factor = 1000 if 'mm' in self.unit else 100
+                    for k,v in value.items():
+                        if 'data' in v:
+                            v['data'] *= conversion_factor
+                            v['attributes']['unit'] = self.unit
+                # else:
+                #     if self.unit in units:
+                #         value['data'] *= units[self.unit]
+                #         value['attributes']['unit'] = self.unit
+                #     else:
+                #         raise ValueError(f"Unit '{self.unit}' is not recognized.")
 
-        for key in self.dataset.keys():
-            if 'data' in self.dataset[key]:
-                self.dataset[key]['data'] *= units[self.unit]
-                self.dataset[key]['attributes']['unit'] = self.unit
-        #     if key == 'vectors':
-        #         for k, v in self.dataset[key].items():
-        #             if 'horizontal' in k or 'vertical' in k:
-        #                 self.dataset[key][k]['data'] *= units[self.unit]
+            if 'data' in value:
+                days = value['attributes'].get('days', 1)
+                units.update({
+                    'mm': 1000 * 365.25 / days,
+                    'cm': 100 * 365.25 / days,
+                    'm': 365.25 / days,
+                    })
+                if self.unit in units:
+                    value['data'] *= units[self.unit]
+                    value['attributes']['unit'] = self.unit
+                else:
+                    raise ValueError(f"Unit '{self.unit}' is not recognized.")
+
+            if key == 'vectors':
+                for k, v in value.items():
+                    if ('horizontal' in k and 'horizontal' not in self.dataset) or ('vertical' in k and 'vertical' not in self.dataset):
+                        if self.unit in units:
+                            v['data'] *= units[self.unit]
+                            v['attributes']['unit'] = self.unit
+                        else:
+                            raise ValueError(f"Unit '{self.unit}' is not recognized.")
 
     def _fetch_data(self):
         self.dataset = {}
