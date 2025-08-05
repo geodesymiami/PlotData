@@ -76,14 +76,13 @@ class VelocityPlot:
     def _plot_velocity(self):
         # TODO change to argparse
         zorder = self._get_next_zorder()
-        cmap = 'jet'
 
         if not self.vmin and not self.vmax:
             lim = max(abs(np.nanmin(self.data)), abs(np.nanmax(self.data))) * 1.2
             self.vmin, self.vmax = -lim, lim
 
         if self.style == 'pixel':
-            self.imdata = self.ax.imshow(self.data, cmap=cmap, extent=self.region, origin='upper', interpolation='none', zorder=zorder, vmin=self.vmin, vmax=self.vmax, rasterized=True)
+            self.imdata = self.ax.imshow(self.data, cmap=self.cmap, extent=self.region, origin='upper', interpolation='none', zorder=zorder, vmin=self.vmin, vmax=self.vmax, rasterized=True)
             self.ax.set_aspect('auto')
 
         elif self.style == 'scatter':
@@ -97,7 +96,7 @@ class VelocityPlot:
             Y = np.flip(Y.flatten())
             C = self.data.flatten()
 
-            self.imdata = self.ax.scatter(X, Y, c=C, cmap=cmap, marker='o', zorder=zorder, s=2, vmin=self.vmin, vmax=self.vmax, rasterized=True)
+            self.imdata = self.ax.scatter(X, Y, c=C, cmap=self.cmap, marker='o', zorder=zorder, s=2, vmin=self.vmin, vmax=self.vmax, rasterized=True)
 
         cbar = self.ax.figure.colorbar(self.imdata, ax=self.ax, orientation='horizontal', aspect=13)
         cbar.set_label(self.unit)
