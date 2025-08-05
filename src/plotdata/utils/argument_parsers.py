@@ -123,6 +123,10 @@ def add_plot_parameters_arguments(parser):
                         default=100,
                         type=int,
                         help='DPI of the plot (default: %(default)s).')
+    plot_parameters.add_argument('--colormap',
+                        default='jet',
+                        metavar='COLORMAP',
+                        help='Colormap for the plot (default: %(default)s).')
     return parser
 
 
@@ -279,7 +283,7 @@ def add_seismicity_arguments(parser):
                             default=None,
                             help='Add seismicity to the plot with magnitude above specified value (default: %(default)s).'
                             )
-    seismicity.add_argument('--magnitude',
+    seismicity.add_argument('--event-magnitude',
                             metavar='MAGNITUDE',
                             nargs='*',
                             type=float,

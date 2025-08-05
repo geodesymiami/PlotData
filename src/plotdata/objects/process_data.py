@@ -93,7 +93,7 @@ class ProcessData:
 
         # Second pass: Compute horizontal and vertical only if both asc & desc are available
         # TODO Probably have to remove the condition
-        if any(('horizontal' in l or 'vertical' in l or 'vectors' in l) for l in self.layout) and self.ascending and self.descending:
+        if any(('horizontal' in s or 'vertical' in s or 'vectors' in s) for sublist in self.layout for s in sublist) and self.ascending and self.descending:
             self.horizontal, self.vertical = self._process_vectors(self.ascending, self.descending, self.directory)
 
         if not self.file_info:
@@ -124,22 +124,7 @@ class ProcessData:
         vert_name = os.path.join(project_base_dir, f'up_{self.start_date}_{self.end_date}.h5')
 
         if not os.path.exists(horz_name) or not os.path.exists(vert_name):
-            # self.ref_lalo = select_reference_point(geo_masked_files, self.window_size, self.ref_lalo)
-            # for file, ref_lalo in zip(geo_masked_files, self.ref_lalo):
-            #     self._apply_reference_point(file, ref_lalo)
-            # self.ref_lalo = self.ref_lalo[0]
-
-            # if self.ref_lalo:
-            #     self.ref_lalo = select_reference_point([asc_file, desc_file], self.window_size, self.ref_lalo)
-            #     self._apply_reference_point(asc_file)
-            #     self._apply_reference_point(desc_file)
-
             self._convert_to_horz_vert(asc_file, desc_file, horz_name, vert_name)
-
-        if self.plot_option == 'horizontal':
-            vert_name = None
-        if self.plot_option == 'vertical':
-            horz_name = None
 
         return horz_name, vert_name
 

@@ -1,228 +1,447 @@
+import math
 import pygmt
 import numpy as np
+import pandas as pd
+import xarray as xr
 from datetime import datetime
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+from matplotlib.colors import LightSource
 from plotdata.objects.section import Section
+from plotdata.objects.get_methods import DataFetcherFactory
 from plotdata.objects.create_map import Mapper, Isolines, Relief
 from plotdata.objects.earthquakes import Earthquake
 from mintpy.utils import readfile
 from mintpy.objects.coord import coordinate
 from matplotlib.patheffects import withStroke
 from mintpy.objects import timeseries, HDFEOS
-from plotdata.helper_functions import draw_vectors, unpack_file, calculate_distance
+from plotdata.helper_functions import draw_vectors, calculate_distance, get_bounding_box, expand_bbox, parse_polygon
 
+def set_default_section(line, region):
+    mid_lat = line if type(line) == float else (max(region[2:4]) + min(region[2:4]))/2
+    mid_lon = (max(region[0:2]) + min(region[0:2]))/2
 
-# TODO Create a class to just extract data
-class DataFetcher:
-    def __init__(self, template, plotter_map, process) -> None:
-        plotters={}
-        for name, configs in self.plotter_map.items():
-            if any(name in row for row in self.template.layout):
-                cls = configs["class"]
-                files = [getattr(process, attr) for attr in configs["attributes"]]
+    size = (max(region[0:2]) - min(region[0:2]))*0.25
 
-                # plotter_instance = cls(*files, self.inps)
-                plotter_instance = cls(files, self.inps)
-                plotters[name] = (plotter_instance)
+    latitude = (mid_lat, mid_lat)
+    longitude = (mid_lon - size, mid_lon + size)
 
+    return [longitude, latitude]
 
-class ShadedReliefPlot:
-    """Handles the generation of a shaded relief map."""
-    def __init__(self, file, inps):
-        self.file = unpack_file(file)
-        self.region = inps.region
-        self.resolution = inps.resolution
-        self.interpolate = inps.interpolate
-        self.no_shade = inps.no_shade
-        self.iso_color = inps.iso_color
-        self.linewidth = inps.linewidth
-        self.isolines = inps.isolines
-        self.inline = inps.inline
-        self.seismicity = inps.seismicity
-        self.start_date = inps.start_date if inps.start_date else None
-        self.end_date = inps.end_date if inps.end_date else None
-
-    def plot(self, ax):
-        self.ax = ax
-        """Create and configure the shaded relief map."""
-        rel_map = Mapper(ax=self.ax, file=self.file, start_date=self.start_date, end_date=self.end_date, region=self.region)
-
-        # Add relief and isolines
-        Relief(map=rel_map, resolution=self.resolution, interpolate=self.interpolate, no_shade=self.no_shade)
-        if self.isolines>0:
-            Isolines(map=rel_map, resolution=self.resolution, color=self.iso_color, linewidth=self.linewidth,
-                 levels=self.isolines, inline=self.inline)
-
-        # Add earthquake markers if enabled
-        if self.seismicity or 'seismicmap' in self.ax.get_label():
-            if not self.seismicity:
-                self.seismicity = 1
-            Earthquake(map=rel_map, magnitude=self.seismicity).map(self.ax)
-
+def plot_point(ax, lat, lon, marker='o', color='black', size=5, alpha=1, zorder=None):
+    ax.plot(lon, lat, marker, color=color, markersize=size, alpha=alpha, zorder=zorder)
 
 class VelocityPlot:
     """Handles the plotting of velocity maps."""
-    def __init__(self, file: str, inps):
+    def __init__(self, dataset, inps):
         for attr in dir(inps):
             if not attr.startswith('__') and not callable(getattr(inps, attr)):
                 setattr(self, attr, getattr(inps, attr))
-        self.file = file[0] if isinstance(file, list) else file
-        self.attr = readfile.read_attribute(self.file)
 
-    def on_click(self, event):
-        if event.inaxes == self.ax:  # Ensure the click is within the correct axis
-            if event.inaxes == self.ax:  # Ensure the click is within the plot
-                print(f"--lalo={event.ydata},{event.xdata}\n")
-                print(f"--ref-lalo={event.ydata},{event.xdata}\n")
+        if 'data' in dataset:
+            self.data = dataset["data"]
+            self.attributes = dataset["attributes"]
+        elif 'geometry' in dataset:
+            self.attributes = dataset["geometry"]["attributes"]
+
+        if "region" in self.attributes:
+            self.region = self.attributes["region"]
+        elif hasattr(self, 'region'):
+            pass
+        else:
+            latitude, longitude = get_bounding_box(self.attributes)
+            self.region = [longitude[0], longitude[1], latitude[0], latitude[1]]
+
+        if not self.no_dem:
+            for key in dataset:
+                if "geometry" in key: 
+                    self.geometry = dataset[key]['data']
+                    self.attributes['longitude'] = dataset[key]['attributes']['longitude']
+                    self.attributes['latitude'] = dataset[key]['attributes']['latitude']
+
+                    break
+                else:
+                    self.geometry = None
+
+        if "earthquakes" in dataset:
+            self.earthquakes = dataset["earthquakes"]
+
+        self.zorder = 0
+
+    def _get_next_zorder(self):
+        z = self.zorder
+        self.zorder += 1
+        return z
+
+    def _plot_velocity(self):
+        # TODO change to argparse
+        zorder = self._get_next_zorder()
+
+        if not self.vmin and not self.vmax:
+            lim = max(abs(np.nanmin(self.data)), abs(np.nanmax(self.data))) * 1.2
+            self.vmin, self.vmax = -lim, lim
+
+        if self.style == 'pixel':
+            self.imdata = self.ax.imshow(self.data, cmap=self.cmap, extent=self.region, origin='upper', interpolation='none', zorder=zorder, vmin=self.vmin, vmax=self.vmax, rasterized=True)
+            self.ax.set_aspect('auto')
+
+        elif self.style == 'scatter':
+            # Assuming self.velocity is a 2D numpy array
+            nrows, ncols = self.data.shape
+
+            x = np.linspace(self.region[0], self.region[1], ncols)
+            y = np.linspace(self.region[2], self.region[3], nrows)
+            X, Y = np.meshgrid(x, y)
+            X = X.flatten()
+            Y = np.flip(Y.flatten())
+            C = self.data.flatten()
+
+            self.imdata = self.ax.scatter(X, Y, c=C, cmap=self.cmap, marker='o', zorder=zorder, s=2, vmin=self.vmin, vmax=self.vmax, rasterized=True)
+
+        cbar = self.ax.figure.colorbar(self.imdata, ax=self.ax, orientation='horizontal', aspect=13)
+        cbar.set_label(self.unit)
+
+        cbar.locator = ticker.MaxNLocator(3)
+        cbar.update_ticks()
+
+    def _plot_dem(self):
+        print("-"*50)
+        print("Plotting DEM data...\n")
+
+        zorder = self._get_next_zorder()
+
+        if not isinstance(self.geometry, np.ndarray):
+            self.z = self.geometry.astype(float)
+        else:
+            self.z = self.geometry
+
+        lat = self.attributes['latitude']
+        lon = self.attributes['longitude']
+
+        dlon = lon[1] - lon[0]
+        dlat = lat[1] - lat[0]
+
+        # Compute hillshade with real spacing
+        ls = LightSource(azdeg=315, altdeg=45)
+        hillshade = ls.hillshade(self.z, vert_exag=1.5, dx=dlon, dy=dlat)
+
+        # # Create meshgrid of lon/lat edges for pcolormesh
+        lon2d, lat2d = np.meshgrid(lon, lat)
+
+        # Use pcolormesh to plot hillshade using real coordinates
+        self.im = self.ax.pcolormesh(lon2d,lat2d,hillshade,cmap='gray',shading='auto',zorder=zorder,alpha=0.5,)
+
+    def _plot_isolines(self):
+        print("Adding isolines...\n")
+
+        zorder = self._get_next_zorder()
+
+        if self.geometry is None:
+            lines = pygmt.datasets.load_earth_relief(resolution=self.resolution, region=self.region)
+
+            grid_np = lines.values
+
+            # Remove negative values
+            grid_np[grid_np < 0] = 0
+
+            # Convert the numpy array back to a DataArray
+            lines[:] = grid_np
+        else:
+            grid_np = self.geometry
+
+            lat = self.attributes['latitude']
+            lon = self.attributes['longitude']
+
+            # Remove negative values
+            grid_np[grid_np < 0] = 0
+
+            # Convert the numpy array back to a DataArray
+            lines = xr.DataArray(grid_np,dims=["lat", "lon"],coords={"lat": lat, "lon": lon},)
+
+        # Extract coordinates and elevation values
+        lon = lines.coords["lon"].values
+        lat = lines.coords["lat"].values
+        z = lines.values
+
+        #Plot the isolines
+        cont = self.ax.contour(lon, lat, z, levels=self.isolines, colors=self.color, linewidths=self.linewidth, alpha=0.7, zorder=zorder)
+
+        if self.inline:
+            self.ax.clabel(cont, inline=self.inline, fontsize=8)
+
+    def _plot_earthquakes(self):
+        """Plots earthquake data on the map."""
+        print("Plotting earthquake data...\n")
+
+        zorder = self._get_next_zorder()
+
+        cmap = plt.cm.viridis
+        norm = plt.Normalize(vmin=min(self.earthquakes['magnitude']), vmax=max(self.earthquakes['magnitude']))
+
+        for lalo, magnitude, date in zip(self.earthquakes['lalo'], self.earthquakes['magnitude'], self.earthquakes['date']):
+            self.ax.scatter(
+                lalo[1], lalo[0], 
+                s=10**(magnitude*0.5),  # Size based on magnitude
+                c=cmap(norm(magnitude)),  # Color based on magnitude
+                edgecolors='black',  # Edge color
+                linewidths=0.5,  # Edge width
+                marker='o',  # Circle marker
+                alpha=0.6,  # Transparency
+                label=f"{magnitude} {date}",
+                zorder=zorder
+            )
 
     def plot(self, ax):
         """Creates and configures the velocity map."""
         self.ax = ax
-        vel_map = Mapper(ax=self.ax, file=self.file)
-        self.region = vel_map.region
-
-        # Add relief if not disabled
-        if not self.no_dem:
-            if self.attr['passDirection'] == 'ASCENDING':
-                geometry = self.ascending_geometry
-            elif self.attr['passDirection'] == 'DESCENDING':
-                geometry = self.descending_geometry
-            else:
-                geometry = None
-
-            Relief(map=vel_map, geometry=geometry, resolution=self.resolution, cmap='terrain',
-                interpolate=self.interpolate, no_shade=self.no_shade)
-
-        # Add velocity file
-        vel_map.add_file(style=self.style, vmin=self.vmin, vmax=self.vmax, movement=self.movement)
-
-        # Add isolines if specified
-        if self.isolines:
-            Isolines(map=vel_map, resolution=self.resolution, color=self.iso_color, 
-                     linewidth=self.linewidth, levels=self.isolines, inline=self.inline)
-
-        # Add earthquake markers if enabled
-        if self.seismicity:
-            Earthquake(map=vel_map, magnitude=self.seismicity).map(ax=self.ax)
 
         if 'ascending' in self.ax.get_label():
-            label = "ASCENDING"
+            self.label = "ASCENDING"
         elif 'descending' in self.ax.get_label():
-            label = "DESCENDING"
+            self.label = "DESCENDING"
         elif 'horizontal' in self.ax.get_label():
-            label = "HORIZONTAL"
+            self.label = "HORIZONTAL"
         elif 'vertical' in self.ax.get_label():
-            label = "VERTICAL"
+            self.label = "VERTICAL"
         else:
-            label = None
+            self.label = None
 
-        if label:
-            self.ax.annotate(
-                label,
-                xy=(0.02, 0.98),
-                xycoords='axes fraction',
-                fontsize=5,
-                ha='left',
-                va='top',
-                color='white',
-                bbox=dict(facecolor='gray', edgecolor='none', alpha=0.6, boxstyle='round,pad=0.3')
-            )
+        if self.geometry is not None:
+            self._plot_dem()
 
-        if self.lalo and 'point' in self.ax.get_label():
-            vel_map.plot_point([self.lalo[0]], [self.lalo[1]], marker='x')
+        if hasattr(self, 'data') and self.data is not None:
+            self._plot_velocity()
+
+        if self.isolines:
+            self._plot_isolines()
+
+        if hasattr(self, 'earthquakes') and self.earthquakes['date']:
+            self._plot_earthquakes()
+
+        if 'point' in self.ax.get_label():
+            if not self.lalo:
+                self.lalo = [(max(self.region[2:4]) + min(self.region[2:4]))/2, (max(self.region[0:2]) + min(self.region[0:2]))/2]
+            plot_point(self.ax, [self.lalo[0]], [self.lalo[1]], marker='x', zorder=self._get_next_zorder())
 
         if 'section' in self.ax.get_label():
             if not self.line or type(self.line) == float:
-                self.line = self._set_default_section()
-            self.ax.plot(self.line[0], self.line[1], '--', linewidth=1.5, alpha=0.7, color='black')
+                self.line = set_default_section(self.line, self.region)
+            self.ax.plot(self.line[0], self.line[1], '--', linewidth=1.5, alpha=0.7, color='black', zorder=self._get_next_zorder())
 
-        if self.ref_lalo:
-            vel_map.plot_point([self.ref_lalo[0]], [self.ref_lalo[1]], marker='s')
+        if self.ref_lalo and 'seismicmap' not in self.ax.get_label():
+            plot_point(self.ax, [self.ref_lalo[0]], [self.ref_lalo[1]], marker='s', zorder=self._get_next_zorder())
 
-        self.ax.figure.canvas.mpl_connect('button_press_event', self.on_click)
-        return vel_map
+        if self.label:
+            self.ax.annotate(self.label,xy=(0.02, 0.98),xycoords='axes fraction',fontsize=5,ha='left',va='top',color='white',bbox=dict(facecolor='gray', edgecolor='none', alpha=0.6, boxstyle='round,pad=0.3'))
 
-    def _set_default_section(self):
-        mid_lat = self.line if type(self.line) == float else (max(self.region[2:4]) + min(self.region[2:4]))/2
-        mid_lon = (max(self.region[0:2]) + min(self.region[0:2]))/2
+####################################################################################
 
-        size = (max(self.region[0:2]) - min(self.region[0:2]))*0.25
+class EarthquakePlot:
+    def __init__(self, dataset, inps):
+        for attr in dir(inps):
+            if not attr.startswith('__') and not callable(getattr(inps, attr)):
+                setattr(self, attr, getattr(inps, attr))
+        self.earthquakes = dataset
 
-        latitude = (mid_lat, mid_lat)
-        longitude = (mid_lon - size, mid_lon + size)
+    def plot(self, ax):
+        if not self.earthquakes['date']:
+            ax.set_title('No Earthquake Data Available')
+            ax.set_xlabel('Date')
+            ax.set_ylabel('Magnitude')
+            ax.set_xlim([datetime.strptime(self.start_date, '%Y%m%d').date() if isinstance(self.start_date, str) else self.start_date.date(),
+                        datetime.strptime(self.end_date, '%Y%m%d').date() if isinstance(self.end_date, str) else self.end_date.date()])
+            ax.set_ylim([0, 10])
+            return
 
-        return [longitude, latitude]
+        if 'date' in ax.get_label():
+            self.plot_by_date(ax)
+        elif 'distance' in ax.get_label():
+            self.plot_by_distance(ax)
+        else:
+            self.plot_by_date(ax)
+
+    def plot_by_date(self, ax):
+        # Plot EQs
+        for i in range(len(self.earthquakes['date'])):
+            ax.plot([self.earthquakes['date'][i], self.earthquakes['date'][i]], [self.earthquakes['magnitude'][i], 0], 'k-')
+
+        ax.scatter(self.earthquakes['date'], self.earthquakes['magnitude'], c='black', marker='o')
+        ax.set_xlabel('Date')
+        ax.set_ylabel('Magnitude')
+        ax.set_title(f'Earthquake Magnitudes Over Time')
+        s = datetime.strptime(self.start_date, '%Y%m%d') if type(self.start_date) == str else self.start_date
+        e = datetime.strptime(self.end_date, '%Y%m%d') if type(self.end_date) == str else self.end_date
+        ax.set_xlim([s.date(), e.date()])
+        ax.set_ylim([0, 10])
+
+    def plot_by_distance(self, ax):
+        # Plot EQs
+        dist = []
+        for i in range(len(self.earthquakes['date'])):
+            if not hasattr(self, 'coordinates') or not self.coordinates:
+                self.coordinates = self.lalo if hasattr(self, 'lalo') else [(self.region[0]+self.region[1])/2, (self.region[2]+self.region[3])/2]
+            dist.append(calculate_distance(self.earthquakes['lalo'][i][0], self.earthquakes['lalo'][i][1], self.coordinates[0], self.coordinates[1]))
+            ax.plot([dist[i], dist[i]], [self.earthquakes['magnitude'][i], 0], 'k-')
+
+        if not dist:
+            dist = [0, 10]
+            dist1 = (self.region[0]-self.region[1])/2 * 111.32 * math.cos(math.radians(float(self.region[-1])))
+            dist2 = (self.region[2]-self.region[3])/2 * 111.32
+            dist = [0, (dist1**2 + dist2**2)**0.5]
+            # dist = [0, calculate_distance(abs(max(self.region[0]-self.region[1], self.region[2]-self.region[3]))/2)]
+            self.earthquakes['magnitude'] = [None, None]
+
+        ax.set_xlim([0, max(dist)+ (max(dist) * 0.05)])
+        ax.set_ylim([0, 10])
+
+        ax.scatter(dist, self.earthquakes['magnitude'], c='black', marker='o')
+
+        ax.set_xlabel('Distance in KM')
+        ax.set_ylabel('Magnitude')
+        ax.set_title('Earthquake Magnitudes from Volcano')
+
+####################################################################################
+
+class TimeseriesPlot:
+    def __init__(self, dataset, inps):
+        for attr in dir(inps):
+            if not attr.startswith('__') and not callable(getattr(inps, attr)):
+                setattr(self, attr, getattr(inps, attr))
+
+        self.start_date = self.start_date[0] if isinstance(self.start_date, list) else self.start_date
+        self.end_date = self.end_date[0] if isinstance(self.end_date, list) else self.end_date
+
+        self.dataset = dataset
+
+    def _plot_timeseries(self, dataset):
+        """Plots timeseries data on the last axis."""
+        ax_ts = self.ax
+        if "passDirection" in dataset["attributes"]:
+            color = "#ff7366" if dataset["attributes"]["passDirection"] == "ASCENDING" else "#5190cb"
+            label = "ascending" if dataset["attributes"]["passDirection"] == "ASCENDING" else "descending"
+        elif "FILE_PATH" in dataset["attributes"]:
+            color = "#ff7366" if "SenA" in dataset["attributes"]["FILE_PATH"] else "#5190cb"
+            label = "ascending" if "SenA" in dataset["attributes"]["FILE_PATH"] else "descending"
+
+        dates, ts= dataset['dates'], dataset['data']
+
+        ax_ts.scatter(dates, ts + self.offset, color=color, marker='o', label=label, alpha=0.5, s=7)
+
+        self.offset = 0
+
+        # Plot vertical lines
+        ax_ts.axvline(self.start_date, color='#a8a8a8', linestyle='--', linewidth=0.2, alpha=0.5)
+        ax_ts.axvline(self.end_date, color='#a8a8a8', linestyle='--', linewidth=0.2, alpha=0.5)
+
+        # Fill area between the vertical lines with a rectangle
+        ax_ts.axvspan(self.start_date, self.end_date, color='#a8a8a8', alpha=0.1)
+        ax_ts.set_ylabel(f'LOS displacement ({self.unit.replace("/yr", "")})')
+        ax_ts.legend(fontsize='x-small')
+
+    def _plot_event(self):
+        if self.add_event:
+            for event, magnitude in zip(self.add_event, self.event_magnitude):
+                event = datetime.strptime(event, "%Y%m%d") if type(event) == str else event
+                self.ax.axvline(event, color='#900C3F', linestyle='--', linewidth=1, alpha=0.3)
+
+                # Add a number near the top of the line
+                if magnitude:
+                    self.ax.text(event, self.ax.get_ylim()[1] * (magnitude/10), f"{magnitude}", color='#900C3F', fontsize=7, alpha=1, ha='center',  path_effects=[withStroke(linewidth=0.5, foreground='black')])
+
+    def plot(self, ax):
+        self.ax = ax
+        for key in self.dataset:
+            self._plot_timeseries(self.dataset[key])
+
+        self._plot_event()
 
 
 class VectorsPlot:
     """Handles the plotting of velocity maps, elevation profiles, and vector fields."""
-    def __init__(self, files: list, inps):
+    def __init__(self, dataset, inps):
         for attr in dir(inps):
             if not attr.startswith('__') and not callable(getattr(inps, attr)):
                 setattr(self, attr, getattr(inps, attr))
+
         # TODO have to add attributes to https://github.com/insarlab/MintPy/blob/main/src/mintpy/asc_desc2horz_vert.py#L261
         # for f in files:
         #     attr = readfile.read_attribute(f)
         #     if attr['FILE_TYPE'] == 'VERTICAL':
         #         self.vert_file = f
         #         self.horz_file = None
-        for f in files:
-            if 'hz' in f:
-                self.horz_file = f
-            elif 'up' in f:
-                self.vert_file = f
+        self.horz = dataset["horizontal"]["data"]
+        self.vert = dataset["vertical"]["data"]
+        self.geometry = dataset["horizontal"].get("geometry").get("data") if "geometry" in dataset["horizontal"] else dataset["vertical"].get("geometry").get("data")
 
-        # Determine which files to plot
-        self._set_plot_files()
+        self.horz_attr = dataset["horizontal"]["attributes"]
+        self.vert_attr = dataset["vertical"]["attributes"]
+        self.geometry_attr = dataset["horizontal"].get("geometry", {}).get("attributes", {})
 
-        self._process_sections()
-
-    def _set_plot_files(self):
-        """Determines which velocity files to use based on plot options."""
-        self.plot1_file = self.horz_file
-        self.plot2_file = self.vert_file
-
-    def plot_point(self, lat, lon, ax, marker='o'):
-        """Plots a point on the map."""
-        for x,y in zip(lon, lat):
-            ax.scatter(x, y, color='black', marker=marker)
-
-    def _process_sections(self):
-        """Processes horizontal, vertical, and elevation sections."""
-        self.horizontal_data = Mapper(file=self.horz_file)
-        self.vertical_data = Mapper(file=self.vert_file)
-        self.elevation_data = Relief(map=self.horizontal_data, resolution=self.resolution)
-
-        self.region = self.elevation_data.map.region
-
+        # Double check if the line is set
         if not self.line or type(self.line) == float:
-            self.line = self._set_default_section()
+            self.line = set_default_section(self.line, self.region)
 
-        self.horizontal_section = Section(
-            np.flipud(self.horizontal_data.velocity), self.horizontal_data.region, self.line[1], self.line[0]
-        )
-        self.vertical_section = Section(
-            np.flipud(self.vertical_data.velocity), self.vertical_data.region, self.line[1], self.line[0]
-        )
-        self.elevation_section = Section(
-            self.elevation_data.elevation.values, self.elevation_data.map.region, self.line[1], self.line[0]
-        )
+        if not self.region:
+            if "scene_footprint" in self.geometry_attr:
+                self.region = parse_polygon(self.geometry_attr["scene_footprint"])
+            elif "region" in self.geometry_attr:
+                self.region = self.geometry_attr["region"]
+            else:
+                latitude, longitude = get_bounding_box(self.geometry_attr)
+                self.region = [longitude[0], longitude[1], latitude[0], latitude[1]]
 
-    def _set_default_section(self):
-        mid_lat = self.line if type(self.line) == float else (max(self.region[2:4]) + min(self.region[2:4]))/2
-        mid_lon = (max(self.region[0:2]) + min(self.region[0:2]))/2
+        self.horizontal_section = self._process_sections(np.flipud(self.horz), self.region)
+        self.vertical_section = self._process_sections(np.flipud(self.vert), self.region)
+        self.topography_section = self._process_sections(self.geometry, self.geometry_attr["region"])
 
-        size = (max(self.region[0:2]) - min(self.region[0:2]))*0.25
+    def _process_sections(self, data, region):
+        """Processes the sections for horizontal and vertical components."""
 
-        latitude = (mid_lat, mid_lat)
-        longitude = (mid_lon - size, mid_lon + size)
+        lat_indices, lon_indices = self._draw_line(data, region, self.line[1], self.line[0])
 
-        return [longitude, latitude]
+        # Extract the values data along the snapped path
+        values = data[lat_indices, lon_indices]
+
+        # TODO recheck
+        return np.nan_to_num(values)
+
+    def _draw_line(self, data, region, latitude, longitude):
+        # Calculate the resolution in degrees
+        lat_res = (region[3] - region[2]) / (data.shape[0] - 1)
+        lon_res = (region[1] - region[0]) / (data.shape[1] - 1)
+
+        # Calculate the distance between start and end points
+        distance = np.sqrt((latitude[1] - latitude[0])**2 + (longitude[1] - longitude[0])**2)
+
+        # Determine the number of points based on the distance
+        num_points = int(distance / min(lat_res, lon_res))
+
+        lon_points = np.linspace(longitude[0], longitude[1], num_points)
+        lat_points = np.linspace(latitude[0], latitude[1], num_points)
+
+        # Snap points to the nearest grid points
+        lon_indices = np.round((lon_points - region[0]) / lon_res).astype(int)
+        lat_indices = np.round((lat_points - region[2]) / lat_res).astype(int)
+
+        # Ensure indices are within bounds
+        lon_indices = np.clip(lon_indices, 0, data.shape[1] - 1)
+        lat_indices = np.clip(lat_indices, 0, data.shape[0] - 1)
+
+        # TODO do i need it?
+        # Create a DataFrame to store the path data
+        self.path_df = pd.DataFrame({
+            'longitude': lon_points,
+            'latitude': lat_points,
+            'lon_index': lon_indices,
+            'lat_index': lat_indices,
+            'distance': np.linspace(0, 1, num_points)  # Normalized distance
+        })
+
+        return lat_indices, lon_indices
 
     def _compute_vectors(self):
         """Computes velocity vectors and scaling factors."""
-        x, v, h, self.z = draw_vectors(
-            self.elevation_section.values, self.vertical_section.values, self.horizontal_section.values, self.line
-        )
+        x, v, h, self.z = draw_vectors(self.topography_section, self.vertical_section, self.horizontal_section, self.line)
 
         fig = self.ax.get_figure()
         fig_width, fig_height = fig.get_size_inches()
@@ -284,119 +503,17 @@ class VectorsPlot:
         # Mean velocity vector
         start_x = max(self.xrange) * 0.1
         start_y = (2 * max(self.z) * 0.8)
-        mean_velocity = np.sqrt(np.mean((self.vertical_section.values[self.vertical_section.values!=0]))**2 + np.mean((self.horizontal_section.values[self.horizontal_section.values!=0]))**2)
+        mean_velocity = np.sqrt(np.mean((self.vertical_section[self.vertical_section!=0]))**2 + np.mean((self.horizontal_section[self.horizontal_section!=0]))**2)
         rounded_mean_velocity = round(mean_velocity, 4) if mean_velocity else round(mean_velocity, 3)
 
         self.ax.quiver([start_x], [start_y], [mean_velocity], [0], color='#ff7366', scale_units='xy', width=(1 / 10**(2.5)))
         # self.ax[2].quiver([start_x], [start_y], [0], [abs(np.mean(self.filtered_v))], color='#ff7366', scale_units='xy', width=(1 / 10**(2.5)))
-        self.ax.text(start_x, start_y * 1.03, f"{rounded_mean_velocity:.4f} m/yr", color='black', ha='left', fontsize=8)
+        self.ax.text(start_x, start_y * 1.03, f"{rounded_mean_velocity:.4f} {self.unit}", color='black', ha='left', fontsize=8)
 
         # Add labels
         self.ax.set_ylabel("Elevation (m)")
         self.ax.set_xlabel("Distance (km)")
 
-
-class TimeseriesPlot:
-    def __init__(self, files, inps):
-        for attr in dir(inps):
-            if not attr.startswith('__') and not callable(getattr(inps, attr)):
-                setattr(self, attr, getattr(inps, attr))
-
-        self.start_date = self.start_date[0] if isinstance(self.start_date, list) else self.start_date
-        self.end_date = self.end_date[0] if isinstance(self.end_date, list) else self.end_date
-
-        self.files = files
-
-    def _extract_timeseries_data(self, file):
-        """Extracts timeseries data from the given file."""
-        atr = readfile.read_attribute(file)
-
-        # Identify file type and open it
-        if atr['FILE_TYPE'] == 'timeseries':
-            obj = timeseries(file)
-        elif atr['FILE_TYPE'] == 'HDFEOS':
-            obj = HDFEOS(file)
-        else:
-            raise ValueError(f'Input file is {atr["FILE_TYPE"]}, not timeseries.')
-
-        obj.open(print_msg=False)
-        date_list = obj.dateList
-
-        # Filter dates if start/end dates are provided
-        self.start_date = self.start_date if self.start_date else date_list[0]
-        self.end_date = self.end_date if self.end_date else date_list[-1]
-
-        self.start_date = datetime.strptime(self.start_date, "%Y%m%d") if type(self.start_date) == str else self.start_date
-        self.end_date = datetime.strptime(self.end_date, "%Y%m%d") if type(self.end_date) == str else self.end_date
-
-        # We want the whole timeseries
-        # date_list = [d for d in date_list if int(start_date) <= int(d) <= int(end_date)]
-
-        # Extract timeseries data
-        data, atr = readfile.read(file, datasetName=date_list)
-
-        # Handle complex data
-        if atr['DATA_TYPE'].startswith('complex'):
-            print('Input data is complex, calculating amplitude.')
-            data = np.abs(data)
-
-        if 'X_FIRST' not in atr:
-            geometry = self.ascending_geometry if 'SenA' in file else self.descending_geometry
-        else:
-            geometry = None
-
-        # Convert geocoordinates to radar
-        coord = coordinate(atr, lookup_file=geometry)
-        lalo = coord.geo2radar(lat=self.lalo[0], lon=self.lalo[1])
-
-        # Reference data to a specific point if provided
-        if self.ref_lalo:
-            ref_yx = coord.geo2radar(lat=self.ref_lalo[0], lon=self.ref_lalo[1])
-            ref_phase = data[:, ref_yx[0], ref_yx[1]]
-            data -= np.tile(ref_phase.reshape(-1, 1, 1), (1, data.shape[-2], data.shape[-1]))
-            print(f'Referenced data to point: {self.ref_lalo}')
-
-        ts = data[:, lalo[0], lalo[1]]
-        date_list = [datetime.strptime(date, "%Y%m%d") for date in date_list]
-
-        return date_list, ts
-
-    def _plot_timeseries(self, file):
-        """Plots timeseries data on the last axis."""
-        ax_ts = self.ax
-        color = "#ff7366" if "SenA" in file else "#5190cb"
-        label = "ascending" if "SenA" in file else "descending"
-
-        dates, ts = self._extract_timeseries_data(file)
-        ax_ts.scatter(dates, ts + self.offset, color=color, marker='o', label=label, alpha=0.5, s=7)
-
-        self.offset = 0
-
-        # Plot vertical lines
-        ax_ts.axvline(self.start_date, color='#a8a8a8', linestyle='--', linewidth=0.2, alpha=0.5)
-        ax_ts.axvline(self.end_date, color='#a8a8a8', linestyle='--', linewidth=0.2, alpha=0.5)
-
-        # Fill area between the vertical lines with a rectangle
-        ax_ts.axvspan(self.start_date, self.end_date, color='#a8a8a8', alpha=0.1)
-        ax_ts.set_ylabel('LOS displacement (m)')
-        ax_ts.legend(fontsize='x-small')
-
-    def _plot_event(self):
-        if self.add_event:
-            for event, magnitude in zip(self.add_event, self.magnitude):
-                event = datetime.strptime(event, "%Y%m%d") if type(event) == str else event
-                self.ax.axvline(event, color='#900C3F', linestyle='--', linewidth=1, alpha=0.3)
-
-                # Add a number near the top of the line
-                if magnitude:
-                    self.ax.text(event, self.ax.get_ylim()[1] * (magnitude/10), f"{magnitude}", color='#900C3F', fontsize=7, alpha=1, ha='center',  path_effects=[withStroke(linewidth=0.5, foreground='black')])
-
-    def plot(self, ax):
-        self.ax = ax
-        for file in self.files:
-            self._plot_timeseries(file)
-
-        self._plot_event()
 
 def point_on_globe(latitude, longitude, names=None, size='0.7', fsize=10):
     fig = pygmt.Figure()
