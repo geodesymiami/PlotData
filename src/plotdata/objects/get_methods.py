@@ -141,13 +141,6 @@ class DataExtractor:
                         if 'data' in v:
                             v['data'] *= conversion_factor
                             v['attributes']['unit'] = self.unit
-                # else:
-                #     if self.unit in units:
-                #         value['data'] *= units[self.unit]
-                #         value['attributes']['unit'] = self.unit
-                #     else:
-                #         raise ValueError(f"Unit '{self.unit}' is not recognized.")
-
             if 'data' in value:
                 days = value['attributes'].get('days', 1)
                 units.update({
