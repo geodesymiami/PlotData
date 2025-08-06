@@ -109,7 +109,7 @@ def add_plot_parameters_arguments(parser):
                         default='scatter',
                         choices=['pixel', 'scatter', 'ifgram'],
                         help='Style of the plot (default: %(default)s).')
-    plot_parameters.add_argument('--no-show',
+    plot_parameters.add_argument('--no-display',
                         dest='show_flag',
                         action='store_false',
                         default=True,
@@ -124,9 +124,13 @@ def add_plot_parameters_arguments(parser):
                         type=int,
                         help='DPI of the plot (default: %(default)s).')
     plot_parameters.add_argument('--colormap',
+                        dest='cmap',
                         default='jet',
                         metavar='COLORMAP',
                         help='Colormap for the plot (default: %(default)s).')
+    plot_parameters.add_argument('--no-colorbar',
+                        action='store_true',
+                        help='Do not display colorbar')
     return parser
 
 

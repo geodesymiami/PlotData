@@ -286,7 +286,7 @@ def main(iargs=None):
 
     from plotdata.objects.process_data import ProcessData
     from plotdata.objects.plot_properties import PlotTemplate, PlotRenderer
-    from plotdata.objects.plotters import VelocityPlot, VectorsPlot, TimeseriesPlot, DataExtractor, EarthquakePlot
+    from plotdata.objects.plotters import VelocityPlot, VectorsPlot, TimeseriesPlot, EarthquakePlot
     from plotdata.objects.get_methods import DataExtractor
     import matplotlib.pyplot as plt
 
