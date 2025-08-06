@@ -98,11 +98,12 @@ class VelocityPlot:
 
             self.imdata = self.ax.scatter(X, Y, c=C, cmap=self.cmap, marker='o', zorder=zorder, s=2, vmin=self.vmin, vmax=self.vmax, rasterized=True)
 
-        cbar = self.ax.figure.colorbar(self.imdata, ax=self.ax, orientation='horizontal', aspect=13)
-        cbar.set_label(self.unit)
+        if not self.no_colorbar:
+            cbar = self.ax.figure.colorbar(self.imdata, ax=self.ax, orientation='horizontal', aspect=13)
+            cbar.set_label(self.unit)
 
-        cbar.locator = ticker.MaxNLocator(3)
-        cbar.update_ticks()
+            cbar.locator = ticker.MaxNLocator(3)
+            cbar.update_ticks()
 
     def _plot_dem(self):
         print("-"*50)
