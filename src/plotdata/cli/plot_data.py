@@ -22,13 +22,13 @@ from plotdata.utils.argument_parsers import add_date_arguments, add_location_arg
 ############################################################
 EXAMPLE = """
 example:
-        plot_data.py MaunaLoaSenDT87/mintpy MaunaLoaSenAT124/mintpy --period 20181001:20191031 --ref-lalo 19.50068,-155.55856 --lalo 19.47373,-155.59617 --resolution=01s --isolines=2 --section 19.45,-155.75:19.45,-155.35 --resample-vector 40 --seismicity=3
+        plot_data.py MaunaLoaSenDT87/mintpy MaunaLoaSenAT124/mintpy --period 20181001:20191031 --ref-lalo 19.50068,-155.55856 --lalo 19.47373,-155.59617 --resolution=01s --contour=2 --section 19.45,-155.75:19.45,-155.35 --resample-vector 40 --seismicity=3
 
         Add events on timeseries plot:
-        plot_data.py MaunaLoaSenDT87/mintpy MaunaLoaSenAT124/mintpy --template default  --period 20181001:20191031 --ref-lalo 19.50068 -155.55856 --resolution '01s' --isolines 2 --lalo 19.461,-155.558 --resample-vector 40 --add-event 20181201 --event-magnitude 5.0
+        plot_data.py MaunaLoaSenDT87/mintpy MaunaLoaSenAT124/mintpy --template default  --period 20181001:20191031 --ref-lalo 19.50068 -155.55856 --resolution '01s' --contour 2 --lalo 19.461,-155.558 --num-vectors 40 --add-event 20181201 --event-magnitude 5.0
 
         # FOR GIACOMO TO TEST
-        plot_data.py ChilesSenAT120/mintpy ChilesSenDT142/mintpy --period=20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --isolines 2 --section 0.793,-77.968:0.793,-77.9309 --lalo 0.78632 -77.92867
+        plot_data.py ChilesSenAT120/mintpy ChilesSenDT142/mintpy --period=20220101:20230831 --ref-lalo 0.8389,-77.902 --resolution '01s' --contour 2 --section 0.793,-77.968:0.793,-77.9309 --lalo 0.78632 -77.92867
 
 """
 
@@ -44,7 +44,7 @@ def create_parser():
     parser.add_argument('--unit', dest='unit', default="cm/yr", help='InSAR units (Default: cm)')
     # parser.add_argument("--noreference", dest="show_reference_point",  action='store_false', default=True, help="hide reference point (default: False)" )
     parser.add_argument("--section", dest="line", type=str, default=None, help="Section coordinates for deformation vectors, LAT,LON:LAT,LON")
-    parser.add_argument("--resample-vector", dest="resample_vector", type=int, default=1, help="resample factor for deformation vectors (default: %(default)s).")
+    parser.add_argument("--num-vectors", dest="resample_vector", type=int, default=1, help="resample factor for deformation vectors (default: %(default)s).")
     parser.add_argument("--id", type=int, default=None, help="ID of the plot volcano")
 
     parser = add_date_arguments(parser)
