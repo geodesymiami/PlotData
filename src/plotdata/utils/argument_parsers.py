@@ -149,8 +149,9 @@ def add_map_parameters_arguments(parser):
                         nargs=2,
                         metavar=('VMIN', 'VMAX'),
                         help='Velocity limit for the colorbar')
-    map_parameters.add_argument('--isolines',
+    map_parameters.add_argument('--contour',
                         nargs='?',
+                        metavar='NUM',
                         default=0,
                         type=int,
                         metavar='LEVELS',
@@ -159,13 +160,13 @@ def add_map_parameters_arguments(parser):
                         default='viridis',
                         metavar='COLORBAR',
                         help='Colorbar (default: %(default)s).')
-    map_parameters.add_argument('--isolines-color',
+    map_parameters.add_argument('--contour-color',
                         dest='iso_color',
                         type=str,
                         default='black',
                         metavar='COLOR',
                         help='Color of contour lines (default: %(default)s).')
-    map_parameters.add_argument('--linewidth',
+    map_parameters.add_argument('--contour-linewidth',
                         type=float,
                         default=0.5,
                         help='Line width for isolines (default: %(default)s).')
