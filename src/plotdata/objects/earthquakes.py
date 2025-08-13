@@ -1,6 +1,6 @@
-import sys
+# import sys
 
-sys.path.insert(0, '/Users/giacomo/code/Plotdata/src')
+# sys.path.insert(0, '/Users/giacomo/code/Plotdata/src')
 
 import math
 import numpy as np
