@@ -7,14 +7,7 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from matplotlib.colors import LightSource
-from plotdata.objects.section import Section
-from plotdata.objects.get_methods import DataFetcherFactory
-from plotdata.objects.create_map import Mapper, Isolines, Relief
-from plotdata.objects.earthquakes import Earthquake
-from mintpy.utils import readfile
-from mintpy.objects.coord import coordinate
 from matplotlib.patheffects import withStroke
-from mintpy.objects import timeseries, HDFEOS
 from plotdata.helper_functions import draw_vectors, calculate_distance, get_bounding_box, expand_bbox, parse_polygon
 
 def set_default_section(line, region):
@@ -165,7 +158,7 @@ class VelocityPlot:
         z = lines.values
 
         #Plot the isolines
-        cont = self.ax.contour(lon, lat, z, levels=self.isolines, colors=self.color, linewidths=self.linewidth, alpha=0.7, zorder=zorder)
+        cont = self.ax.contour(lon, lat, z, levels=self.contour, colors=self.color, linewidths=self.contour_linewidth, alpha=0.7, zorder=zorder)
 
         if self.inline:
             self.ax.clabel(cont, inline=self.inline, fontsize=8)
@@ -213,7 +206,7 @@ class VelocityPlot:
         if hasattr(self, 'data') and self.data is not None:
             self._plot_velocity()
 
-        if self.isolines:
+        if self.contour:
             self._plot_isolines()
 
         if hasattr(self, 'earthquakes') and self.earthquakes['date']:
