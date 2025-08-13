@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 ############################################################
 # Program is part of PlotData                              #
-# Author: Falk Amelung, Giacomo Di Silvestro Dec 2023      #
+# Author: Giacomo Di Silvestro, Falk Amelung Dec 2023      #
 ############################################################
 
 import os
