@@ -154,7 +154,6 @@ def add_map_parameters_arguments(parser):
                         metavar='NUM',
                         default=0,
                         type=int,
-                        metavar='LEVELS',
                         help='Number of isolines to be plotted on the map (default: %(default)s).')
     map_parameters.add_argument('--colorbar',
                         default='viridis',
