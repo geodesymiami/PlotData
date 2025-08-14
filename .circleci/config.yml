@@ -10,14 +10,12 @@ jobs:
     steps:
       - checkout
       - run:
-          name: Install Miniconda
+          name: Install Miniconda and create environment
           command: |
             curl -fsSL https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o miniconda.sh
             bash miniconda.sh -b -p $HOME/miniconda
-            export PATH="$HOME/miniconda/bin:$PATH"
-      - run:
-          name: Create Conda environment
-          command: conda env create -f environment.yml
+            source $HOME/miniconda/bin/activate
+            conda env create -f environment.yml
       - run:
           name: Activate environment and run tests
           command: |
