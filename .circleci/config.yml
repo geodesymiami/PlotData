@@ -21,6 +21,7 @@ jobs:
           command: |
             source $HOME/miniconda/bin/activate geo_env
             pip install -r requirements.txt
+            pip install MinsarPlotData 
             pytest
 
 workflows:
