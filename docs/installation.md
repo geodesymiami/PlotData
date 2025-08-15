@@ -1,7 +1,7 @@
 # Install package
 ```bash
 pip install MinsarPlotData
-pip install git+https://github.com/username/minsar.git
+pip install git@github.com:geodesymiami/minsar.git
 ```
 ## Install `GDAL`
 ### Linux (Ubuntu/Debian)
@@ -73,6 +73,7 @@ done
 ```python
 plotdata MaunaLoaSenDT87/mintpy MaunaLoaSenAT124/mintpy --template default  --period 20181001:20191031 --ref-lalo 19.50068 -155.55856 --resolution '01s' --contour 2 --lalo 19.461,-155.558 --num-vectors 40
 ```
+
 
 
 
