@@ -2,6 +2,26 @@
 ```bash
 pip install MinsarPlotData
 ```
+You can follow one of the following options:
+- Use [Docker](https://github.com/geodesymiami/PlotData/edit/main/docs/installation.md#instal-with-docker)
+- Follow the [Regular installation](https://github.com/geodesymiami/PlotData/edit/main/docs/installation.md#regular-installation)
+
+
+# Instal with Docker
+Build **Docker image**.
+```bash
+docker build -t minsarplotdata .
+```
+If you don't have a `SCRATCHDIR` directory set up and you don't want to use the default (Built on `$HOME/scratchdir`), run:
+```bash
+export SCRATCHDIR=/path/to/scratch
+```
+Run container
+```bash
+docker run -e SCRATCHDIR=$SCRATCHDIR -v $SCRATCHDIR:$SCRATCHDIR -it minsarplotdata
+```
+
+# Regular Installation
 ## Install `GDAL`
 ### Linux (Ubuntu/Debian)
 ```bash
@@ -72,6 +92,7 @@ done
 ```python
 plotdata MaunaLoaSenDT87/mintpy MaunaLoaSenAT124/mintpy --template default  --period 20181001:20191031 --ref-lalo 19.50068 -155.55856 --resolution '01s' --contour 2 --lalo 19.461,-155.558 --num-vectors 40
 ```
+
 
 
 
