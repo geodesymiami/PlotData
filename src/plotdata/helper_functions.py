@@ -1,5 +1,6 @@
 #! /usr/bin/env python3
 import os
+import sys
 import math
 import subprocess
 import glob
@@ -8,9 +9,57 @@ from mintpy.objects import HDFEOS
 from scipy.interpolate import interp1d
 import numpy as np
 from pathlib import Path
-from mintpy.utils import utils
+from mintpy.utils import utils, writefile
 from mintpy.cli import generate_mask
-from minsar.utils.extract_hdfeos5 import determine_coordinates, extract_geometry, extract_temporalCoherence
+
+
+def extract_temporalCoherence(file_path, coords):
+    data, attr = readfile.read(file_path, datasetName='HDFEOS/GRIDS/timeseries/quality/temporalCoherence')
+    attr['FILE_TYPE'] = 'temporalCoherence'
+    out_file = "geo_temporalCoherence.h5" if coords=="GEO" else "temporalCoherence.h5"
+    writefile.write(data, out_file=out_file, metadata=attr)
+    print(f"Extracted temporalCoherence -> {out_file}")
+
+    return out_file
+
+
+def extract_geometry(file_path, coords):
+    group_path = 'HDFEOS/GRIDS/timeseries/geometry'
+    slices = ['azimuthAngle', 'height', 'incidenceAngle', 'latitude', 'longitude', 'shadowMask', 'slantRangeDistance']
+    geo_data = {}
+    geo_attr = {}
+    for s in slices:
+        dset_path = f"{group_path}/{s}"
+        try:
+            data, attr = readfile.read(file_path, datasetName=dset_path)
+            geo_data[s] = data
+            if not geo_attr:
+                geo_attr = attr
+        except Exception as e:
+            print(f"Warning: Could not extract slice '{s}' from {dset_path}: {e}", file=sys.stderr)
+    geo_attr['FILE_TYPE'] = 'geometry'
+    geo_attr['COORDINATES'] = coords
+    out_file = "geo_geometryRadar.h5" if coords=="GEO" else "geometryRadar.h5"
+    writefile.write(geo_data, out_file=out_file, metadata=geo_attr)
+    print(f"Extracted geometry -> {out_file}")
+
+    return out_file
+
+
+def determine_coordinates(file_path):
+    """
+    Determine coordinate system from the mask dataset attributes.
+    Returns 'GEO' if Y_FIRST is in the attribute keys, else 'RADAR'.
+    """
+    try:
+        _, attr = readfile.read(file_path, datasetName='HDFEOS/GRIDS/timeseries/quality/mask')
+        if 'Y_FIRST' in attr.keys():
+            print("Detected coordinates: GEO")
+            return 'GEO'
+    except Exception:
+        pass
+    print("Detected coordinates: RADAR")
+    return 'RADAR'
 
 
 def create_geometry_file(eos_file, out_folder):
