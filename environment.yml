@@ -12,4 +12,7 @@ dependencies:
   - pip
   - pip:
       - -r requirements.txt
+      - MinsarPlotData
+      - minsar
+      - mintpy
       - pytest
