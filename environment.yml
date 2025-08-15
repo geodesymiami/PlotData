@@ -13,6 +13,6 @@ dependencies:
   - pip:
       - -r requirements.txt
       - MinsarPlotData
-      - minsar
+      - git+https://github.com/username/minsar.git
       - mintpy
       - pytest
