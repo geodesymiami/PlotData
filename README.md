@@ -1,3 +1,4 @@
+[![CircleCI](https://dl.circleci.com/status-badge/img/gh/geodesymiami/PlotData/tree/main.svg?style=shield)](https://dl.circleci.com/status-badge/redirect/gh/geodesymiami/PlotData/tree/main)
 # PlotData
 ## TODOs
 - [ ] Change examples
