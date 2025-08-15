@@ -3,15 +3,18 @@ channels:
   - conda-forge
 dependencies:
   - python=3.10
-  - gdal=3.11.3
-  - geopandas=1.1.1
   - numpy
-  - pandas
+  - matplotlib
   - pygmt
-  - gmt   
+  - xarray
+  - pandas
+  - cartopy
+  - scipy
+  - scikit-learn
+  - simplekml
+  - geopandas
+  - mintpy
   - pip
   - pip:
-      - -r requirements.txt
       - MinsarPlotData
-      - mintpy
       - pytest
