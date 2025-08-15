@@ -1,5 +1,5 @@
 # Install package
-```
+```bash
 pip install MinsarPlotData
 ```
 ## Install `GDAL`
@@ -24,6 +24,25 @@ conda install -c conda-forge gdal geopandas
 pip install -r requirements.txt
 ```
 
+
+### Step 1: Install Conda (if not installed)
+Download [Miniconda](https://docs.conda.io/en/latest/miniconda.html)
+
+### Step 2: Create the environment from `environment.yml`
+```bash
+conda env create -f environment.yml
+```
+
+### Step 3: Activate the environment
+```bash
+conda activate geo_env
+```
+
+### Step 4: Update pip-only packages (optional):
+```bash
+conda activate geo_env
+pip install -r requirements.txt
+```
 
 # Test installation
 
