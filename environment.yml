@@ -13,6 +13,6 @@ dependencies:
   - pip:
       - -r requirements.txt
       - MinsarPlotData
-      - git@github.com:geodesymiami/minsar.git
+      - git+github.com:geodesymiami/minsar.git
       - mintpy
       - pytest
