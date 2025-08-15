@@ -7,20 +7,24 @@ pip install MinsarPlotData
 ```bash
 sudo apt-get update
 sudo apt-get install -y gdal-bin libgdal-dev
-pip install -r requirements.txt
 ```
 ### macOS(Homebrew)
 ```bash
 brew install gdal
-pip install -r requirements.txt
 ```
 ### Windows (conda recommended)
 ```bash
 conda create -n geo_env python=3.12
 conda activate geo_env
 conda install -c conda-forge gdal geopandas
+```
+## Complete installation
+
+```
 pip install -r requirements.txt
 ```
+
+
 # Test installation
 
 ### Setup working directory (`SCRATCHDIR`)
@@ -49,5 +53,6 @@ done
 ```python
 plotdata MaunaLoaSenDT87/mintpy MaunaLoaSenAT124/mintpy --template default  --period 20181001:20191031 --ref-lalo 19.50068 -155.55856 --resolution '01s' --contour 2 --lalo 19.461,-155.558 --num-vectors 40
 ```
+
 
 
