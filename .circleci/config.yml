@@ -19,7 +19,7 @@ jobs:
       - run:
           name: Activate environment and run tests
           command: |
-            source $HOME/miniconda/bin/activate plot_data
+            source $HOME/miniconda/bin/activate plotdata
             pip install -r requirements.txt
             pip install MinsarPlotData 
             pytest
