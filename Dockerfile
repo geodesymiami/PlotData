@@ -16,10 +16,10 @@ RUN conda env create -f /tmp/environment.yml --verbose
 
 COPY requirements.txt /tmp/requirements.txt
 
-RUN conda run -n geo_env pip install -r /tmp/requirements.txt
-RUN conda run -n geo_env pip install MinsarPlotData
+RUN conda run -n plotdata pip install -r /tmp/requirements.txt
+RUN conda run -n plotdata pip install MinsarPlotData
 
-ENV PATH=/opt/conda/envs/geo_env/bin:$PATH
+ENV PATH=/opt/conda/envs/plotdata/bin:$PATH
 
 ARG SCRATCHDIR
 ENV SCRATCHDIR=${SCRATCHDIR}
@@ -27,6 +27,6 @@ ENV SCRATCHDIR=${SCRATCHDIR}
 COPY scripts/check_scratchdir.sh /usr/local/bin/check_scratchdir.sh
 RUN chmod +x /usr/local/bin/check_scratchdir.sh
 
-SHELL ["conda", "run", "-n", "geo_env", "/bin/bash", "-c"]
+SHELL ["conda", "run", "-n", "plotdata", "/bin/bash", "-c"]
 
 CMD ["bash", "-c", "/usr/local/bin/check_scratchdir.sh && source /tmp/scratchdir.env && plotdata"]
