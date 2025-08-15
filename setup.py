@@ -8,7 +8,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="MinsarPlotData",
-    version="0.1.2",
+    version="0.1.3",
     description="A package for plotting InSAR and Seismicity data",
     author="Giacomo Di Silvestro",
     author_email="gxd593@miami.edu",
