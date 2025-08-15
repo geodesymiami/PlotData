@@ -19,7 +19,7 @@ jobs:
       - run:
           name: Activate environment and run tests
           command: |
-            source $HOME/miniconda/bin/activate geo_env
+            source $HOME/miniconda/bin/activate plotdata
             pip install -r requirements.txt
             pip install MinsarPlotData 
             pytest
