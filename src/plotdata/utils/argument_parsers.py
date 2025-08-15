@@ -185,7 +185,7 @@ def add_map_parameters_arguments(parser):
                         type=float,
                         metavar='SIZE',
                         default=10,
-                        help='Scatter marker size in points**2 (default: %(default)s).')
+                        help='Scatter marker size in points (default: %(default)s).')
     map_parameters.add_argument('--no-dem',
                         action='store_true',
                         help='Add relief to the map')
