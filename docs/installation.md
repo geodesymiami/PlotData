@@ -3,8 +3,8 @@
 pip install MinsarPlotData
 ```
 You can follow one of the following options:
-- Use [Docker](https://github.com/geodesymiami/PlotData/edit/main/docs/installation.md#instal-with-docker)
-- Follow the [Regular installation](https://github.com/geodesymiami/PlotData/edit/main/docs/installation.md#regular-installation)
+- Use [Docker](https://github.com/geodesymiami/PlotData/blob/main/docs/installation.md#instal-with-docker)
+- Follow the [Regular installation](https://github.com/geodesymiami/PlotData/blob/main/docs/installation.md#regular-installation)
 
 
 # Instal with Docker
@@ -92,6 +92,7 @@ done
 ```python
 plotdata MaunaLoaSenDT87/mintpy MaunaLoaSenAT124/mintpy --template default  --period 20181001:20191031 --ref-lalo 19.50068 -155.55856 --resolution '01s' --contour 2 --lalo 19.461,-155.558 --num-vectors 40
 ```
+
 
 
 
