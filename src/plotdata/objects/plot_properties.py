@@ -68,7 +68,6 @@ class PlotRenderer:
 
         return fig
 
-    ################ TEST ##########################
     def _build_plotters(self):
         """Build plotter instances using the configured classes and required file attributes."""
         plotters = {}
@@ -84,7 +83,7 @@ class PlotRenderer:
                         plotters[element] = plotter_instance
 
         return plotters
-
+    # TODO to remove
     def _build_plotters_old(self, process_data):
         """Build plotter instances using the configured classes and required file attributes."""
         plotters = {}
