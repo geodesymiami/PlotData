@@ -8,10 +8,10 @@ cd PlotData #Temporary name
 ```
 You can use one of the following options:
 - Use [Docker](https://github.com/geodesymiami/PlotData/blob/main/docs/installation.md#instal-with-docker)
-- Follow the [Regular installation]([https://github.com/geodesymiami/PlotData/blob/main/docs/installation.md#regular-installation](https://github.com/geodesymiami/PlotData/edit/main/docs/installation.md#regular-installation-))
+- Follow the [Regular installation](https://github.com/geodesymiami/PlotData/edit/main/docs/installation.md#regular-installation)
 
 ---
-# Instal with Docker 🐳
+# Instal with Docker
 ## Simplified approach
 Pass an argument to the following `CMD` if:
 - You don't have a `SCRATCHDIR` directory set up and you don't want to use the default (Built on `$HOME/scratchdir`):
@@ -36,7 +36,7 @@ Run container
 docker run -e SCRATCHDIR=$SCRATCHDIR -v $SCRATCHDIR:$SCRATCHDIR -it minsarplotdata
 ```
 ---
-# Regular Installation 🐍
+# Regular Installation
 ## Option 1: Install with Conda
 
 ### Step 1: Install Conda (if not installed)
