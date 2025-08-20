@@ -312,7 +312,7 @@ def main(iargs=None):
         ########
     }
 
-    figures = []
+    figures = {}
     processors = []
 
     inps = populate_dates(inps)
@@ -328,25 +328,45 @@ def main(iargs=None):
         renderer = PlotRenderer(datafethched, template)
         fig = renderer.render()
 
-        figures.append(fig)
+        figures[id(process)] = fig if isinstance(fig, list) else [fig]
 
     # 5. Save or show
     if inps.save == 'pdf':
         from matplotlib.backends.backend_pdf import PdfPages
-        saving_path = os.path.join(inps.outdir,processors[0].project,f"{processors[0].project}_{inps.template}_{inps.start_date[0]}_{inps.end_date[-1]}.pdf")
 
-        with PdfPages(saving_path) as pdf:
-            for fig in figures:
-                pdf.savefig(fig, bbox_inches='tight', dpi=inps.dpi, transparent=True)
-                plt.close(fig)
+        for processor in processors:
+            process_id = id(processor)
+            if process_id in figures:
+                if len(figures[process_id]) > 1:
+                    saving_path = os.path.join(
+                        inps.outdir,
+                        processor.project,
+                        f"{processor.project}_{figures[process_id][0].get_axes()[0].get_label().split('.')[0]}_{processor.start_date}_{processor.end_date}.pdf"
+                    )
+                else:
+                    saving_path = os.path.join(
+                        inps.outdir,
+                        processor.project,
+                        f"{processor.project}_{inps.template}_{processor.start_date}_{processor.end_date}.pdf"
+                    )
+
+                with PdfPages(saving_path) as pdf:
+                    for fig in figures[process_id]:
+                        pdf.savefig(fig, bbox_inches='tight', dpi=inps.dpi, transparent=True)
+                        plt.close(fig)
 
     elif inps.save == 'png':
         # Save each figure as a PNG file
-        # for start_date, end_date in zip(inps.start_date, inps.end_date):
-        for fig, processor in zip(figures, processors):
-            png_path = os.path.join(inps.outdir,processor.project,f"{processor.project}_{inps.template}_{process.start_date}_{process.end_date}.png")
-            fig.savefig(png_path, bbox_inches='tight', dpi=inps.dpi, transparent=True)
-            plt.close(fig)
+        for processor in processors:
+            process_id = id(processor)
+            if process_id in figures:
+                for fig in figures[process_id]:
+                    if len(figures[process_id]) > 1:
+                        png_path = os.path.join(inps.outdir,processor.project,f"{processor.project}_{fig.get_axes()[0].get_label().split('.')[0]}_{processor.start_date}_{processor.end_date}.png")
+                    else:
+                        png_path = os.path.join(inps.outdir,processor.project,f"{processor.project}_{inps.template}_{processor.start_date}_{processor.end_date}.png")
+                    fig.savefig(png_path, bbox_inches='tight', dpi=inps.dpi, transparent=True)
+                    plt.close(fig)
 
     if inps.show_flag:
         plt.show()
