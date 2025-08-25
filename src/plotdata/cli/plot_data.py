@@ -289,6 +289,9 @@ def main(iargs=None):
     from plotdata.objects.plotters import VelocityPlot, VectorsPlot, TimeseriesPlot, EarthquakePlot
     from plotdata.objects.get_methods import DataExtractor
     import matplotlib.pyplot as plt
+    import matplotlib
+
+    matplotlib.use('TkAgg')
 
     ###### TEST ######
     # inps.template = "test"  # Use a test template for demonstration
@@ -370,6 +373,8 @@ def main(iargs=None):
 
     if inps.show_flag:
         plt.show()
+
+    print(matplotlib.get_backend())
 
 
 ############################################################

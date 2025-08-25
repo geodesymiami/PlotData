@@ -20,7 +20,7 @@ bash PlotData/scripts/start_docker.sh path/to/scratch
 ```
 **Otherwise** just run:
 ```bash
-bash PlotData/scripts/start_docker.sh
+bash PlotData/scripts/start_and_build_docker.sh
 ```
 ## Manual approach
 Build **Docker image**.
@@ -33,7 +33,8 @@ export SCRATCHDIR=/path/to/scratch
 ```
 Run container
 ```bash
-docker run -e SCRATCHDIR=$SCRATCHDIR -v $SCRATCHDIR:$SCRATCHDIR -it minsarplotdata
+CONTAINER_NAME="minsarplotdata_container"
+docker run --name $CONTAINER_NAME --memory=4g -e SCRATCHDIR=$SCRATCHDIR -v $SCRATCHDIR:$SCRATCHDIR -it minsarplotdata
 ```
 ---
 # Regular Installation
