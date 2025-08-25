@@ -3,7 +3,8 @@
 # Define the container name
 CONTAINER_NAME="minsarplotdata_container"
 
-docker build -t minsarplotdata .
+# TODO remove --no-cache after debugging
+docker build --no-cache -t minsarplotdata .
 
 if [ -z "$1" ]; then
     echo "No scratch folder name provided. Using $SCRATCHDIR."
