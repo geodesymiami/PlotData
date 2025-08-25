@@ -17,7 +17,10 @@ RUN conda env create -f /tmp/environment.yml --verbose
 COPY requirements.txt /tmp/requirements.txt
 
 RUN conda run -n plotdata pip install -r /tmp/requirements.txt
-RUN conda run -n plotdata pip install git+https://github.com/geodesymiami/PlotData.git@dev-saveAxis
+RUN conda run -n plotdata pip install git+https://github.com/geodesymiami/PlotData.git@dev-saveAxis && \
+    cd /opt/conda/envs/plotdata/lib/python3.10/site-packages/plotdata && \
+    git rev-parse --abbrev-ref HEAD && \
+    git log -1
 # RUN conda run -n plotdata pip install MinsarPlotData
 
 ENV PATH=/opt/conda/envs/plotdata/bin:$PATH
