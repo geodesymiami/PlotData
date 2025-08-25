@@ -291,7 +291,7 @@ def main(iargs=None):
     import matplotlib.pyplot as plt
     import matplotlib
 
-    matplotlib.use('TkAgg')
+    matplotlib.use('Agg')
 
     ###### TEST ######
     # inps.template = "test"  # Use a test template for demonstration
