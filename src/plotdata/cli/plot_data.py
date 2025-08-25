@@ -371,11 +371,10 @@ def main(iargs=None):
                     fig.savefig(png_path, bbox_inches='tight', dpi=inps.dpi, transparent=True)
                     plt.close(fig)
 
-    if inps.show_flag:
-        plt.show()
-
     print(matplotlib.get_backend())
 
+    if inps.show_flag:
+        plt.show()
 
 ############################################################
 
