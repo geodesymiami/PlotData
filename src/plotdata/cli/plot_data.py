@@ -291,7 +291,13 @@ def main(iargs=None):
     import matplotlib.pyplot as plt
     import matplotlib
 
-    matplotlib.use('TkAgg')
+    # Check if running in a headless environment
+    if os.environ.get('DISPLAY', '') == '':
+        print("No display found. Using non-interactive Agg backend.")
+        matplotlib.use('Agg')  # Non-interactive backend for headless environments
+    else:
+        print("Display found. Using TkAgg backend.")
+        matplotlib.use('TkAgg') 
 
     ###### TEST ######
     # inps.template = "test"  # Use a test template for demonstration
@@ -370,8 +376,6 @@ def main(iargs=None):
                         png_path = os.path.join(inps.outdir,processor.project,f"{processor.project}_{inps.template}_{processor.start_date}_{processor.end_date}.png")
                     fig.savefig(png_path, bbox_inches='tight', dpi=inps.dpi, transparent=True)
                     plt.close(fig)
-
-    print(matplotlib.get_backend())
 
     if inps.show_flag:
         plt.show()

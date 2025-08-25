@@ -28,9 +28,16 @@ RUN git clone --branch dev-saveAxis https://github.com/geodesymiami/PlotData.git
 ENV PATH=/opt/conda/envs/plotdata/bin:$PATH
 
 RUN apt-get update && apt-get install -y \
+    libx11-dev \
+    libxext-dev \
+    libxrender-dev \
+    libxtst-dev \
+    libxi6 \
+    libxrandr2 \
     xvfb \
     python3-tk \
     && rm -rf /var/lib/apt/lists/*
+ENV DISPLAY=:99
 
 ARG SCRATCHDIR
 ENV SCRATCHDIR=${SCRATCHDIR}
