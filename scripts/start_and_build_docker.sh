@@ -12,4 +12,4 @@ else
     export SCRATCHDIR=$1
 fi
 
-docker run --name $CONTAINER_NAME --memory=24g --memory-swap=32g -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix -e SCRATCHDIR=$SCRATCHDIR -v $SCRATCHDIR:$SCRATCHDIR -it minsarplotdata /bin/bash
+docker run --name $CONTAINER_NAME --memory=24g -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix -e SCRATCHDIR=$SCRATCHDIR -v $SCRATCHDIR:$SCRATCHDIR -it minsarplotdata /bin/bash
