@@ -291,13 +291,8 @@ def main(iargs=None):
     import matplotlib.pyplot as plt
     import matplotlib
 
-    # Check if running in a headless environment
-    if os.environ.get('DISPLAY', '') == '':
-        print("No display found. Using non-interactive Agg backend.")
-        matplotlib.use('Agg')  # Non-interactive backend for headless environments
-    else:
-        print("Display found. Using TkAgg backend.")
-        matplotlib.use('TkAgg') 
+    print("Using non-interactive Agg backend.")
+    matplotlib.use('Agg')
 
     ###### TEST ######
     # inps.template = "test"  # Use a test template for demonstration
