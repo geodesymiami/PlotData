@@ -370,23 +370,28 @@ def main(iargs=None):
                     plt.close(fig)
 
     if inps.show_flag:
-        try:
-            # Dynamically select an interactive backend
-            if os.environ.get('DISPLAY'):
-                backend = 'TkAgg'  # Use TkAgg if DISPLAY is available
-            elif sys.platform == 'darwin':
-                backend = 'macosx'  # Use macOS-specific backend on macOS
-            else:
-                raise ImportError("No interactive display found. Falling back to Agg.")
+        # Dynamically select an interactive backend
+        if os.environ.get('DISPLAY') or sys.platform == 'win32':
+            try:
+                matplotlib.use('TkAgg')  # Use TkAgg for interactive plotting
+            except ImportError:
+                raise ImportError("TkAgg backend is not available. Please install tkinter.")
+        elif sys.platform == 'darwin':  # macOS
+            try:
+                matplotlib.use('MacOSX')  # Use MacOSX backend for macOS
+            except ImportError:
+                raise ImportError("MacOSX backend is not available. Ensure you're running in a GUI environment.")
+        else:
+            raise ImportError("No interactive display found. Ensure X11 forwarding is enabled or use a GUI environment.")
 
             print(f"Using interactive {backend} backend.\n")
             matplotlib.use(backend)
             plt.show()
 
-        except ImportError as e:
-            print(f"Failed to load interactive backend: {e}")
-            print("Falling back to 'Agg' backend for headless mode.")
-            matplotlib.use('Agg')
+        # except ImportError as e:
+        #     print(f"Failed to load interactive backend: {e}")
+        #     print("Falling back to 'Agg' backend for headless mode.")
+        #     matplotlib.use('Agg')
 
 ############################################################
 
