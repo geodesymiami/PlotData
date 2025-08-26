@@ -380,8 +380,6 @@ def main(iargs=None):
             # Fallback to a non-interactive backend
             matplotlib.use('Agg')  # Use Agg for non-interactive plotting
             print("No DISPLAY found. Using Agg backend for non-interactive plotting.")
-            print(f"Using interactive {backend} backend.\n")
-            matplotlib.use(backend)
             plt.show()
 
         # except ImportError as e:
