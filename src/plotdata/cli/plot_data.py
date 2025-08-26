@@ -370,8 +370,15 @@ def main(iargs=None):
                     plt.close(fig)
 
     if inps.show_flag:
-        backend = 'macosx' if sys.platform == 'darwin' else 'TkAgg'
-        # TODO print can be removed
+        # Determine the appropriate backend
+        if os.environ.get('DISPLAY') or (sys.platform == 'darwin' and not os.environ.get('DISPLAY')):
+            if sys.platform == 'darwin':
+                backend = 'macosx'  # Use macOS-specific backend if on macOS
+            else:
+                backend = 'TkAgg'  # Use TkAgg for other platforms with GUI
+        else:
+            backend = 'Agg'  # Fallback to Agg for headless environments
+
         print(f"Using interactive {backend} backend.\n")
 
         matplotlib.use(backend)
