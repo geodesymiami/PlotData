@@ -291,9 +291,6 @@ def main(iargs=None):
     import matplotlib.pyplot as plt
     import matplotlib
 
-    print("Using non-interactive Agg backend.")
-    matplotlib.use('Agg')
-
     ###### TEST ######
     # inps.template = "test"  # Use a test template for demonstration
     ##################
@@ -373,6 +370,11 @@ def main(iargs=None):
                     plt.close(fig)
 
     if inps.show_flag:
+        backend = 'macosx' if sys.platform == 'darwin' else 'TkAgg'
+        # TODO print can be removed
+        print(f"Using interactive {backend} backend.\n")
+
+        matplotlib.use(backend)
         plt.show()
 
 ############################################################
