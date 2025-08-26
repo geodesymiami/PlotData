@@ -371,19 +371,15 @@ def main(iargs=None):
 
     if inps.show_flag:
         # Dynamically select an interactive backend
-        if os.environ.get('DISPLAY') or sys.platform == 'win32':
+        if os.environ.get('DISPLAY'):
             try:
-                matplotlib.use('TkAgg')  # Use TkAgg for interactive plotting
+                matplotlib.use('TkAgg')  # Use TkAgg for X11-compatible interactive plotting
             except ImportError:
                 raise ImportError("TkAgg backend is not available. Please install tkinter.")
-        elif sys.platform == 'darwin':  # macOS
-            try:
-                matplotlib.use('MacOSX')  # Use MacOSX backend for macOS
-            except ImportError:
-                raise ImportError("MacOSX backend is not available. Ensure you're running in a GUI environment.")
         else:
-            raise ImportError("No interactive display found. Ensure X11 forwarding is enabled or use a GUI environment.")
-
+            # Fallback to a non-interactive backend
+            matplotlib.use('Agg')  # Use Agg for non-interactive plotting
+            print("No DISPLAY found. Using Agg backend for non-interactive plotting.")
             print(f"Using interactive {backend} backend.\n")
             matplotlib.use(backend)
             plt.show()
