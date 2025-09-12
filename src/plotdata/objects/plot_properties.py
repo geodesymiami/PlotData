@@ -70,6 +70,9 @@ class PlotRenderer:
             if ax.figure not in figs:
                 figs.append(ax.figure)
 
+            # Clean up
+            del plotter
+
         return figs
 
     def _build_plotters(self):
