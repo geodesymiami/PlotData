@@ -170,20 +170,31 @@ class VelocityPlot:
         zorder = self._get_next_zorder()
 
         cmap = plt.cm.viridis
-        norm = plt.Normalize(vmin=min(self.earthquakes['magnitude']), vmax=max(self.earthquakes['magnitude']))
+        vmin = min(self.earthquakes['magnitude'])  # Minimum magnitude
+        vmax = max(self.earthquakes['magnitude'])  # Maximum magnitude
 
         for lalo, magnitude, date in zip(self.earthquakes['lalo'], self.earthquakes['magnitude'], self.earthquakes['date']):
-            self.ax.scatter(
+            imdata = self.ax.scatter(
                 lalo[1], lalo[0], 
                 s=10**(magnitude*0.5),  # Size based on magnitude
-                c=cmap(norm(magnitude)),  # Color based on magnitude
+                c=magnitude, #cmap(norm(magnitude)),  # Color based on magnitude
                 edgecolors='black',  # Edge color
+                vmin=vmin,  # Set minimum value for colormap
+                vmax=vmax,  # Set maximum value for colormap
                 linewidths=0.5,  # Edge width
                 marker='o',  # Circle marker
                 alpha=0.6,  # Transparency
                 label=f"{magnitude} {date}",
                 zorder=zorder
             )
+
+        if not self.no_colorbar and (not hasattr(self, 'data') or self.data is None):
+            cbar = self.ax.figure.colorbar(imdata, ax=self.ax, orientation='horizontal', aspect=13)
+            cbar.set_label('Magnitude')
+
+            cbar.set_ticks([cbar.vmin, (cbar.vmin + cbar.vmax) / 2, cbar.vmax])
+            cbar.formatter = ticker.FormatStrFormatter('%.1f')
+            cbar.update_ticks()
 
     def plot(self, ax):
         """Creates and configures the velocity map."""

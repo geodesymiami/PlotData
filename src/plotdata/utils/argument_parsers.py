@@ -221,6 +221,10 @@ def add_save_arguments(parser):
                         const='png',
                         choices=['png', 'pdf'],
                         help=f'Save the plots (default path: $SCRATCHDIR/Volcano_dir as PNG (default) or PDF.')
+    save.add_argument('--save-axis',
+                      dest='flag_save_axis',
+                      action='store_true',
+                      help='Save the axis of the plot as individual images.')
     save.add_argument('--outdir',
                       type=str,
                       default=os.getenv("SCRATCHDIR"),
