@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+import gc
 
 
 class PlotTemplate:
@@ -72,6 +73,7 @@ class PlotRenderer:
 
             # Clean up
             del plotter
+            gc.collect()
 
         return figs
 
