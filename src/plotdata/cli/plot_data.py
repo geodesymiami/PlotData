@@ -11,10 +11,11 @@ import sys
 # !!! The asgeo import breaks when called by readfile.py unless I do the following !!!
 from osgeo import gdal, osr
 
+import logging
 import argparse
 from datetime import datetime
-from dateutil.relativedelta import relativedelta
 from mintpy.utils import readfile
+from dateutil.relativedelta import relativedelta
 from plotdata.volcano_functions import get_volcano_event
 from plotdata.helper_functions import prepend_scratchdir_if_needed, get_eos5_file
 from plotdata.utils.argument_parsers import add_date_arguments, add_location_arguments, add_plot_parameters_arguments, add_map_parameters_arguments, add_save_arguments,add_gps_arguments, add_seismicity_arguments
@@ -280,8 +281,6 @@ def populate_dates(inps):
 ######################### MAIN #############################
 
 def main(iargs=None):
-    # logging_function.log(os.getcwd(), os.path.basename(__file__) + ' ' + ' '.join(sys.argv[1:]))
-
     inps = create_parser()
 
     from plotdata.objects.process_data import ProcessData
@@ -289,7 +288,6 @@ def main(iargs=None):
     from plotdata.objects.plotters import VelocityPlot, VectorsPlot, TimeseriesPlot, EarthquakePlot
     from plotdata.objects.get_methods import DataExtractor
     import matplotlib.pyplot as plt
-    import matplotlib
 
     ###### TEST ######
     # inps.template = "test"  # Use a test template for demonstration
@@ -331,6 +329,13 @@ def main(iargs=None):
 
         figures[id(process)] = fig if isinstance(fig, list) else [fig]
 
+    # Configure logging to write to a log file
+    logging.basicConfig(filename=os.path.join(processors[0].directory, 'log'), level=logging.INFO, format='%(asctime)s - %(message)s', datefmt='%Y-%m-%d')
+
+    # Log the command-line command
+    cmd_command = ' '.join(sys.argv)
+    logging.info(cmd_command)
+
     # 5. Save or show
     if inps.save == 'pdf':
         from matplotlib.backends.backend_pdf import PdfPages
@@ -354,6 +359,8 @@ def main(iargs=None):
                 with PdfPages(saving_path) as pdf:
                     for fig in figures[process_id]:
                         pdf.savefig(fig, bbox_inches='tight', dpi=inps.dpi, transparent=True)
+
+                        print(f"Figures saved to {saving_path}\n")
                         plt.close(fig)
 
     elif inps.save == 'png':
@@ -367,25 +374,12 @@ def main(iargs=None):
                     else:
                         png_path = os.path.join(inps.outdir,processor.project,f"{processor.project}_{inps.template}_{processor.start_date}_{processor.end_date}.png")
                     fig.savefig(png_path, bbox_inches='tight', dpi=inps.dpi, transparent=True)
+
+                    print(f"Figure saved to {png_path}\n")
                     plt.close(fig)
 
     if inps.show_flag:
-        # Dynamically select an interactive backend
-        if os.environ.get('DISPLAY'):
-            try:
-                matplotlib.use('TkAgg')  # Use TkAgg for X11-compatible interactive plotting
-            except ImportError:
-                raise ImportError("TkAgg backend is not available. Please install tkinter.")
-        else:
-            # Fallback to a non-interactive backend
-            matplotlib.use('Agg')  # Use Agg for non-interactive plotting
-            print("No DISPLAY found. Using Agg backend for non-interactive plotting.")
             plt.show()
-
-        # except ImportError as e:
-        #     print(f"Failed to load interactive backend: {e}")
-        #     print("Falling back to 'Agg' backend for headless mode.")
-        #     matplotlib.use('Agg')
 
 ############################################################
 
