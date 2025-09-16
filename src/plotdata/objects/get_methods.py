@@ -135,7 +135,7 @@ class DataExtractor:
                 'm/yr': 1,
             }
             if key == 'timeseries':
-                if ('mm' or 'cm') in self.unit:
+                if 'mm' in self.unit or 'cm' in self.unit:
                     conversion_factor = 1000 if 'mm' in self.unit else 100
                     for k,v in value.items():
                         if 'data' in v:
