@@ -97,7 +97,7 @@ class PlotRenderer:
 class PlotGrid:
     def __init__(self, template: PlotTemplate, inps):
         self.template = template
-        self.num_columns = int(max(len(row) for row in template.layout))
+
         if inps.flag_save_axis:
             self.axes = self._create_figures(inps)
         else:
@@ -129,9 +129,10 @@ class PlotGrid:
             2: 10,
             3: 20,
         }
+        num_columns = int(max(len(row) for row in self.template.layout))
         fig, axs = plt.subplot_mosaic(
             self.template.layout,
-            figsize=(width[self.num_columns], 9),
+            figsize=(width[num_columns], 9),
             constrained_layout=self.template.constrained_layout,
         )
 
