@@ -97,6 +97,7 @@ class PlotRenderer:
 class PlotGrid:
     def __init__(self, template: PlotTemplate, inps):
         self.template = template
+        self.num_columns = int(max(len(row) for row in template.layout))
         if inps.flag_save_axis:
             self.axes = self._create_figures(inps)
         else:
@@ -123,13 +124,18 @@ class PlotGrid:
         return axs
 
     def _create_axes(self, inps):
+        width = {
+            1: 6,
+            2: 10,
+            3: 20,
+        }
         fig, axs = plt.subplot_mosaic(
             self.template.layout,
-            figsize=(20, 9),
+            figsize=(width[self.num_columns], 9),
             constrained_layout=self.template.constrained_layout,
         )
 
-        fig.suptitle(f"{inps.project} {inps.start_date}:{inps.end_date}", fontsize=14, fontweight="bold")
+        fig.suptitle(f"{inps.project} {inps.start_date.date()}:{inps.end_date.date()}", fontsize=14, fontweight="bold")
 
         for ax in axs.values():
             # Apply custom layout settings to the axis
