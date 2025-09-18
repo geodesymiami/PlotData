@@ -129,7 +129,7 @@ class PlotGrid:
             constrained_layout=self.template.constrained_layout,
         )
 
-        fig.suptitle(f"{inps.project} {inps.start_date}:{inps.end_date}", fontsize=14, fontweight="bold")
+        fig.suptitle(f"{inps.project} {inps.start_date.date()}:{inps.end_date.date()}", fontsize=14, fontweight="bold")
 
         for ax in axs.values():
             # Apply custom layout settings to the axis
