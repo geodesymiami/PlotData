@@ -61,6 +61,51 @@ class VelocityPlot:
 
         self.zorder = 0
 
+    def _update_axis_limits(self, x_min=None, x_max=None, y_min=None, y_max=None):
+        if hasattr(self, 'subset') and self.subset:
+            try:
+                # Split the string into two parts
+                coords1, coords2 = self.subset.split(':')
+
+                # Split each part into lat and lon
+                lat1, lon1 = map(float, coords1.split(','))
+                lat2, lon2 = map(float, coords2.split(','))
+
+                # Assign to x_min, x_max, y_min, y_max
+                x_min, x_max = sorted([lon1, lon2])  # Longitude corresponds to x-axis
+                y_min, y_max = sorted([lat1, lat2])  # Latitude corresponds to y-axis
+
+            except ValueError:
+                raise ValueError(f"Invalid subset format: {self.subset}. Expected format is 'lat,lon:lat2,lon2'.")
+
+            self.ax.set_xlim(x_min, x_max)
+            self.ax.set_ylim(y_min, y_max)
+
+        elif self.zoom:
+            # Get current axis limits
+            x_min, x_max = self.ax.get_xlim()
+            y_min, y_max = self.ax.get_ylim()
+
+            # Calculate the range
+            x_range = x_max - x_min
+            y_range = y_max - y_min
+
+            # Calculate the new limits
+            x_center = (x_min + x_max) / 2
+            y_center = (y_min + y_max) / 2
+
+            new_x_range = x_range * (1 - self.zoom)
+            new_y_range = y_range * (1 - self.zoom)
+
+            new_x_min = x_center - new_x_range / 2
+            new_x_max = x_center + new_x_range / 2
+            new_y_min = y_center - new_y_range / 2
+            new_y_max = y_center + new_y_range / 2
+
+            # Set the new axis limits
+            self.ax.set_xlim(new_x_min, new_x_max)
+            self.ax.set_ylim(new_y_min, new_y_max)
+
     def _get_next_zorder(self):
         z = self.zorder
         self.zorder += 1
@@ -90,6 +135,12 @@ class VelocityPlot:
             C = self.data.flatten()
 
             self.imdata = self.ax.scatter(X, Y, c=C, cmap=self.cmap, marker='o', zorder=zorder, s=2, vmin=self.vmin, vmax=self.vmax, rasterized=True)
+
+            #########################################################################################################################################
+
+            self._update_axis_limits()
+
+            #########################################################################################################################################
 
         if not self.no_colorbar:
             cbar = self.ax.figure.colorbar(self.imdata, ax=self.ax, orientation='horizontal', aspect=13)

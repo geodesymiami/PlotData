@@ -62,9 +62,6 @@ def create_parser():
     if len(inps.data_dir) > 2:
         parser.error('USER ERROR: Too many files provided.')
 
-    if inps.plot_box:
-        inps.plot_box = [float(val) for val in inps.plot_box.replace(':', ',').split(',')]  # converts to plot_box=[19.3, 19.6, -155.8, -155.4]
-
     if inps.polygon:
         inps.region = parse_polygon(inps.polygon)
     else:

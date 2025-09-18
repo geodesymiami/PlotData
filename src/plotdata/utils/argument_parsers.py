@@ -54,11 +54,11 @@ def add_location_arguments(parser):
     location.add_argument('--polygon',
                         metavar='POLYGON',
                         help='Polygon of the wanted area (Format from ASF Vertex Tool https://search.asf.alaska.edu/#/)')
-    location.add_argument('--subset-lalo',
-                        nargs='?',
-                        dest='plot_box',
+    location.add_argument("--subset",
+                        dest="subset",
+                        default=None,
                         type=str,
-                        help='Geographic area plotted')
+                        help="Subsection coordinates for zoom in, LAT,LON:LAT,LON")
     location.add_argument('--ref-lalo',
                         nargs='*',
                         metavar=('LATITUDE,LONGITUDE or LATITUDE LONGITUDE'),
@@ -131,6 +131,10 @@ def add_plot_parameters_arguments(parser):
     plot_parameters.add_argument('--no-colorbar',
                         action='store_true',
                         help='Do not display colorbar')
+    plot_parameters.add_argument('--zoom',
+                        type=float,
+                        default=None,
+                        help='Zoom factor for the plot from 0.1 to 1.')
     return parser
 
 
