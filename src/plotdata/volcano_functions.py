@@ -6,6 +6,7 @@ import requests
 
 
 JSON_DOWNLOAD_URL = 'https://webservices.volcano.si.edu/geoserver/GVP-VOTW/wms?service=WFS&version=1.0.0&request=GetFeature&typeName=GVP-VOTW:E3WebApp_Eruptions1960&outputFormat=application%2Fjson'
+JSON_HOLOCENE_URL = 'https://webservices.volcano.si.edu/geoserver/GVP-VOTW/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=GVP-VOTW:Smithsonian_VOTW_Holocene_Volcanoes&outputFormat=application%2Fjson&propertyName=Volcano_Name,Volcano_Number,Latitude,Longitude&maxFeatures=5000'
 
 # TODO to replace elninos with the following API #
 # TODO eventually move to helper_functions.py
@@ -57,23 +58,48 @@ def volcanoes_list(jsonfile):
     Returns:
         None
     """
-    data = get_volcano_json(jsonfile, JSON_DOWNLOAD_URL)
+    data = get_volcano_json(jsonfile, JSON_HOLOCENE_URL)
 
     volcanoName = []
     volcanoId = []
     volcanoCoordinates = []
 
-    for j in data['features']:
-        if j['properties']['VolcanoNumber'] not in volcanoId:
-            volcanoName.append(j['properties']['VolcanoName'])
-            volcanoId.append(j['properties']['VolcanoNumber'])
-            volcanoCoordinates.append(j['geometry']['coordinates'])
-
+    for d in data['features']:
+        if d['properties']['Volcano_Number'] not in volcanoId:
+            volcanoName.append(d['properties']['Volcano_Name'])
+            volcanoId.append(d['properties']['Volcano_Number'])
+            volcanoCoordinates.append([d['properties']['Latitude'], d['properties']['Longitude']])
 
     for volcano, id, coord in zip(volcanoName, volcanoId, volcanoCoordinates):
         print(f'{volcano}, id: {id}, coordinates: {coord[0]}, {coord[1]}')
 
     return volcanoName
+
+
+def get_volcanoes_data(jsonfile=None, bbox=None):
+    """
+    Retrieves a list of volcano names from a JSON file.
+
+    Args:
+        jsonfile (str): The path to the JSON file containing volcano data.
+
+    Returns:
+        None
+    """
+    url = JSON_HOLOCENE_URL + '&bbox=' + ','.join([str(b) for b in bbox]) if bbox else JSON_HOLOCENE_URL
+    data = get_volcano_json(jsonfile, url)
+
+    volcanoName = []
+    volcanoId = []
+    volcanoCoordinates = []
+
+    for d in data['features']:
+        if d['properties']['Volcano_Number'] not in volcanoId:
+            volcanoName.append(d['properties']['Volcano_Name'])
+            volcanoId.append(d['properties']['Volcano_Number'])
+            volcanoCoordinates.append([d['properties']['Longitude'], d['properties']['Latitude']])
+
+    return volcanoName, volcanoId, volcanoCoordinates
 
 
 def get_volcano_coord_id(jsonfile, volcanoName: str):
