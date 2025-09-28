@@ -329,6 +329,9 @@ class EarthquakePlot:
         e = datetime.strptime(self.end_date, '%Y%m%d') if type(self.end_date) == str else self.end_date
         ax.set_xlim([s.date(), e.date()])
         ax.set_ylim([0, 10])
+        ax.set_xticks([s.date(), s.date() + (e.date() - s.date()) / 2, e.date()])
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+
 
     def plot_by_distance(self, ax):
         # Plot EQs
