@@ -124,6 +124,9 @@ def create_parser():
             msg = 'Number of events and magnitudes do not match'
             raise ValueError(msg)
 
+    if inps.flag_save_axis:
+        inps.save = 'png'
+
 ##### Hardwired for Hawaii #####
     if 'GPSDIR' in os.environ:
         inps.gps_dir = os.getenv('GPSDIR') + '/data'
