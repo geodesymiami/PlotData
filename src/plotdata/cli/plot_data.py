@@ -46,7 +46,8 @@ def create_parser():
     # parser.add_argument("--noreference", dest="show_reference_point",  action='store_false', default=True, help="hide reference point (default: False)" )
     parser.add_argument("--section", dest="line", type=str, default=None, help="Section coordinates for deformation vectors, LAT,LON:LAT,LON")
     parser.add_argument("--num-vectors", dest="resample_vector", type=int, default=1, help="resample factor for deformation vectors (default: %(default)s).")
-    parser.add_argument("--id", type=int, default=None, help="ID of the plot volcano")
+    # parser.add_argument("--id", type=int, default=None, help="ID of the plot volcano ofr global location command (default: %(default)s).")
+    parser.add_argument("--volcano", action='store_true', default=False, help="Plot volcanoes if they are in the region")
 
     parser = add_date_arguments(parser)
     parser = add_location_arguments(parser)
@@ -122,6 +123,9 @@ def create_parser():
         elif len(inps.add_event) != len(inps.event_magnitude):
             msg = 'Number of events and magnitudes do not match'
             raise ValueError(msg)
+
+    if inps.flag_save_axis:
+        inps.save = 'png'
 
 ##### Hardwired for Hawaii #####
     if 'GPSDIR' in os.environ:

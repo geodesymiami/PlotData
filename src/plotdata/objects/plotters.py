@@ -5,10 +5,13 @@ import pandas as pd
 import xarray as xr
 from datetime import datetime
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 import matplotlib.ticker as ticker
 from matplotlib.colors import LightSource
 from matplotlib.patheffects import withStroke
+from plotdata.volcano_functions import get_volcanoes_data
 from plotdata.helper_functions import draw_vectors, calculate_distance, get_bounding_box, expand_bbox, parse_polygon
+
 
 def set_default_section(line, region):
     mid_lat = line if type(line) == float else (max(region[2:4]) + min(region[2:4]))/2
@@ -290,6 +293,15 @@ class VelocityPlot:
         if self.label:
             self.ax.annotate(self.label,xy=(0.02, 0.98),xycoords='axes fraction',fontsize=5,ha='left',va='top',color='white',bbox=dict(facecolor='gray', edgecolor='none', alpha=0.6, boxstyle='round,pad=0.3'))
 
+        if self.volcano:
+            min_lon, max_lon, min_lat, max_lat = self.region
+            volcanoName, volcanoId, volcanoCoordinates = get_volcanoes_data(bbox=[min_lon, min_lat, max_lon, max_lat])
+            for name, id, coord in zip(volcanoName, volcanoId, volcanoCoordinates):
+                lon, lat = coord
+                print(f'Plotting volcano: {name}, id: {id}, coordinates: {lat}, {lon}')
+                plot_point(self.ax, [lat], [lon], marker='^', color='#383838db', size=7, alpha=0.3, zorder=self._get_next_zorder())
+                self.ax.text(lon, lat, name, fontsize=6, color='black', zorder=self._get_next_zorder())
+
 ####################################################################################
 
 class EarthquakePlot:
@@ -329,6 +341,9 @@ class EarthquakePlot:
         e = datetime.strptime(self.end_date, '%Y%m%d') if type(self.end_date) == str else self.end_date
         ax.set_xlim([s.date(), e.date()])
         ax.set_ylim([0, 10])
+        ax.set_xticks([s.date(), s.date() + (e.date() - s.date()) / 2, e.date()])
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+
 
     def plot_by_distance(self, ax):
         # Plot EQs
