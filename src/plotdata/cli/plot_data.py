@@ -342,20 +342,14 @@ def main(iargs=None):
         from matplotlib.backends.backend_pdf import PdfPages
 
         for processor in processors:
+            saving_root = os.path.join(inps.outdir,processor.project,'images', f"{processor.start_date}_{processor.end_date}")
+            os.makedirs(saving_root, exist_ok=True)
             process_id = id(processor)
             if process_id in figures:
                 if len(figures[process_id]) > 1:
-                    saving_path = os.path.join(
-                        inps.outdir,
-                        processor.project,
-                        f"{processor.project}_{figures[process_id][0].get_axes()[0].get_label().split('.')[0]}_{processor.start_date}_{processor.end_date}.pdf"
-                    )
+                    saving_path = os.path.join(saving_root, f"{processor.project}_{figures[process_id][0].get_axes()[0].get_label().split('.')[0]}_{processor.start_date}_{processor.end_date}.pdf")
                 else:
-                    saving_path = os.path.join(
-                        inps.outdir,
-                        processor.project,
-                        f"{processor.project}_{inps.template}_{processor.start_date}_{processor.end_date}.pdf"
-                    )
+                    saving_path = os.path.join(saving_root, f"{processor.project}_{inps.template}_{processor.start_date}_{processor.end_date}.pdf")
 
                 with PdfPages(saving_path) as pdf:
                     for fig in figures[process_id]:
@@ -367,13 +361,15 @@ def main(iargs=None):
     elif inps.save == 'png':
         # Save each figure as a PNG file
         for processor in processors:
+            saving_root = os.path.join(inps.outdir,processor.project,'images',f"{processor.start_date}_{processor.end_date}")
+            os.makedirs(saving_root, exist_ok=True)
             process_id = id(processor)
             if process_id in figures:
                 for fig in figures[process_id]:
                     if len(figures[process_id]) > 1:
-                        png_path = os.path.join(inps.outdir,processor.project,f"{processor.project}_{fig.get_axes()[0].get_label().split('.')[0]}_{processor.start_date}_{processor.end_date}.png")
+                        png_path = os.path.join(saving_root, f"{processor.project}_{fig.get_axes()[0].get_label().split('.')[0]}_{processor.start_date}_{processor.end_date}.png")
                     else:
-                        png_path = os.path.join(inps.outdir,processor.project,f"{processor.project}_{inps.template}_{processor.start_date}_{processor.end_date}.png")
+                        png_path = os.path.join(saving_root, f"{processor.project}_{inps.template}_{processor.start_date}_{processor.end_date}.png")
                     fig.savefig(png_path, bbox_inches='tight', dpi=inps.dpi, transparent=True)
 
                     print(f"Figure saved to {png_path}\n")
