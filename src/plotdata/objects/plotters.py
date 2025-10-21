@@ -302,7 +302,7 @@ class VelocityPlot:
             plot_point(self.ax, [self.ref_lalo[0]], [self.ref_lalo[1]], marker='s', zorder=self._get_next_zorder())
 
         if self.label:
-            self.ax.annotate(self.label,xy=(0.02, 0.98),xycoords='axes fraction',fontsize=5,ha='left',va='top',color='white',bbox=dict(facecolor='gray', edgecolor='none', alpha=0.6, boxstyle='round,pad=0.3'))
+            self.ax.annotate(self.label,xy=(0.02, 0.98),xycoords='axes fraction',fontsize=7,ha='left',va='top',color='white',bbox=dict(facecolor='black', edgecolor='none', alpha=0.6, boxstyle='round,pad=0.3'))
 
         if self.volcano:
             min_lon, max_lon, min_lat, max_lat = self.region
