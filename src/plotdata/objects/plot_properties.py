@@ -31,6 +31,11 @@ class PlotTemplate:
                 ["descending.point.section" ],
                 ["timeseries" ],
             ],
+            "timeseries": [
+                ["ascending.point" ],
+                ["descending.point" ],
+                ["timeseries" ],
+            ],
             "test": [
                 ["vectors"],
                 ["horizontal.point.section",],
