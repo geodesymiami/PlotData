@@ -457,6 +457,7 @@ class DataExtractor:
             "date" : [],
             "lalo" : [],
             "magnitude" : [],
+            "depth" : [],
             "moment" : []
         }
         for feature in features:
@@ -465,9 +466,11 @@ class DataExtractor:
 
             latitude = feature['geometry']['coordinates'][1]
             longitude = feature['geometry']['coordinates'][0]
+            depth = feature['geometry']['coordinates'][2]
 
             earthquakes["date"].append(date_time)
             earthquakes["lalo"].append((latitude, longitude))
             earthquakes["magnitude"].append(float(feature['properties']['mag']))
+            earthquakes["depth"].append(depth)
 
         return earthquakes

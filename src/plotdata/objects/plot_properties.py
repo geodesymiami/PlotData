@@ -31,6 +31,11 @@ class PlotTemplate:
                 ["descending.point.section" ],
                 ["timeseries" ],
             ],
+            "timeseries": [
+                ["ascending.point" ],
+                ["descending.point" ],
+                ["timeseries" ],
+            ],
             "test": [
                 ["vectors"],
                 ["horizontal.point.section",],
@@ -113,7 +118,7 @@ class PlotGrid:
                 ax.set_label(name)
 
                 # Set the title for the figure
-                fig.suptitle(f"{inps.project} {inps.start_date}:{inps.end_date}", fontsize=14, fontweight="bold")
+                fig.suptitle(f"{inps.project} {inps.start_date.date()}:{inps.end_date.date()}", fontsize=14, fontweight="bold")
 
                 # Apply custom layout settings to the axis
                 self._axes_properties(ax, inps)

@@ -10,7 +10,7 @@ import matplotlib.ticker as ticker
 from matplotlib.colors import LightSource
 from matplotlib.patheffects import withStroke
 from plotdata.volcano_functions import get_volcanoes_data
-from plotdata.helper_functions import draw_vectors, calculate_distance, get_bounding_box, expand_bbox, parse_polygon
+from plotdata.helper_functions import draw_vectors, calculate_distance, get_bounding_box, parse_polygon
 
 
 def set_default_section(line, region):
@@ -139,9 +139,20 @@ class VelocityPlot:
 
             self.imdata = self.ax.scatter(X, Y, c=C, cmap=self.cmap, marker='o', zorder=zorder, s=2, vmin=self.vmin, vmax=self.vmax, rasterized=True)
 
+        elif self.style == 'ifgram':
+            # Wavelength for the interferogram
+            wavelength = 0.05546576
+
+            # Calculate the interferogram
+            interferogram = (self.data) % (2 * np.pi)
+
+            # Plot the interferogram
+            self.imdata = self.ax.imshow(interferogram, cmap=self.cmap, extent=self.region, origin='upper', interpolation='none', zorder=zorder, rasterized=True)
+            self.ax.set_aspect('auto')
+
             #########################################################################################################################################
 
-            self._update_axis_limits()
+        self._update_axis_limits()
 
             #########################################################################################################################################
 
@@ -291,7 +302,7 @@ class VelocityPlot:
             plot_point(self.ax, [self.ref_lalo[0]], [self.ref_lalo[1]], marker='s', zorder=self._get_next_zorder())
 
         if self.label:
-            self.ax.annotate(self.label,xy=(0.02, 0.98),xycoords='axes fraction',fontsize=5,ha='left',va='top',color='white',bbox=dict(facecolor='gray', edgecolor='none', alpha=0.6, boxstyle='round,pad=0.3'))
+            self.ax.annotate(self.label,xy=(0.02, 0.98),xycoords='axes fraction',fontsize=7,ha='left',va='top',color='white',bbox=dict(facecolor='black', edgecolor='none', alpha=0.6, boxstyle='round,pad=0.3'))
 
         if self.volcano:
             min_lon, max_lon, min_lat, max_lat = self.region
@@ -554,22 +565,7 @@ class VectorsPlot:
 
         # Plot velocity vectors
         #Probably right one
-        self.ax.quiver(
-            self.filtered_x, self.filtered_elevation,
-            self.filtered_h, self.filtered_v,
-            color='#ff7366', scale_units='xy', width=(1 / 10**(2.5))
-        )
-
-        # TODO test better the scaling issues
-        # self.ax[2].quiver(
-        #     self.filtered_x, self.filtered_elevation,
-        #     self.filtered_h * self.rescale_h, self.filtered_v * self.rescale_v,
-        #     color='#ff7366', scale_units='xy', width=(1 / 10**(2.5))
-        # )
-
-        # Add profile lines to velocity maps
-        # for i in range(2):
-        #     self.ax[i].plot(self.inps.line[0], self.inps.line[1], '--', linewidth=1, alpha=0.7, color='black')
+        self.ax.quiver(self.filtered_x, self.filtered_elevation, self.filtered_h, self.filtered_v, color='#ff7366', width=(1 / 10**(2.5)))
 
         # Mean velocity vector
         start_x = max(self.xrange) * 0.1
@@ -578,7 +574,6 @@ class VectorsPlot:
         rounded_mean_velocity = round(mean_velocity, 4) if mean_velocity else round(mean_velocity, 3)
 
         self.ax.quiver([start_x], [start_y], [mean_velocity], [0], color='#ff7366', scale_units='xy', width=(1 / 10**(2.5)))
-        # self.ax[2].quiver([start_x], [start_y], [0], [abs(np.mean(self.filtered_v))], color='#ff7366', scale_units='xy', width=(1 / 10**(2.5)))
         self.ax.text(start_x, start_y * 1.03, f"{rounded_mean_velocity:.4f} {self.unit}", color='black', ha='left', fontsize=8)
 
         # Add labels
