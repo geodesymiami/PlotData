@@ -89,8 +89,9 @@ def create_mask_file(eos_file, out_folder, mask_trehshold=0.55):
     return os.path.join(out_folder, mask_temporalCoherence + '.h5')
 
 
-def get_eos5_file(path, scratch):
-    scratch = os.getenv('SCRATCHDIR')
+def get_eos5_file(path, scratch=None):
+    if not scratch:
+        scratch = os.getenv('SCRATCHDIR')
     files = glob.glob(path)
     if files and os.path.isfile(files[0]):
         eos_file = files[0]
@@ -122,7 +123,7 @@ def get_file_names(path):
     scratch = os.getenv('SCRATCHDIR')
     eos_file = get_eos5_file(path, scratch)
 
-    metadata = readfile.read(eos_file)[1]
+    metadata = readfile.read_attribute(eos_file)
     velocity_file = 'geo/geo_velocity.h5'
     geometryRadar_file = 'geo_geometryRadar.h5'
 
@@ -265,8 +266,7 @@ def get_dem_extent(atr_dem):
     return(dem_extent)
 
 
-def extract_window(vel_file, lat, lon, window_size=3):
-    data, metadata = readfile.read(vel_file)
+def extract_window(data, metadata, lat, lon, window_size=3):
     coord = utils.coordinate(metadata=metadata)
 
     length = int(metadata['LENGTH'])
@@ -290,10 +290,10 @@ def extract_window(vel_file, lat, lon, window_size=3):
 
     # Check if the window outfit the data coverage
     if lat_start<0 or lat_end>length:
-        raise ValueError('Latitude range is too large for the data coverage on file: ' + vel_file)
+        raise ValueError('Latitude range is too large for the data coverage on file: ' + metadata['FILE_PATH'])
 
     if lon_start<0 or lon_end>width:
-        raise ValueError('Longitude range is too large for the data coverage on file: ' + vel_file)
+        raise ValueError('Longitude range is too large for the data coverage on file: ' + metadata['FILE_PATH'])
 
     subarray = data[lat_start:lat_end, lon_start:lon_end]
     sublat = []
@@ -307,8 +307,71 @@ def extract_window(vel_file, lat, lon, window_size=3):
 
 
 def find_longitude_degree(ref_lat, lat_step):
-    # Find the longitude step in degrees that covers the same distance as the latitude step
+    """
+    Calculate the longitude step in degrees that corresponds to a given latitude step.
+
+    Parameters:
+    ref_lat (float): The reference latitude in degrees.
+    lat_step (float): The latitude step in degrees.
+
+    Returns:
+    float: The longitude step in degrees that covers the same distance as the latitude step.
+    """
     return round(float(lat_step) / math.cos(math.radians(float(ref_lat))), 5)
+
+
+def find_reference_points_from_subsets(subset1, subset2=None, window_size=3):
+    """
+    Finds the closest valid reference points in the selected window using subsets.
+
+    Parameters:
+        subset1 (tuple): The first subset containing (subdata1, sublat1, sublon1).
+        subset2 (tuple, optional): The second subset containing (subdata2, sublat2, sublon2). Defaults to None.
+        window_size (int): Size of the window.
+
+    Returns:
+        tuple: ref_lalo1 (list) and ref_lalo2 (list or None).
+    """
+    # Unpack the first subset
+    subdata1, sublat1, sublon1 = subset1
+
+    # Handle the second subset if provided
+    if subset2:
+        subdata2, sublat2, sublon2 = subset2
+        paired = list(zip(subdata1, subdata2))
+    else:
+        paired = [(i, None) for i in subdata1]
+
+    valid_indices = []
+
+    # Find valid indices where data is available
+    for ind, (i, j) in enumerate(paired):
+        if subset2 and np.logical_and(i, j).any():
+            valid_indices.append((ind, np.where(np.logical_and(i, j))))
+        elif not subset2 and np.any(i):
+            valid_indices.append((ind, np.where(i)))
+
+    if not valid_indices:
+        raise ValueError("No valid reference points found in the selected window.")
+
+    # Initialize shortest distance tracker
+    shortest_distance = window_size * 2 + 1
+    ref_lalo1 = None
+
+    # Find the closest valid data point to the center of the window
+    for ind, indices in valid_indices:
+        distances = np.sqrt((ind - window_size) ** 2 + (indices[0] - window_size) ** 2)
+        min_distance_index = np.argmin(distances)
+        min_distance = distances[min_distance_index]
+
+        if min_distance < shortest_distance:
+            shortest_distance = min_distance
+            ref_lalo1 = [sublat1[ind], sublon1[indices[0][min_distance_index]]]
+
+    # Calculate ref_lalo2 if there are two subsets
+    ref_lalo2 = ([ref_lalo1[0] + (sublat1[0] - sublat2[0]), ref_lalo1[1] + (sublon1[0] - sublon2[0])] if subset2 else None)
+
+    return ref_lalo1, ref_lalo2
 
 
 def select_reference_point(out_mskd_file, window_size, ref_lalo):
@@ -329,42 +392,13 @@ def select_reference_point(out_mskd_file, window_size, ref_lalo):
         raise ValueError('Function supports either one or two data directories.')
 
     # Extract the subarray for each dataset (handling one or two cases)
-    extracted_data = [extract_window(velocity, ref_lalo[0], ref_lalo[1], window_size) for velocity in out_mskd_file]
+    extracted_data = [
+        extract_window(data[0], data[1], ref_lalo[0], ref_lalo[1], window_size)
+        for velocity in out_mskd_file
+        for data in [readfile.read(velocity)]
+    ]
 
-    subdata1, sublat1, sublon1 = extracted_data[0]  # First dataset
-
-    if num_files == 2:
-        subdata2, sublat2, sublon2 = extracted_data[1]  # Second dataset
-        paired = list(zip(subdata1, subdata2))
-    else:
-        paired = [(i, None) for i in subdata1]  # Only one dataset available
-
-    valid_indices = []
-
-    # Find valid indices where data is available
-    for ind, (i, j) in enumerate(paired):
-        if num_files == 2 and np.logical_and(i, j).any():
-            valid_indices.append((ind, np.where(np.logical_and(i, j))))
-        elif num_files == 1 and np.any(i):
-            valid_indices.append((ind, np.where(i)))
-
-    if not valid_indices:
-        raise ValueError("No valid reference points found in the selected window.")
-
-    # Initialize shortest distance tracker
-    shortest_distance = window_size * 2 + 1  
-
-    # Find the closest valid data point to the center of the window
-    for ind, indices in valid_indices:
-        distances = np.sqrt((ind - window_size) ** 2 + (indices[0] - window_size) ** 2)
-        min_distance_index = np.argmin(distances)
-        min_distance = distances[min_distance_index]
-
-        if min_distance < shortest_distance:
-            shortest_distance = min_distance
-            ref_lalo1 = [sublat1[ind], sublon1[indices[0][min_distance_index]]]
-
-    ref_lalo2 = [ref_lalo1[0] + (sublat1[0] - sublat2[0]) , ref_lalo1[1] + sublon1[0] - sublon2[0]] if num_files == 2 else None
+    ref_lalo1, ref_lalo2 = find_reference_points_from_subsets(extracted_data[0], extracted_data[1], window_size)
 
     print('-' * 50)
     print(f"Reference point selected: {ref_lalo1[0]:.4f}, {ref_lalo1[1]:.4f}")
