@@ -1,4 +1,0 @@
--r requirements.txt
-MinsarPlotData
-mintpy
-pytest
