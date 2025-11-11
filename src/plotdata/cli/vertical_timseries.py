@@ -100,7 +100,6 @@ def match_dates(list1, list2):
 def main(iargs=None, namespace=None):
 
     inps = create_parser()
-    file_info = {}
     window = {}
 
     for f in inps.file:
@@ -278,11 +277,14 @@ def main(iargs=None, namespace=None):
         data[i] = np.stack([d[y0:y0 + length, x0:x0 + width] for d in ts.data])
 
     vertical_list = []
+    horizontal_list = []
     for i in range(data.shape[1]):
-        dvert = asc_desc2horz_vert(data[:, i], los_inc_angle, los_az_angle, inps.horz_az_angle)[1]
+        hvert, dvert = asc_desc2horz_vert(data[:, i], los_inc_angle, los_az_angle, inps.horz_az_angle)
         vertical_list.append(dvert)
+        horizontal_list.append(hvert)
 
     vertical_timeseries = np.stack(vertical_list, axis=0)
+    horizontal_timeseries = np.stack(horizontal_list, axis=0)
 
 # ------------------- MAKE FILE -------------------- #
     vts = timeseries()
@@ -302,6 +304,23 @@ def main(iargs=None, namespace=None):
                }
 
     writefile.write(ts_dict, vts.metadata['FILE_PATH'], metadata = vts.metadata)
+
+    hts = timeseries()
+    hts.dateList = ts1.dateList
+    hts.metadata = ts1.metadata
+    hts.metadata['WIDTH'], hts.metadata['LENGTH'] = width, length
+    hts.metadata['xmax'], hts.metadata['LENGTH'] = width, length
+    hts.metadata['FILE_PATH'] = os.path.join(project_base_dir, 'hz_timeseries.h5')
+    hts.metadata['PROJECT_NAME'] = os.path.basename(project_base_dir)
+    hts.metadata['REF_DATE'] = str(ts1.dateList[0])
+
+    ts_dict = {'timeseries': horizontal_timeseries,
+               'incidenceAngle': los_inc_angle,
+               'azimuthAngle': los_az_angle,
+               'date': ts1.dateList.astype('S')
+               }
+
+    writefile.write(ts_dict, hts.metadata['FILE_PATH'], metadata = hts.metadata)
 
 
 if __name__ == "__main__":
