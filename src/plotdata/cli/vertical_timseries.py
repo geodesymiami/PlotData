@@ -5,6 +5,7 @@ import sys
 import argparse
 import numpy as np
 from scipy.stats import norm, skew
+from scipy.optimize import linear_sum_assignment
 from datetime import datetime
 import matplotlib.pyplot as plt
 from mintpy.utils import readfile, utils as ut, writefile
@@ -16,7 +17,7 @@ from plotdata.helper_functions import (get_file_names, prepend_scratchdir_if_nee
 
 SCRATCHDIR = os.getenv('SCRATCHDIR')
 EXAMPLE = f"""
-Generate vertical timeseries
+SOMEt
 """
 
 
@@ -32,7 +33,7 @@ def create_parser(iargs=None, namespace=None):
         argparse.Namespace: Parsed command line arguments
     """
     parser = argparse.ArgumentParser(
-        description='Plot the volcanoes on the Earth',
+        description='Generate vertical and horizontal timeseries',
         formatter_class=argparse.RawTextHelpFormatter,
         epilog=EXAMPLE)
 
@@ -95,6 +96,29 @@ def match_dates(list1, list2):
     removed_indexes2 = [index for index, _ in indexed_list2 if index not in matched_indexes2]
 
     return removed_indexes1, removed_indexes2
+
+
+def match_and_get_dropped_indices(a, b):
+    a = np.array(a)
+    b = np.array(b)
+    
+    # Compute pairwise absolute differences
+    cost = np.abs(a[:, None] - b[None, :])
+    
+    # Find optimal assignment
+    i, j = linear_sum_assignment(cost)
+    
+    # Handle different lengths: only match the min length
+    n = min(len(a), len(b))
+    matched_i = i[:n]
+    matched_j = j[:n]
+    
+    # Compute dropped indices
+    dropped_a = sorted(set(range(len(a))) - set(matched_i))
+    dropped_b = sorted(set(range(len(b))) - set(matched_j))
+    
+    # Return matched lists and dropped indices
+    return dropped_a, dropped_b
 
 
 def main(iargs=None, namespace=None):
@@ -206,7 +230,9 @@ def main(iargs=None, namespace=None):
 
 # ------------------- DATE MATCHING -------------------- #
     ## Find index for non-matching periods
-    index1, index2 = match_dates(ts1.dateList, ts2.dateList)
+    # index1, index2 = match_dates(ts1.dateList, ts2.dateList)
+    index1, index2 = match_and_get_dropped_indices(list(map(lambda x: int(x), ts1.dateList)), list(map(lambda x: int(x), ts2.dateList)))
+
 
     ##Remove non-matching dates
     for i, ts in zip([index1, index2], [ts1, ts2]):
