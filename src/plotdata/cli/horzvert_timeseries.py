@@ -298,7 +298,7 @@ def main(iargs=None, namespace=None):
 
     delta = np.array([(datetime.strptime(y, "%Y%m%d").date() - datetime.strptime(x, "%Y%m%d").date()).days for x, y in zip(ts1.dateList[valid_indexes], ts2.dateList[valid_indexes])])
     ts.dateList = ts1.dateList[valid_indexes]
-    ts.metadata['0_DELTA_FILE'] = ts1.metadata['FILE_PATH']
+    ts1.metadata['0_DELTA_FILE'] = ts1.metadata['FILE_PATH']
 
 # ----------------------------------------------------- #
 
@@ -355,7 +355,7 @@ def main(iargs=None, namespace=None):
     ts_dict = {
         'timeseries': vertical_timeseries.astype('float32'),
         'date': ts.dateList.astype('S8'),
-        'mask': mask.astype('uint8'), 
+        'mask': mask.astype('bool'), 
         'delta': delta.astype('float32'),
     }
 
@@ -382,6 +382,16 @@ def main(iargs=None, namespace=None):
     }
 
     writefile.write(ts_dict, hts.metadata['FILE_PATH'], metadata = hts.metadata)
+
+    mask_meta = {
+        'FILE_TYPE': 'mask',
+        'LENGTH': str(mask.shape[0]),
+        'WIDTH': str(mask.shape[1])
+    }
+
+    writefile.write({'mask': mask.astype('bool')}, 
+                    out_file=os.path.join(project_base_dir, 'maskTempCoh.h5'), 
+                    metadata=mask_meta)
 
 if __name__ == "__main__":
     main()
