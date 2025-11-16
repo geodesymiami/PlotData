@@ -129,7 +129,7 @@ def main(iargs=None, namespace=None):
 
     for f in inps.file:
         work_dir = prepend_scratchdir_if_needed(f)
-        eos_file, _, geometry_file, project_base_dir, out_vel_file, inputs_folder = get_file_names(work_dir)
+        eos_file, _, geometry_file, project_base_dir, _, _ = get_file_names(work_dir)
 
         metadata = readfile.read_attribute(eos_file)
 
@@ -138,6 +138,7 @@ def main(iargs=None, namespace=None):
 
         # TODO add overwrite option
         if not os.path.exists(geometry_file) or True:
+            os.makedirs(os.path.dirname(geometry_file), exist_ok=True)
             create_geometry_file(eos_file, os.path.dirname(geometry_file))
 
         # Identify file type and open it
@@ -145,6 +146,7 @@ def main(iargs=None, namespace=None):
             obj = timeseries(eos_file)
             los_inc_angle = ut.incidence_angle(metadata, dimension=0, print_msg=False)
             los_az_angle = ut.heading2azimuth_angle(float(metadata['HEADING']), look_direction='right')
+            mask = readfile.read(eos_file, datasetName='mask')[0]
         elif metadata['FILE_TYPE'] == 'HDFEOS':
             hdf_obj = HDFEOS(eos_file)
             hdf_obj.open()
@@ -160,6 +162,7 @@ def main(iargs=None, namespace=None):
             raise ValueError(f'Input file is {metadata["FILE_TYPE"]}, not timeseries.')
 
         obj.metadata['FILE_TYPE'] = 'timeseries'
+        obj.metadata['FILE_PATH'] = eos_file
 
         # GEOCODING
         if 'Y_STEP' not in obj.metadata:
@@ -295,6 +298,7 @@ def main(iargs=None, namespace=None):
 
     delta = np.array([(datetime.strptime(y, "%Y%m%d").date() - datetime.strptime(x, "%Y%m%d").date()).days for x, y in zip(ts1.dateList[valid_indexes], ts2.dateList[valid_indexes])])
     ts.dateList = ts1.dateList[valid_indexes]
+    ts1.metadata['0_DELTA_FILE'] = ts1.metadata['FILE_PATH']
 
 # ----------------------------------------------------- #
 
@@ -351,7 +355,7 @@ def main(iargs=None, namespace=None):
     ts_dict = {
         'timeseries': vertical_timeseries.astype('float32'),
         'date': ts.dateList.astype('S8'),
-        'mask': mask.astype('uint8'), 
+        'mask': mask.astype('bool'), 
         'delta': delta.astype('float32'),
     }
 
@@ -378,6 +382,16 @@ def main(iargs=None, namespace=None):
     }
 
     writefile.write(ts_dict, hts.metadata['FILE_PATH'], metadata = hts.metadata)
+
+    mask_meta = {
+        'FILE_TYPE': 'mask',
+        'LENGTH': str(mask.shape[0]),
+        'WIDTH': str(mask.shape[1])
+    }
+
+    writefile.write({'mask': mask.astype('bool')}, 
+                    out_file=os.path.join(project_base_dir, 'maskTempCoh.h5'), 
+                    metadata=mask_meta)
 
 if __name__ == "__main__":
     main()
