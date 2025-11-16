@@ -310,7 +310,7 @@ def main(iargs=None, namespace=None):
     los_inc_angle = np.zeros((2, length, width), dtype=np.float32)
     los_az_angle  = np.zeros((2, length, width), dtype=np.float32)
     mask  = np.zeros((2, length, width), dtype=np.float32)
-    data = np.zeros((2, len(ts1.dateList), length, width), dtype=np.float32)
+    data = np.zeros((2, len(ts.dateList), length, width), dtype=np.float32)
 
     # Extact overlapping
     for i, ts in enumerate([ts1, ts2]):
