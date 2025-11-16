@@ -272,6 +272,19 @@ def extract_window(data, metadata, lat, lon, window_size=3):
     length = int(metadata['LENGTH'])
     width = int(metadata['WIDTH'])
 
+    # Check if coordinates fall into the area
+    if 'X_FIRST' in metadata.keys():
+        x_min = metadata['X_FIRST']
+        x_max = metadata['X_FIRST'] + metadata['X_STEP'] * width
+        if lon < x_min or lon > x_max:
+            raise ValueError(f"Longitude {lon} is out of bounds. Valid range: {x_min} to {x_max}.")
+
+    if 'Y_FIRST' in metadata.keys():
+        y_max = metadata['Y_FIRST']
+        y_min = metadata['Y_FIRST'] + metadata['Y_STEP'] * length
+        if lat < y_min or lat > y_max:
+            raise ValueError(f"Latitude {lat} is out of bounds. Valid range: {y_min} to {y_max}.")
+
     if window_size * 2 + 1 > round(length * 0.1) or window_size * 2 + 1 > round(width * 0.1):
         window_size = round(min(round(length * 0.1), round(width * 0.1))/2)
         print(f"Window size is too large, reducing value for consistency to {window_size}\n")
@@ -317,7 +330,7 @@ def find_longitude_degree(ref_lat, lat_step):
     Returns:
     float: The longitude step in degrees that covers the same distance as the latitude step.
     """
-    return round(float(lat_step) / math.cos(math.radians(float(ref_lat))), 5)
+    return abs(round(float(lat_step) / math.cos(math.radians(float(ref_lat))), 5))
 
 
 def find_reference_points_from_subsets(subset1, subset2=None, window_size=3):
