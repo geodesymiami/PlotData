@@ -79,7 +79,7 @@ def add_location_arguments(parser):
     location.add_argument('--lat-step',
                         dest='lat_step',
                         type=float,
-                        default=None,
+                        default=-0.0002,
                         help='latitude step for geocoding (default: %(default)s).')
 
     return parser

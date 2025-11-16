@@ -136,7 +136,7 @@ class ProcessData:
     def _geocode_velocity_file(self, metadata, file_fullpath, geometry):
         ref_lat = metadata.get('LAT_REF1', metadata.get('REF_LAT', None))
 
-        lat_step =  metadata['mintpy.geocode.laloStep'].split(',')[0] if 'mintpy.geocode.laloStep' in metadata else 0.0002
+        lat_step =  metadata['mintpy.geocode.laloStep'].split(',')[0] if 'mintpy.geocode.laloStep' in metadata else self.lat_step
         lon_step = find_longitude_degree(ref_lat, lat_step)
 
         outdir = os.path.dirname(file_fullpath)
