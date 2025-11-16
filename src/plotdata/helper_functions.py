@@ -274,14 +274,14 @@ def extract_window(data, metadata, lat, lon, window_size=3):
 
     # Check if coordinates fall into the area
     if 'X_FIRST' in metadata.keys():
-        x_min = metadata['X_FIRST']
-        x_max = metadata['X_FIRST'] + metadata['X_STEP'] * width
+        x_min = float(metadata['X_FIRST'])
+        x_max = float(metadata['X_FIRST']) + float(metadata['X_STEP']) * width
         if lon < x_min or lon > x_max:
             raise ValueError(f"Longitude {lon} is out of bounds. Valid range: {x_min} to {x_max}.")
 
     if 'Y_FIRST' in metadata.keys():
-        y_max = metadata['Y_FIRST']
-        y_min = metadata['Y_FIRST'] + metadata['Y_STEP'] * length
+        y_max = float(metadata['Y_FIRST'])
+        y_min = float(metadata['Y_FIRST']) + float(metadata['Y_STEP']) * length
         if lat < y_min or lat > y_max:
             raise ValueError(f"Latitude {lat} is out of bounds. Valid range: {y_min} to {y_max}.")
 
