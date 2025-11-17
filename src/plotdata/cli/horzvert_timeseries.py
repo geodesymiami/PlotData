@@ -157,6 +157,10 @@ def main(iargs=None, namespace=None):
             los_inc_angle = readfile.read(geometry_file, datasetName='incidenceAngle')[0]
             los_az_angle  = readfile.read(geometry_file, datasetName='azimuthAngle')[0]
             mask = readfile.read(eos_file, datasetName='mask')[0]
+            if hdf_obj.datasetGroupNameDict['bperp'] == 'geometry':
+                hdf_obj.datasetGroupNameDict['bperp'] = 'observation'
+
+            obj.bperp = hdf_obj.read('bperp')
             hdf_obj.close()
         else:
             raise ValueError(f'Input file is {metadata["FILE_TYPE"]}, not timeseries.')
@@ -266,26 +270,32 @@ def main(iargs=None, namespace=None):
     # Calculate differences and find indexes where the absolute difference is less than 30
     diff = [(datetime.strptime(x, "%Y%m%d").date() - datetime.strptime(y, "%Y%m%d").date()).days for x, y in zip(ts1.dateList, ts2.dateList)]
 
-    # Find indexes where the absolute difference is less than 30
-    valid_indexes = [i for i, dif in enumerate(diff) if abs(dif) < 30]
+    if True:
+        dynamic_threshold = min(np.abs(np.array(diff)))
 
-    # Convert differences to absolute values
-    differences = list(map(lambda x: abs(diff[x]), valid_indexes))
+        print('-' * 50)
+        print(f"Minimum threshold value: {dynamic_threshold}\n")
+    else:
+        # Find indexes where the absolute difference is less than 30
+        valid_indexes = [i for i, dif in enumerate(diff) if abs(dif) < 30]
 
-    data_skewness = skew(differences)
+        # Convert differences to absolute values
+        differences = list(map(lambda x: abs(diff[x]), valid_indexes))
 
-    # Dynamically determine the percentile threshold
-    if data_skewness > 1:  # Highly skewed data
-        percentile_threshold = 90  # Use a stricter threshold
-    elif data_skewness < -1:  # Left-skewed data (unlikely for absolute differences)
-        percentile_threshold = 99
-    else:  # Symmetric or moderately skewed data
-        percentile_threshold = 95
+        data_skewness = skew(differences)
 
-    dynamic_threshold = np.percentile(differences, percentile_threshold)
+        # Dynamically determine the percentile threshold
+        if data_skewness > 1:  # Highly skewed data
+            percentile_threshold = 90  # Use a stricter threshold
+        elif data_skewness < -1:  # Left-skewed data (unlikely for absolute differences)
+            percentile_threshold = 99
+        else:  # Symmetric or moderately skewed data
+            percentile_threshold = 95
 
-    print('-' * 50)
-    print(f"Dynamic Threshold for date difference (value at {percentile_threshold}th percentile): {dynamic_threshold}\n")
+        dynamic_threshold = np.percentile(differences, percentile_threshold)
+
+        print('-' * 50)
+        print(f"Dynamic Threshold for date difference (value at {percentile_threshold}th percentile): {dynamic_threshold}\n")
 
     # Find indexes where the absolute difference is less than 30
     valid_indexes = [i for i, dif in enumerate(diff) if abs(dif) <= dynamic_threshold]
@@ -295,10 +305,11 @@ def main(iargs=None, namespace=None):
 
     ts1.data = ts1.data[valid_indexes, :]
     ts2.data = ts2.data[valid_indexes, :]
+    bperp = ts1.bperp[valid_indexes]
 
     delta = np.array([(datetime.strptime(y, "%Y%m%d").date() - datetime.strptime(x, "%Y%m%d").date()).days for x, y in zip(ts1.dateList[valid_indexes], ts2.dateList[valid_indexes])])
     ts.dateList = ts1.dateList[valid_indexes]
-    ts1.metadata['0_DELTA_FILE'] = ts1.metadata['FILE_PATH']
+    ts1.metadata['REF_DATELIST_FILE'] = ts1.metadata['FILE_PATH']
 
 # ----------------------------------------------------- #
 
@@ -357,6 +368,7 @@ def main(iargs=None, namespace=None):
         'date': ts.dateList.astype('S8'),
         'mask': mask.astype('bool'), 
         'delta': delta.astype('float32'),
+        'bperp': bperp
     }
 
 
@@ -379,6 +391,7 @@ def main(iargs=None, namespace=None):
         'date': ts.dateList.astype('S8'),
         'mask': mask.astype('uint8'),
         'delta': delta.astype('float32'),
+        'bperp': bperp
     }
 
     writefile.write(ts_dict, hts.metadata['FILE_PATH'], metadata = hts.metadata)
