@@ -123,6 +123,9 @@ def match_and_get_dropped_indices(a, b):
 def main(iargs=None, namespace=None):
 
     inps = create_parser()
+
+    os.chdir(SCRATCHDIR)
+
     window = {}
     y_step = None
     x_step = None
@@ -322,6 +325,9 @@ def main(iargs=None, namespace=None):
     length = int(round((S - N) / lat_step))
     width  = int(round((E - W) / lon_step))
 
+    latitude =  np.linspace(N, S, length)
+    longitude = np.linspace(W, E, width)
+
     los_inc_angle = np.zeros((2, length, width), dtype=np.float32)
     los_az_angle  = np.zeros((2, length, width), dtype=np.float32)
     mask  = np.zeros((2, length, width), dtype=np.float32)
@@ -360,15 +366,16 @@ def main(iargs=None, namespace=None):
     vts.metadata['maskFile'] = vts.metadata['FILE_PATH']
     vts.metadata['PROJECT_NAME'] = os.path.basename(project_base_dir)
     vts.metadata['REF_DATE'] = str(ts1.dateList[0])
-    vts.metadata.pop('ORBIT_DIRECTION')
-
+    # vts.metadata.pop('ORBIT_DIRECTION')
 
     ts_dict = {
         'timeseries': vertical_timeseries.astype('float32'),
         'date': ts.dateList.astype('S8'),
-        'mask': mask.astype('bool'), 
+        'mask': mask.astype('bool'),
         'delta': delta.astype('float32'),
-        'bperp': bperp
+        # 'bperp': bperp,
+        # 'latitude' : latitude,
+        # 'longitude' : longitude
     }
 
 
@@ -391,7 +398,9 @@ def main(iargs=None, namespace=None):
         'date': ts.dateList.astype('S8'),
         'mask': mask.astype('uint8'),
         'delta': delta.astype('float32'),
-        'bperp': bperp
+        # 'bperp': bperp,
+        # 'latitude' : latitude,
+        # 'longitude' : longitude
     }
 
     writefile.write(ts_dict, hts.metadata['FILE_PATH'], metadata = hts.metadata)
@@ -402,9 +411,7 @@ def main(iargs=None, namespace=None):
         'WIDTH': str(mask.shape[1])
     }
 
-    writefile.write({'mask': mask.astype('bool')}, 
-                    out_file=os.path.join(project_base_dir, 'maskTempCoh.h5'), 
-                    metadata=mask_meta)
+    writefile.write({'mask': mask.astype('bool')}, out_file=os.path.join(project_base_dir, 'maskTempCoh.h5'), metadata=mask_meta)
 
 if __name__ == "__main__":
     main()
