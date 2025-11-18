@@ -1,11 +1,9 @@
-import unittest
+import pytest
 from plotdata.objects.plotters import VelocityPlot
 
-class TestVelocityPlot(unittest.TestCase):
-    def test_velocity_plot(self):
-            pass
-            # plot = VelocityPlot()
-            # self.assertIsNotNone(plot)
+def test_velocity_plot():
+    plot = VelocityPlot()
+    assert plot is not None
 
 if __name__ == "__main__":
-    unittest.main()
+    pytest.main()
