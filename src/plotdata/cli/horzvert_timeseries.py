@@ -366,16 +366,15 @@ def main(iargs=None, namespace=None):
     vts.metadata['maskFile'] = vts.metadata['FILE_PATH']
     vts.metadata['PROJECT_NAME'] = os.path.basename(project_base_dir)
     vts.metadata['REF_DATE'] = str(ts1.dateList[0])
-    # vts.metadata.pop('ORBIT_DIRECTION')
 
     ts_dict = {
         'timeseries': vertical_timeseries.astype('float32'),
         'date': ts.dateList.astype('S8'),
         'mask': mask.astype('bool'),
         'delta': delta.astype('float32'),
-        # 'bperp': bperp,
-        # 'latitude' : latitude,
-        # 'longitude' : longitude
+        'bperp': bperp,
+        'latitude' : latitude,
+        'longitude' : longitude
     }
 
 
@@ -398,9 +397,9 @@ def main(iargs=None, namespace=None):
         'date': ts.dateList.astype('S8'),
         'mask': mask.astype('uint8'),
         'delta': delta.astype('float32'),
-        # 'bperp': bperp,
-        # 'latitude' : latitude,
-        # 'longitude' : longitude
+        'bperp': bperp,
+        'latitude' : latitude,
+        'longitude' : longitude
     }
 
     writefile.write(ts_dict, hts.metadata['FILE_PATH'], metadata = hts.metadata)
