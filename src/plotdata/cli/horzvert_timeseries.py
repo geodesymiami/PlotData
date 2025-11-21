@@ -319,7 +319,10 @@ def match_and_filter_dates(ts1, ts2, thresh_method='min'):
     date_list = ts1.dateList[valid_indexes]
 
     # Calculate delta (date differences for valid indexes)
-    delta = np.array([(datetime.strptime(y, "%Y%m%d").date() - datetime.strptime(x, "%Y%m%d").date()).days for x, y in zip(ts1.dateList[valid_indexes], ts2.dateList[valid_indexes])])
+    delta = np.array([
+        (datetime.strptime(y, "%Y%m%d").date() - datetime.strptime(x, "%Y%m%d").date()).days
+        for x, y in zip(ts1.dateList[valid_indexes], ts2.dateList[valid_indexes])
+    ])
 
     return ts1, ts2, delta, bperp, date_list
 
@@ -425,6 +428,7 @@ def create_hdfeos_output(ts_data, date_list, mask, delta, bperp, latitude, longi
     hdfeos_metadata['PROCESSOR'] = 'mintpy'
     hdfeos_metadata['PROJECT_NAME'] = os.path.basename(os.path.dirname(output_path))
     hdfeos_metadata['REF_DATE'] = str(date_list[0])
+    hdfeos_metadata['diplacement_type'] = 'vertical' if 'vert' in output_path else 'horizontal'
 
     # Write using writefile.write
     writefile.write(hdfeos_dict, out_file=output_path, metadata=hdfeos_metadata)
@@ -580,10 +584,12 @@ def main(iargs=None, namespace=None):
 
     # Compute horizontal and vertical timeseries
     vertical_timeseries, horizontal_timeseries, mask, latitude, longitude = compute_horzvert_timeseries(ts1, ts2, date_list, inps)
+    ts1.metadata['relative_orbit_second'] = ts2.metadata['relative_orbit']
+    ts1.metadata['ORBIT_DIRECTION_SECOND'] = ts2.metadata['ORBIT_DIRECTION']
 
     # Create output files
-    vertical_path = os.path.join(project_base_dir, 'up_timeseries.h5')
-    horizontal_path = os.path.join(project_base_dir, 'hz_timeseries.h5')
+    vertical_path = os.path.join(project_base_dir, 'vert_timeseries.h5')
+    horizontal_path = os.path.join(project_base_dir, 'horz_timeseries.h5')
     mask_path = os.path.join(project_base_dir, 'maskTempCoh.h5')
 
     if inps.timeseries:
