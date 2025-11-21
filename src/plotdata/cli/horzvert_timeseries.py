@@ -2,6 +2,7 @@
 
 import os
 import sys
+import logging
 import argparse
 import numpy as np
 from typing import Any
@@ -422,6 +423,10 @@ def create_hdfeos_output(ts_data, date_list, mask, delta, bperp, latitude, longi
     hdfeos_metadata['FILE_PATH'] = output_path
     hdfeos_metadata['WIDTH'] = str(width)
     hdfeos_metadata['LENGTH'] = str(length)
+    hdfeos_metadata['FILE_TYPE'] = 'HDFEOS'
+    hdfeos_metadata['PROCESSOR'] = 'mintpy'
+    hdfeos_metadata['PROJECT_NAME'] = os.path.basename(os.path.dirname(output_path))
+    hdfeos_metadata['REF_DATE'] = str(date_list[0])
 
     # Write using writefile.write
     writefile.write(hdfeos_dict, out_file=output_path, metadata=hdfeos_metadata)
@@ -600,6 +605,13 @@ def main(iargs=None, namespace=None):
     os.makedirs(os.path.dirname(mask_path), exist_ok=True)
     if not os.path.exists(mask_path) or inps.overwrite:
         writefile.write({'mask': mask.astype('bool')}, out_file=mask_path, metadata=mask_meta)
+
+    logging.basicConfig(filename=os.path.join(project_base_dir, 'log'), level=logging.INFO, format='%(asctime)s - %(message)s', datefmt='%Y-%m-%d')
+
+    # Log the command-line command
+    cmd_command = ' '.join(sys.argv)
+    logging.info(cmd_command)
+
 
 if __name__ == "__main__":
     main()
