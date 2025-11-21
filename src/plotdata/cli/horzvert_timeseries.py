@@ -405,8 +405,8 @@ def create_hdfeos_output(ts_data, date_list, mask, delta, bperp, latitude, longi
         'HDFEOS/GRIDS/timeseries/geometry/longitude': lon_grid.astype('float32'),
         'HDFEOS/GRIDS/timeseries/geometry/shadowMask': np.zeros((length, width), dtype='uint8'),
         'HDFEOS/GRIDS/timeseries/geometry/slantRangeDistance': np.full((length, width), np.nan, dtype='float32'),
-        'HDFEOS/GRIDS/timeseries/geometry/bperp': bperp.astype('float32'),
         # Observation datasets
+        'HDFEOS/GRIDS/timeseries/observation/bperp': bperp.astype('float32'),
         'HDFEOS/GRIDS/timeseries/observation/date': date_list.astype('S8'),
         'HDFEOS/GRIDS/timeseries/observation/displacement': ts_data.astype('float32'),
         'HDFEOS/GRIDS/timeseries/observation/delta': delta.astype('uint8'),
