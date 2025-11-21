@@ -52,6 +52,7 @@ def create_parser(iargs=None, namespace=None):
     parser.add_argument('--window-size', dest='window_size', type=int, default=3, help='window size (square side in number of pixels) for reference point look up (default: %(default)s).')
     parser.add_argument('--date-filtering', dest='date_thresh_method', type=str, default='min', choices=['min', 'percentile'], help='Method for date difference threshold: "min" uses minimum difference, "percentile" uses percentile-based threshold (default: %(default)s).')
     parser.add_argument('-ow', '--overwrite', dest='overwrite', action='store_true', help='Overwrite all previously generated files')
+    parser.add_argument('-ts', '--timeseries', dest='timeseries', action='store_true', help='Output timeseries file in addition to HDFEOS format')
 
     inps = parser.parse_args(iargs, namespace)
 
@@ -588,12 +589,16 @@ def main(iargs=None, namespace=None):
     horizontal_path = os.path.join(project_base_dir, 'hz_timeseries.h5')
     mask_path = os.path.join(project_base_dir, 'maskTempCoh.h5')
 
-    create_timeseries_output(vertical_timeseries, date_list, mask, delta, bperp, latitude, longitude, ts1.metadata, vertical_path, 'timeseries')
+    if inps.timeseries:
+        create_timeseries_output(vertical_timeseries, date_list, mask, delta, bperp, latitude, longitude, ts1.metadata, vertical_path, 'timeseries')
 
-    create_timeseries_output(horizontal_timeseries, date_list, mask, delta, bperp, latitude, longitude, ts1.metadata, horizontal_path, 'timeseries')
+        create_timeseries_output(horizontal_timeseries, date_list, mask, delta, bperp, latitude, longitude, ts1.metadata, horizontal_path, 'timeseries')
 
     create_hdfeos_output(vertical_timeseries, date_list, mask, delta, bperp, latitude, longitude,
                          ts1.metadata, vertical_path.replace('.h5', '.he5'), mask.shape[0], mask.shape[1])
+
+    create_hdfeos_output(horizontal_timeseries, date_list, mask, delta, bperp, latitude, longitude,
+                         ts1.metadata, horizontal_path.replace('.h5', '.he5'), mask.shape[0], mask.shape[1])
 
     # Write mask file
     mask_meta = {
@@ -606,7 +611,14 @@ def main(iargs=None, namespace=None):
     if not os.path.exists(mask_path) or inps.overwrite:
         writefile.write({'mask': mask.astype('bool')}, out_file=mask_path, metadata=mask_meta)
 
-    logging.basicConfig(filename=os.path.join(project_base_dir, 'log'), level=logging.INFO, format='%(asctime)s - %(message)s', datefmt='%Y-%m-%d')
+    for path in [os.path.join(project_base_dir, 'log') if project_base_dir else None, os.path.join(os.getenv('SCRATCHDIR'), 'log') if os.getenv('SCRATCHDIR') else None]:
+        if not path:
+            continue
+        # Ensure parent directory exists so logging can create the file
+        parent = os.path.dirname(path)
+        if parent and not os.path.exists(parent):
+            os.makedirs(parent, exist_ok=True)
+        logging.basicConfig(filename=path, level=logging.INFO, format='%(asctime)s - %(message)s', datefmt='%Y-%m-%d')
 
     # Log the command-line command
     cmd_command = ' '.join(sys.argv)
