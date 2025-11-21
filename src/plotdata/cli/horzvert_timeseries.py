@@ -2,21 +2,28 @@
 
 import os
 import sys
+import logging
 import argparse
 import numpy as np
-from scipy.stats import norm, skew
-from scipy.optimize import linear_sum_assignment
+from typing import Any
+from scipy.stats import skew
 from datetime import datetime
-from mintpy.utils import readfile, utils as ut, writefile
+from types import SimpleNamespace
 from mintpy.objects.resample import resample
+from scipy.optimize import linear_sum_assignment
+from mintpy.utils import readfile, utils as ut, writefile
 from mintpy.objects import timeseries, HDFEOS
 from mintpy.asc_desc2horz_vert import asc_desc2horz_vert, get_overlap_lalo
-from plotdata.helper_functions import (get_file_names, prepend_scratchdir_if_needed, extract_window, find_reference_points_from_subsets, select_reference_point, create_geometry_file, find_longitude_degree)
+from plotdata.helper_functions import (
+    get_file_names, prepend_scratchdir_if_needed, extract_window,
+    find_reference_points_from_subsets, create_geometry_file, find_longitude_degree
+)
 
 
 SCRATCHDIR = os.getenv('SCRATCHDIR')
-EXAMPLE = f"""
-SOMEt
+EXAMPLE = """
+Example usage:
+    horzvert_timeseries.py ChilesSenAT120/mintpy ChilesSenDT142/mintpy --ref-lalo 0.84969 -77.86430
 """
 
 
@@ -43,6 +50,9 @@ def create_parser(iargs=None, namespace=None):
     parser.add_argument('--lat-step', dest='lat_step', type=float, default=-0.0002, help='latitude step for geocoding (default: %(default)s).')
     parser.add_argument('--horz-az-angle', dest='horz_az_angle', type=float, default=90, help='Horizontal azimuth angle (default: %(default)s).')
     parser.add_argument('--window-size', dest='window_size', type=int, default=3, help='window size (square side in number of pixels) for reference point look up (default: %(default)s).')
+    parser.add_argument('--date-filtering', dest='date_thresh_method', type=str, default='min', choices=['min', 'percentile'], help='Method for date difference threshold: "min" uses minimum difference, "percentile" uses percentile-based threshold (default: %(default)s).')
+    parser.add_argument('-ow', '--overwrite', dest='overwrite', action='store_true', help='Overwrite all previously generated files')
+    parser.add_argument('-ts', '--timeseries', dest='timeseries', action='store_true', help='Output timeseries file in addition to HDFEOS format')
 
     inps = parser.parse_args(iargs, namespace)
 
@@ -60,44 +70,27 @@ def parse_lalo(str_lalo):
 
     Returns:
         list or float: Parsed lat/lon coordinates.
-
     """
     if ',' in str_lalo[0]:
         lalo = [[float(coord) for coord in pair.split(',')] for pair in str_lalo]
     else:
         lalo = [[float(str_lalo[i]), float(str_lalo[i+1])] for i in range(0, len(str_lalo), 2)]
 
-    if len(lalo) == 1:     # if given as one string containing ','
+    if len(lalo) == 1:  # if given as one string containing ','
         lalo = lalo[0]
     return lalo
 
 
-def match_dates(list1, list2):
-    # Convert dates to integers for easier comparison
-    indexed_list1 = list(enumerate(map(int, list1)))
-    indexed_list2 = list(enumerate(map(int, list2)))
-
-    matched_indexes1 = set()
-    matched_indexes2 = set()
-
-    # Match dates
-    for index1, date1 in indexed_list1:
-        closest_index2, closest_date2 = min(
-            indexed_list2,
-            key=lambda x: abs(x[1] - date1)
-        )
-        matched_indexes1.add(index1)
-        matched_indexes2.add(closest_index2)
-        indexed_list2.remove((closest_index2, closest_date2))  # Remove matched element
-
-    # Find removed indexes
-    removed_indexes1 = [index for index, _ in indexed_list1 if index not in matched_indexes1]
-    removed_indexes2 = [index for index, _ in indexed_list2 if index not in matched_indexes2]
-
-    return removed_indexes1, removed_indexes2
-
-
 def match_and_get_dropped_indices(a, b):
+    """Match two date lists and return indices of unmatched dates.
+
+    Args:
+        a: First list of dates (as integers)
+        b: Second list of dates (as integers)
+
+    Returns:
+        tuple: (dropped_indices_a, dropped_indices_b)
+    """
     a = np.array(a)
     b = np.array(b)
 
@@ -116,115 +109,339 @@ def match_and_get_dropped_indices(a, b):
     dropped_a = sorted(set(range(len(a))) - set(matched_i))
     dropped_b = sorted(set(range(len(b))) - set(matched_j))
 
-    # Return matched lists and dropped indices
     return dropped_a, dropped_b
 
 
-def main(iargs=None, namespace=None):
+def load_timeseries_file(file_path, geometry_file_input, inps):
+    """Load and process a timeseries file.
 
-    inps = create_parser()
+    Args:
+        file_path: Path to the timeseries file
+        geometry_file_input: Path to geometry file (from command line, or None)
+        inps: Parsed command line arguments
 
-    os.chdir(SCRATCHDIR)
+    Returns:
+        tuple: (timeseries_object, los_inc_angle, los_az_angle, mask, metadata, project_base_dir, geometry_file)
+    """
+    work_dir = prepend_scratchdir_if_needed(file_path)
+    eos_file, _, geometry_file, project_base_dir, _, _ = get_file_names(work_dir)
 
-    window = {}
-    y_step = None
-    x_step = None
+    metadata = readfile.read_attribute(eos_file)
 
-    for f in inps.file:
-        work_dir = prepend_scratchdir_if_needed(f)
-        eos_file, _, geometry_file, project_base_dir, _, _ = get_file_names(work_dir)
+    # Use provided geometry file if available
+    if geometry_file_input:
+        geometry_file = prepend_scratchdir_if_needed(geometry_file_input)
 
-        metadata = readfile.read_attribute(eos_file)
+    # Get reference point from metadata if not provided
+    if not inps.ref_lalo:
+        inps.ref_lalo = parse_lalo([metadata['REF_LAT'], metadata['REF_LON']])
 
-        if not inps.ref_lalo:
-            inps.ref_lalo = parse_lalo([metadata['REF_LAT'], metadata['REF_LON']])
+    # Create geometry file if needed
+    if not os.path.exists(geometry_file) or inps.overwrite:
+        os.makedirs(os.path.dirname(geometry_file), exist_ok=True)
+        create_geometry_file(eos_file, os.path.dirname(geometry_file))
 
-        # TODO add overwrite option
-        if not os.path.exists(geometry_file) or True:
-            os.makedirs(os.path.dirname(geometry_file), exist_ok=True)
-            create_geometry_file(eos_file, os.path.dirname(geometry_file))
+    # Load file
+    file_type = metadata['FILE_TYPE']
 
-        # Identify file type and open it
-        if metadata['FILE_TYPE'] == 'timeseries':
-            obj = timeseries(eos_file)
-            los_inc_angle = ut.incidence_angle(metadata, dimension=0, print_msg=False)
-            los_az_angle = ut.heading2azimuth_angle(float(metadata['HEADING']), look_direction='right')
-            mask = readfile.read(eos_file, datasetName='mask')[0]
-        elif metadata['FILE_TYPE'] == 'HDFEOS':
-            hdf_obj = HDFEOS(eos_file)
-            hdf_obj.open()
-            obj = timeseries()
-            obj.data = hdf_obj.read()
-            obj.dateList = hdf_obj.dateList
-            obj.metadata = hdf_obj.metadata
-            los_inc_angle = readfile.read(geometry_file, datasetName='incidenceAngle')[0]
-            los_az_angle  = readfile.read(geometry_file, datasetName='azimuthAngle')[0]
-            mask = readfile.read(eos_file, datasetName='mask')[0]
-            if hdf_obj.datasetGroupNameDict['bperp'] == 'geometry':
-                hdf_obj.datasetGroupNameDict['bperp'] = 'observation'
+    if file_type == 'timeseries':
+        obj = timeseries(eos_file)
+    elif file_type == 'HDFEOS':
+        obj = HDFEOS(eos_file)
+    else:
+        raise ValueError(f'Unsupported input file type: {file_type}')
 
-            obj.bperp = hdf_obj.read('bperp')
-            hdf_obj.close()
+    obj.open()
+
+    # Handle bperp for HDFEOS
+    if hasattr(obj, 'datasetGroupNameDict'):
+        if obj.datasetGroupNameDict.get('bperp') == 'geometry':
+            obj.datasetGroupNameDict['bperp'] = 'observation'
+
+    data = obj.read()                 # full timeseries array (may be large)
+    dateList = np.array(obj.dateList) # convert to numpy or keep list
+    metadata = dict(obj.metadata)     # copy metadata dict
+
+    try:
+        bperp = obj.read('bperp')
+    except Exception:
+        bperp = None
+
+    # Close file-backed object
+    obj.close()
+
+    # Handle bperp location in HDFEOS files
+    if hasattr(obj, 'datasetGroupNameDict') and obj.datasetGroupNameDict.get('bperp') == 'geometry':
+        obj.datasetGroupNameDict['bperp'] = 'observation'
+
+    # Read mask (same for both file types)
+    if hasattr(obj, 'datasetGroupNameDict') and 'mask' in obj.datasetGroupNameDict:
+        mask = readfile.read(eos_file, datasetName='mask')[0]
+    elif os.path.exists(geometry_file):
+        mask = readfile.read(geometry_file, datasetName='mask')[0]
+    else:
+        print(f"Mask dataset not found in {eos_file} or {geometry_file}, proceeding without mask.")
+
+    # Try to read los angles from geometry file first, fallback to metadata calculation
+    if os.path.exists(geometry_file):
+        los_inc_angle = readfile.read(geometry_file, datasetName='incidenceAngle')[0]
+        los_az_angle = readfile.read(geometry_file, datasetName='azimuthAngle')[0]
+    else:
+        raise FileNotFoundError("Geometry file not found")
+
+    ts_obj = SimpleNamespace()
+    ts_obj.data = data
+    ts_obj.dateList = dateList
+    ts_obj.metadata = metadata
+    ts_obj.bperp = bperp
+
+    # Ensure consistent metadata
+    ts_obj.metadata['FILE_TYPE'] = 'timeseries'
+    ts_obj.metadata['FILE_PATH'] = eos_file
+
+    return ts_obj, los_inc_angle, los_az_angle, mask, project_base_dir, geometry_file
+
+
+def geocode_timeseries(obj, los_inc_angle, los_az_angle, mask, geometry_file, inps):
+    """Geocode timeseries data if needed.
+
+    Args:
+        obj: Timeseries object
+        los_inc_angle: Line-of-sight incidence angle
+        los_az_angle: Line-of-sight azimuth angle
+        mask: Mask array
+        geometry_file: Path to geometry file
+        inps: Parsed command line arguments
+
+    Returns:
+        tuple: (geocoded_obj, geocoded_los_inc, geocoded_los_az, geocoded_mask, y_step, x_step)
+    """
+
+    if 'Y_STEP' not in obj.metadata:
+        lon_step = find_longitude_degree(inps.ref_lalo[0], inps.lat_step)
+        resampling_obj = resample(geometry_file, lalo_step=[inps.lat_step, lon_step])
+        resampling_obj.open()
+        resampling_obj.src_meta = obj.metadata
+        resampling_obj.prepare()
+
+        obj.data = resampling_obj.run_resample(src_data=obj.data)
+        mask = resampling_obj.run_resample(src_data=mask)
+        los_inc_angle = resampling_obj.run_resample(src_data=los_inc_angle)
+        los_az_angle = resampling_obj.run_resample(src_data=los_az_angle)
+
+        obj.metadata['LENGTH'], obj.metadata['WIDTH'] = los_az_angle.shape
+        obj.metadata['Y_STEP'], obj.metadata['X_STEP'] = inps.lat_step, lon_step
+        obj.metadata['Y_FIRST'], obj.metadata['X_FIRST'] = (
+            np.nanmax(readfile.read(geometry_file, datasetName='latitude')[0]),
+            np.nanmin(readfile.read(geometry_file, datasetName='longitude')[0])
+        )
+
+        y_step = inps.lat_step
+        x_step = lon_step
+    else:
+        y_step = obj.metadata['Y_STEP']
+        x_step = obj.metadata['X_STEP']
+
+    return obj, los_inc_angle, los_az_angle, mask, y_step, x_step
+
+
+def match_and_filter_dates(ts1, ts2, thresh_method='min'):
+    """Match dates between two timeseries and filter by date difference.
+
+    Args:
+        ts1: First timeseries object
+        ts2: Second timeseries object
+        thresh_method: Method for threshold calculation ('min' or 'percentile')
+
+    Returns:
+        tuple: (filtered_ts1, filtered_ts2, delta, bperp, date_list)
+    """
+    # Match dates and get dropped indices
+    date_list1 = [int(x) for x in ts1.dateList]
+    date_list2 = [int(x) for x in ts2.dateList]
+    index1, index2 = match_and_get_dropped_indices(date_list1, date_list2)
+
+    # Remove non-matching dates
+    for i, ts in zip([index1, index2], [ts1, ts2]):
+        ts.dateList = np.delete(ts.dateList, i)
+        mask = np.ones(ts.data.shape[0], dtype=bool)
+        mask[i] = False
+        ts.data = ts.data[mask]
+
+    print('-' * 50)
+    print(f'New date list length: {len(ts1.dateList)}\n')
+
+    # Calculate date differences
+    diff = [(datetime.strptime(x, "%Y%m%d").date() - datetime.strptime(y, "%Y%m%d").date()).days for x, y in zip(ts1.dateList, ts2.dateList)]
+
+    # Calculate threshold based on selected method
+    if thresh_method == 'min':
+        # Use minimum difference as threshold
+        dynamic_threshold = min(np.abs(np.array(diff)))
+        print('-' * 50)
+        print(f"Minimum threshold value: {dynamic_threshold}\n")
+    elif thresh_method == 'percentile':
+        # Find indexes where the absolute difference is less than 30 (initial filter)
+        valid_indexes = [i for i, dif in enumerate(diff) if abs(dif) < 30]
+
+        # Convert differences to absolute values
+        differences = [abs(diff[i]) for i in valid_indexes]
+
+        if differences:
+            data_skewness = skew(differences)
+
+            # Dynamically determine the percentile threshold
+            if data_skewness > 1:  # Highly skewed data
+                percentile_threshold = 90  # Use a stricter threshold
+            elif data_skewness < -1:  # Left-skewed data (unlikely for absolute differences)
+                percentile_threshold = 99
+            else:  # Symmetric or moderately skewed data
+                percentile_threshold = 95
+
+            dynamic_threshold = np.percentile(differences, percentile_threshold)
+            print('-' * 50)
+            print(f"Dynamic Threshold for date difference (value at {percentile_threshold}th percentile): {dynamic_threshold}\n")
         else:
-            raise ValueError(f'Input file is {metadata["FILE_TYPE"]}, not timeseries.')
+            # Fallback to minimum if no valid differences found
+            dynamic_threshold = min(np.abs(np.array(diff)))
+            print('-' * 50)
+            print(f"No valid differences found, using minimum threshold: {dynamic_threshold}\n")
 
-        obj.metadata['FILE_TYPE'] = 'timeseries'
-        obj.metadata['FILE_PATH'] = eos_file
+    # Filter by threshold
+    valid_indexes = [i for i, dif in enumerate(diff) if abs(dif) <= dynamic_threshold]
+    print('-' * 50)
+    print(f'New date list length after drop: {len(valid_indexes)}\n')
 
-        # GEOCODING
-        if 'Y_STEP' not in obj.metadata:
-            # coord.coordinate(atr, geometry_file).radar2geo(data)
-            lon_step = find_longitude_degree(inps.ref_lalo[0], inps.lat_step)
+    # Apply filtering
+    ts1.data = ts1.data[valid_indexes, :]
+    ts2.data = ts2.data[valid_indexes, :]
+    bperp = ts1.bperp[valid_indexes]
+    date_list = ts1.dateList[valid_indexes]
 
-            resampling_obj = resample(geometry_file, lalo_step=[inps.lat_step, lon_step])
-            resampling_obj.open()
-            resampling_obj.src_meta = obj.metadata
-            resampling_obj.prepare()
+    # Calculate delta (date differences for valid indexes)
+    delta = np.array([(datetime.strptime(y, "%Y%m%d").date() - datetime.strptime(x, "%Y%m%d").date()).days for x, y in zip(ts1.dateList[valid_indexes], ts2.dateList[valid_indexes])])
 
-            obj.data = resampling_obj.run_resample(src_data=obj.data)
-            mask = resampling_obj.run_resample(src_data=mask)
-            los_inc_angle = resampling_obj.run_resample(src_data=los_inc_angle)
-            los_az_angle = resampling_obj.run_resample(src_data=los_az_angle)
+    return ts1, ts2, delta, bperp, date_list
 
-            obj.metadata['LENGTH'], obj.metadata['WIDTH'] = los_az_angle.shape
-            obj.metadata['Y_STEP'], obj.metadata['X_STEP'] = inps.lat_step, lon_step
-            obj.metadata['Y_FIRST'], obj.metadata['X_FIRST'] = np.nanmax(readfile.read(geometry_file, datasetName='latitude')[0]), np.nanmin(readfile.read(geometry_file, datasetName='longitude')[0])
-        else:
-            y_step = y_step if y_step else obj.metadata['Y_STEP']
-            x_step = x_step if x_step else obj.metadata['X_STEP']
 
-            if (y_step != obj.metadata['Y_STEP']) or (x_step != obj.metadata['X_STEP']):
-                print('-' * 50)
-                raise ValueError('Files have different steps size for Geocoding')
+def create_timeseries_output(ts_data, date_list, mask, delta, bperp, latitude, longitude,
+                             metadata, output_path, file_type='timeseries'):
+    """Create and write a timeseries output file.
 
-        slicedata = obj.data[0]
+    Args:
+        ts_data: Timeseries data array
+        date_list: List of dates
+        mask: Mask array
+        delta: Date difference array
+        bperp: Perpendicular baseline array
+        latitude: Latitude array
+        longitude: Longitude array
+        metadata: Metadata dictionary
+        output_path: Output file path
+        file_type: Type of timeseries ('timeseries' or 'mask')
+    """
+    # Prepare metadata
+    output_metadata = metadata.copy()
+    output_metadata['WIDTH'], output_metadata['LENGTH'] = mask.shape[1], mask.shape[0]
+    output_metadata['xmax'], output_metadata['ymax'] = mask.shape[1], mask.shape[0]
+    output_metadata['FILE_PATH'] = output_path
+    output_metadata['FILE_TYPE'] = 'timeseries'
+    output_metadata['PROCESSOR'] = 'mintpy'
+    output_metadata['PROJECT_NAME'] = os.path.basename(os.path.dirname(output_path))
+    output_metadata['REF_DATE'] = str(date_list[0])
 
-    # ------------------- for REFERENCING -------------------- #
-        # Compute the second mask based on the temporal average
-        stack = np.nanmean(obj.data, axis=0)
-        mask2 = np.multiply(~np.isnan(stack), stack != 0.)
+    mask_dtype = 'bool' if file_type == 'timeseries' else 'uint8'
+    ts_dict = {
+        'timeseries': ts_data.astype('float32'),
+        'date': date_list.astype('S8'),
+        'mask': mask.astype(mask_dtype),
+        'delta': delta.astype('uint8'),
+        'bperp': bperp.astype('float32'),
+        'latitude': latitude.astype('float32'),
+        'longitude': longitude.astype('float32')
+    }
 
-        # TODO removed temporalCOherence for masking, using actual mask in the file
-        # combined_mask = np.logical_and(mask > inps.mask_vmin, mask2)
-        combined_mask = np.logical_and(mask > inps.mask_vmin, mask2)
+    writefile.write(ts_dict, output_path, metadata=output_metadata)
 
-        # Apply the combined mask to the data
-        masked_data = np.where(combined_mask, slicedata, np.nan)
-        extracted_data = extract_window(masked_data, obj.metadata, inps.ref_lalo[0], inps.ref_lalo[1], inps.window_size)
 
-        window[obj] = {}
-        window[obj]['data'] = extracted_data
-        obj.los_inc_angle = los_inc_angle
-        obj.los_az_angle = los_az_angle
-        obj.mask = mask
+def create_hdfeos_output(ts_data, date_list, mask, delta, bperp, latitude, longitude,
+                         metadata, output_path, length, width):
+    """Create and write an HDFEOS output file with proper structure.
 
-# ------------------- REFERENCING -------------------- #
+    Args:
+        ts_data: Timeseries data array (n_time, length, width)
+        date_list: List of dates
+        mask: Mask array (length, width)
+        delta: Date difference array
+        bperp: Perpendicular baseline array
+        latitude: Latitude array (length,)
+        longitude: Longitude array (width,)
+        metadata: Metadata dictionary
+        output_path: Output file path (should end with .he5)
+        length: Number of rows
+        width: Number of columns
+    """
+    # Ensure output path has .he5 extension
+    if not output_path.endswith('.he5'):
+        output_path = output_path.replace('.h5', '.he5')
 
-    # Extract keys from the window dictionary
-    ts1, ts2 = window.keys()
+    if latitude.ndim == 1:
+        lat_grid = np.tile(latitude[:, np.newaxis], (1, width))
+    else:
+        lat_grid = latitude
+    if longitude.ndim == 1:
+        lon_grid = np.tile(longitude, (length, 1))
+    else:
+        lon_grid = longitude
 
+    # Structure data dictionary with HDFEOS paths
+    hdfeos_dict = {
+        # Geometry datasets (using NaN placeholders where None is requested)
+        'HDFEOS/GRIDS/timeseries/geometry/azimuthAngle': np.full((length, width), np.nan, dtype='float32'),
+        'HDFEOS/GRIDS/timeseries/geometry/height': np.full((length, width), np.nan, dtype='float32'),
+        'HDFEOS/GRIDS/timeseries/geometry/incidenceAngle': np.full((length, width), np.nan, dtype='float32'),
+        'HDFEOS/GRIDS/timeseries/geometry/latitude': lat_grid.astype('float32'),
+        'HDFEOS/GRIDS/timeseries/geometry/longitude': lon_grid.astype('float32'),
+        'HDFEOS/GRIDS/timeseries/geometry/shadowMask': np.zeros((length, width), dtype='uint8'),
+        'HDFEOS/GRIDS/timeseries/geometry/slantRangeDistance': np.full((length, width), np.nan, dtype='float32'),
+        # Observation datasets
+        'HDFEOS/GRIDS/timeseries/observation/bperp': bperp.astype('float32'),
+        'HDFEOS/GRIDS/timeseries/observation/date': date_list.astype('S8'),
+        'HDFEOS/GRIDS/timeseries/observation/displacement': ts_data.astype('float32'),
+        'HDFEOS/GRIDS/timeseries/observation/delta': delta.astype('uint8'),
+        # Quality datasets (using NaN placeholders where None is requested)
+        'HDFEOS/GRIDS/timeseries/quality/avgSpatialCoherence': np.full((length, width), np.nan, dtype='float32'),
+        'HDFEOS/GRIDS/timeseries/quality/mask': mask.astype('bool'),
+        'HDFEOS/GRIDS/timeseries/quality/temporalCoherence': np.full((length, width), np.nan, dtype='float32'),
+    }
+
+    # Update metadata for HDFEOS format
+    hdfeos_metadata = metadata.copy()
+    hdfeos_metadata['FILE_TYPE'] = 'HDFEOS'
+    hdfeos_metadata['FILE_PATH'] = output_path
+    hdfeos_metadata['WIDTH'] = str(width)
+    hdfeos_metadata['LENGTH'] = str(length)
+    hdfeos_metadata['FILE_TYPE'] = 'HDFEOS'
+    hdfeos_metadata['PROCESSOR'] = 'mintpy'
+    hdfeos_metadata['PROJECT_NAME'] = os.path.basename(os.path.dirname(output_path))
+    hdfeos_metadata['REF_DATE'] = str(date_list[0])
+
+    # Write using writefile.write
+    writefile.write(hdfeos_dict, out_file=output_path, metadata=hdfeos_metadata)
+    print(f'HDFEOS file created: {output_path}')
+
+
+def process_reference_points(ts1, ts2, inps):
+    """Process reference points for both timeseries.
+
+    Args:
+        ts1: First timeseries object
+        ts2: Second timeseries object
+        window: Dictionary containing window data
+        inps: Parsed command line arguments
+    """
     # Find reference points from the subsets
-    refs_lalo = find_reference_points_from_subsets(window[ts1]['data'], window[ts2]['data'], inps.window_size)
+    refs_lalo = find_reference_points_from_subsets(ts1.window, ts2.window, inps.window_size)
 
     # List of timeseries objects and their corresponding reference coordinates
     timeseries_list = [(ts1, refs_lalo[0]), (ts2, refs_lalo[1])]
@@ -238,102 +455,56 @@ def main(iargs=None, namespace=None):
         modified_data = np.empty_like(ts.data)
 
         # Process each slice in the timeseries data
-        for i, slice in enumerate(ts.data):
+        total_slices = len(ts.data)
+        print(f'Reference point processing for {ts.metadata["FILE_PATH"]}')
+        for i, slice_data in enumerate(ts.data):
+            # Print progress
+            print(f'\rProcessing slice {i+1}/{total_slices}', end='', flush=True)
+
             # Extract the reference value for the current slice
-            ref_value = slice[ts.metadata['REF_Y'], ts.metadata['REF_X']]
+            ref_value = slice_data[ts.metadata['REF_Y'], ts.metadata['REF_X']]
 
             if np.isnan(ref_value):
                 raise ValueError(f'Reference value at slice {i} is nan')
 
             # Subtract the reference value from the entire slice
-            modified_data[i] = slice - ref_value
+            modified_data[i] = slice_data - ref_value
 
+        print('')
         # Update the timeseries data with the modified data
         ts.data = modified_data
 
-# ----------------------------------------------------- #
+    return ts1, ts2
 
-# ------------------- DATE MATCHING -------------------- #
-    ## Find index for non-matching periods
-    # index1, index2 = match_dates(ts1.dateList, ts2.dateList)
-    index1, index2 = match_and_get_dropped_indices(list(map(lambda x: int(x), ts1.dateList)), list(map(lambda x: int(x), ts2.dateList)))
 
-    ##Remove non-matching dates
-    for i, ts in zip([index1, index2], [ts1, ts2]):
-        ts.dateList = np.delete(ts.dateList, i)
-        mask = np.ones(ts.data.shape[0], dtype=bool)
-        mask[i] = False
-        ts.data = ts.data[mask]
+def compute_horzvert_timeseries(ts1, ts2, date_list, inps):
+    """Compute horizontal and vertical timeseries from ascending/descending data.
 
-    print('-' * 50)
-    print(f'New date list length: {len(ts1.dateList)}\n')
+    Args:
+        ts1: First timeseries object
+        ts2: Second timeseries object
+        inps: Parsed command line arguments
 
-# ------------------- DATE FILTERING -------------------- #
-
-    # Calculate differences and find indexes where the absolute difference is less than 30
-    diff = [(datetime.strptime(x, "%Y%m%d").date() - datetime.strptime(y, "%Y%m%d").date()).days for x, y in zip(ts1.dateList, ts2.dateList)]
-
-    if True:
-        dynamic_threshold = min(np.abs(np.array(diff)))
-
-        print('-' * 50)
-        print(f"Minimum threshold value: {dynamic_threshold}\n")
-    else:
-        # Find indexes where the absolute difference is less than 30
-        valid_indexes = [i for i, dif in enumerate(diff) if abs(dif) < 30]
-
-        # Convert differences to absolute values
-        differences = list(map(lambda x: abs(diff[x]), valid_indexes))
-
-        data_skewness = skew(differences)
-
-        # Dynamically determine the percentile threshold
-        if data_skewness > 1:  # Highly skewed data
-            percentile_threshold = 90  # Use a stricter threshold
-        elif data_skewness < -1:  # Left-skewed data (unlikely for absolute differences)
-            percentile_threshold = 99
-        else:  # Symmetric or moderately skewed data
-            percentile_threshold = 95
-
-        dynamic_threshold = np.percentile(differences, percentile_threshold)
-
-        print('-' * 50)
-        print(f"Dynamic Threshold for date difference (value at {percentile_threshold}th percentile): {dynamic_threshold}\n")
-
-    # Find indexes where the absolute difference is less than 30
-    valid_indexes = [i for i, dif in enumerate(diff) if abs(dif) <= dynamic_threshold]
-
-    print('-' * 50)
-    print(f'New date list length after drop: {len(valid_indexes)}\n')
-
-    ts1.data = ts1.data[valid_indexes, :]
-    ts2.data = ts2.data[valid_indexes, :]
-    bperp = ts1.bperp[valid_indexes]
-
-    delta = np.array([(datetime.strptime(y, "%Y%m%d").date() - datetime.strptime(x, "%Y%m%d").date()).days for x, y in zip(ts1.dateList[valid_indexes], ts2.dateList[valid_indexes])])
-    ts.dateList = ts1.dateList[valid_indexes]
-    ts1.metadata['REF_DATELIST_FILE'] = ts1.metadata['FILE_PATH']
-
-# ----------------------------------------------------- #
-
-# ------------------- VERTICAL -------------------- #
-    ## 1. calculate the overlapping area in lat/lon
+    Returns:
+        tuple: (vertical_timeseries, horizontal_timeseries, mask, latitude, longitude)
+    """
+    # Calculate the overlapping area in lat/lon
     atr_list = [ts1.metadata, ts2.metadata]
     S, N, W, E = get_overlap_lalo(atr_list)
     lat_step = float(atr_list[0]['Y_STEP'])
     lon_step = float(atr_list[0]['X_STEP'])
     length = int(round((S - N) / lat_step))
-    width  = int(round((E - W) / lon_step))
+    width = int(round((E - W) / lon_step))
 
-    latitude =  np.linspace(N, S, length)
+    latitude = np.linspace(N, S, length)
     longitude = np.linspace(W, E, width)
 
     los_inc_angle = np.zeros((2, length, width), dtype=np.float32)
-    los_az_angle  = np.zeros((2, length, width), dtype=np.float32)
-    mask  = np.zeros((2, length, width), dtype=np.float32)
-    data = np.zeros((2, len(ts.dateList), length, width), dtype=np.float32)
+    los_az_angle = np.zeros((2, length, width), dtype=np.float32)
+    mask = np.zeros((2, length, width), dtype=np.float32)
+    data = np.zeros((2, len(date_list), length, width), dtype=np.float32)
 
-    # Extact overlapping
+    # Extract overlapping area
     for i, ts in enumerate([ts1, ts2]):
         y0, x0 = ut.coordinate(ts.metadata).lalo2yx(N, W)
         los_inc_angle[i] = ts.los_inc_angle[y0:y0 + length, x0:x0 + width]
@@ -343,6 +514,7 @@ def main(iargs=None, namespace=None):
 
     mask = np.logical_and(mask[0], mask[1])
 
+    # Compute horizontal and vertical components
     vertical_list = []
     horizontal_list = []
     for i in range(data.shape[1]):
@@ -353,64 +525,102 @@ def main(iargs=None, namespace=None):
     vertical_timeseries = np.stack(vertical_list, axis=0)
     horizontal_timeseries = np.stack(horizontal_list, axis=0)
 
-# ------------------- MAKE FILE -------------------- #
-
-    vts = timeseries()
-    vts.dateList = ts1.dateList
-    vts.metadata = ts1.metadata
-    vts.metadata['WIDTH'], vts.metadata['LENGTH'] = width, length
-    vts.metadata['xmax'], vts.metadata['ymax'] = width, length
-    vts.metadata['FILE_PATH'] = os.path.join(project_base_dir, 'up_timeseries.h5')
-    vts.metadata['FILE_TYPE'] = 'timeseries'
-    vts.metadata['PROCESSOR'] = 'mintpy'
-    vts.metadata['maskFile'] = vts.metadata['FILE_PATH']
-    vts.metadata['PROJECT_NAME'] = os.path.basename(project_base_dir)
-    vts.metadata['REF_DATE'] = str(ts1.dateList[0])
-
-    ts_dict = {
-        'timeseries': vertical_timeseries.astype('float32'),
-        'date': ts.dateList.astype('S8'),
-        'mask': mask.astype('bool'),
-        'delta': delta.astype('float32'),
-        'bperp': bperp,
-        'latitude' : latitude,
-        'longitude' : longitude
-    }
+    return vertical_timeseries, horizontal_timeseries, mask, latitude, longitude
 
 
-    writefile.write(ts_dict, vts.metadata['FILE_PATH'], metadata = vts.metadata)
+def main(iargs=None, namespace=None):
+    """Main function to generate vertical and horizontal timeseries."""
+    inps = create_parser(iargs, namespace)
+    os.chdir(SCRATCHDIR)
 
-    hts = timeseries()
-    hts.dateList = ts1.dateList
-    hts.metadata = ts1.metadata
-    hts.metadata['WIDTH'], hts.metadata['LENGTH'] = width, length
-    hts.metadata['xmax'], hts.metadata['ymax'] = width, length
-    hts.metadata['FILE_PATH'] = os.path.join(project_base_dir, 'hz_timeseries.h5')
-    hts.metadata['FILE_TYPE'] = 'timeseries'
-    hts.metadata['PROCESSOR'] = 'mintpy'
-    hts.metadata['maskFile'] = hts.metadata['FILE_PATH']
-    hts.metadata['PROJECT_NAME'] = os.path.basename(project_base_dir)
-    hts.metadata['REF_DATE'] = str(ts1.dateList[0])
+    # Load and process both timeseries files
+    project_base_dir = None
 
-    ts_dict = {
-        'timeseries': horizontal_timeseries.astype('float32'),
-        'date': ts.dateList.astype('S8'),
-        'mask': mask.astype('uint8'),
-        'delta': delta.astype('float32'),
-        'bperp': bperp,
-        'latitude' : latitude,
-        'longitude' : longitude
-    }
+    y_step = None
+    x_step = None
 
-    writefile.write(ts_dict, hts.metadata['FILE_PATH'], metadata = hts.metadata)
+    timseries = []
 
+    for idx, f in enumerate(inps.file):
+        geometry_file_input = inps.geom_file[idx] if inps.geom_file and idx < len(inps.geom_file) else None
+        obj, los_inc_angle, los_az_angle, mask, project_base_dir, geometry_file = load_timeseries_file(f, geometry_file_input, inps)
+
+        # Check step consistency from previous iteration
+        if 'Y_STEP' in obj.metadata:
+            if y_step is not None and x_step is not None:
+                if (y_step != obj.metadata['Y_STEP']) or (x_step != obj.metadata['X_STEP']):
+                    print('-' * 50)
+                    raise ValueError('Files have different steps size for Geocoding')
+
+        # Geocode if needed
+        obj, los_inc_angle, los_az_angle, mask, y_step, x_step = geocode_timeseries(obj, los_inc_angle, los_az_angle, mask, geometry_file, inps)
+
+        # Prepare data for reference point selection
+        slicedata = obj.data[0]
+        stack = np.nanmean(obj.data, axis=0)
+        mask2 = np.multiply(~np.isnan(stack), stack != 0.)
+        combined_mask = np.logical_and(mask > inps.mask_vmin, mask2)
+        masked_data = np.where(combined_mask, slicedata, np.nan)
+        extracted_data = extract_window(masked_data, obj.metadata, inps.ref_lalo[0], inps.ref_lalo[1], inps.window_size)
+
+        # window[obj.metadata['FILE_PATH']] = {'obj': obj, 'data': extracted_data}
+        obj.window = extracted_data
+        obj.los_inc_angle = los_inc_angle
+        obj.los_az_angle = los_az_angle
+        obj.mask = mask
+
+        timseries.append(obj)
+
+    # Process reference points
+    ts1, ts2 = process_reference_points(*timseries, inps)
+
+    # Match and filter dates
+    ts1, ts2, delta, bperp, date_list = match_and_filter_dates(ts1, ts2, inps.date_thresh_method)
+    ts1.metadata['REF_DATELIST_FILE'] = ts1.metadata['FILE_PATH']
+
+    # Compute horizontal and vertical timeseries
+    vertical_timeseries, horizontal_timeseries, mask, latitude, longitude = compute_horzvert_timeseries(ts1, ts2, date_list, inps)
+
+    # Create output files
+    vertical_path = os.path.join(project_base_dir, 'up_timeseries.h5')
+    horizontal_path = os.path.join(project_base_dir, 'hz_timeseries.h5')
+    mask_path = os.path.join(project_base_dir, 'maskTempCoh.h5')
+
+    if inps.timeseries:
+        create_timeseries_output(vertical_timeseries, date_list, mask, delta, bperp, latitude, longitude, ts1.metadata, vertical_path, 'timeseries')
+
+        create_timeseries_output(horizontal_timeseries, date_list, mask, delta, bperp, latitude, longitude, ts1.metadata, horizontal_path, 'timeseries')
+
+    create_hdfeos_output(vertical_timeseries, date_list, mask, delta, bperp, latitude, longitude,
+                         ts1.metadata, vertical_path.replace('.h5', '.he5'), mask.shape[0], mask.shape[1])
+
+    create_hdfeos_output(horizontal_timeseries, date_list, mask, delta, bperp, latitude, longitude,
+                         ts1.metadata, horizontal_path.replace('.h5', '.he5'), mask.shape[0], mask.shape[1])
+
+    # Write mask file
     mask_meta = {
         'FILE_TYPE': 'mask',
         'LENGTH': str(mask.shape[0]),
         'WIDTH': str(mask.shape[1])
     }
 
-    writefile.write({'mask': mask.astype('bool')}, out_file=os.path.join(project_base_dir, 'maskTempCoh.h5'), metadata=mask_meta)
+    os.makedirs(os.path.dirname(mask_path), exist_ok=True)
+    if not os.path.exists(mask_path) or inps.overwrite:
+        writefile.write({'mask': mask.astype('bool')}, out_file=mask_path, metadata=mask_meta)
+
+    for path in [os.path.join(project_base_dir, 'log') if project_base_dir else None, os.path.join(os.getenv('SCRATCHDIR'), 'log') if os.getenv('SCRATCHDIR') else None]:
+        if not path:
+            continue
+        # Ensure parent directory exists so logging can create the file
+        parent = os.path.dirname(path)
+        if parent and not os.path.exists(parent):
+            os.makedirs(parent, exist_ok=True)
+        logging.basicConfig(filename=path, level=logging.INFO, format='%(asctime)s - %(message)s', datefmt='%Y-%m-%d')
+
+    # Log the command-line command
+    cmd_command = ' '.join(sys.argv)
+    logging.info(cmd_command)
+
 
 if __name__ == "__main__":
     main()
