@@ -405,11 +405,12 @@ def create_hdfeos_output(ts_data, date_list, mask, delta, bperp, latitude, longi
         'HDFEOS/GRIDS/timeseries/geometry/longitude': lon_grid.astype('float32'),
         'HDFEOS/GRIDS/timeseries/geometry/shadowMask': np.zeros((length, width), dtype='uint8'),
         'HDFEOS/GRIDS/timeseries/geometry/slantRangeDistance': np.full((length, width), np.nan, dtype='float32'),
-                # Observation datasets
-        'HDFEOS/GRIDS/timeseries/observation/bperp': bperp.astype('float32'),
+        'HDFEOS/GRIDS/timeseries/geometry/bperp': bperp.astype('float32'),
+        # Observation datasets
         'HDFEOS/GRIDS/timeseries/observation/date': date_list.astype('S8'),
         'HDFEOS/GRIDS/timeseries/observation/displacement': ts_data.astype('float32'),
-                # Quality datasets (using NaN placeholders where None is requested)
+        'HDFEOS/GRIDS/timeseries/observation/delta': delta.astype('uint8'),
+        # Quality datasets (using NaN placeholders where None is requested)
         'HDFEOS/GRIDS/timeseries/quality/avgSpatialCoherence': np.full((length, width), np.nan, dtype='float32'),
         'HDFEOS/GRIDS/timeseries/quality/mask': mask.astype('bool'),
         'HDFEOS/GRIDS/timeseries/quality/temporalCoherence': np.full((length, width), np.nan, dtype='float32'),
@@ -582,15 +583,12 @@ def main(iargs=None, namespace=None):
     horizontal_path = os.path.join(project_base_dir, 'hz_timeseries.h5')
     mask_path = os.path.join(project_base_dir, 'maskTempCoh.h5')
 
-    create_timeseries_output(
-        vertical_timeseries, date_list, mask, delta, bperp, latitude, longitude,
-        ts1.metadata, vertical_path, 'timeseries'
-    )
+    create_timeseries_output(vertical_timeseries, date_list, mask, delta, bperp, latitude, longitude, ts1.metadata, vertical_path, 'timeseries')
 
-    create_timeseries_output(
-        horizontal_timeseries, date_list, mask, delta, bperp, latitude, longitude,
-        ts1.metadata, horizontal_path, 'timeseries'
-    )
+    create_timeseries_output(horizontal_timeseries, date_list, mask, delta, bperp, latitude, longitude, ts1.metadata, horizontal_path, 'timeseries')
+
+    create_hdfeos_output(vertical_timeseries, date_list, mask, delta, bperp, latitude, longitude,
+                         ts1.metadata, vertical_path.replace('.h5', '.he5'), mask.shape[0], mask.shape[1])
 
     # Write mask file
     mask_meta = {
