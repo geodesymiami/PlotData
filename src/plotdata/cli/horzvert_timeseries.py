@@ -2,6 +2,7 @@
 
 import os
 import sys
+import logging
 import argparse
 import numpy as np
 from typing import Any
@@ -51,6 +52,7 @@ def create_parser(iargs=None, namespace=None):
     parser.add_argument('--window-size', dest='window_size', type=int, default=3, help='window size (square side in number of pixels) for reference point look up (default: %(default)s).')
     parser.add_argument('--date-filtering', dest='date_thresh_method', type=str, default='min', choices=['min', 'percentile'], help='Method for date difference threshold: "min" uses minimum difference, "percentile" uses percentile-based threshold (default: %(default)s).')
     parser.add_argument('-ow', '--overwrite', dest='overwrite', action='store_true', help='Overwrite all previously generated files')
+    parser.add_argument('-ts', '--timeseries', dest='timeseries', action='store_true', help='Output timeseries file in addition to HDFEOS format')
 
     inps = parser.parse_args(iargs, namespace)
 
@@ -402,11 +404,12 @@ def create_hdfeos_output(ts_data, date_list, mask, delta, bperp, latitude, longi
         'HDFEOS/GRIDS/timeseries/geometry/longitude': lon_grid.astype('float32'),
         'HDFEOS/GRIDS/timeseries/geometry/shadowMask': np.zeros((length, width), dtype='uint8'),
         'HDFEOS/GRIDS/timeseries/geometry/slantRangeDistance': np.full((length, width), np.nan, dtype='float32'),
-                # Observation datasets
+        # Observation datasets
         'HDFEOS/GRIDS/timeseries/observation/bperp': bperp.astype('float32'),
         'HDFEOS/GRIDS/timeseries/observation/date': date_list.astype('S8'),
         'HDFEOS/GRIDS/timeseries/observation/displacement': ts_data.astype('float32'),
-                # Quality datasets (using NaN placeholders where None is requested)
+        'HDFEOS/GRIDS/timeseries/observation/delta': delta.astype('uint8'),
+        # Quality datasets (using NaN placeholders where None is requested)
         'HDFEOS/GRIDS/timeseries/quality/avgSpatialCoherence': np.full((length, width), np.nan, dtype='float32'),
         'HDFEOS/GRIDS/timeseries/quality/mask': mask.astype('bool'),
         'HDFEOS/GRIDS/timeseries/quality/temporalCoherence': np.full((length, width), np.nan, dtype='float32'),
@@ -418,6 +421,10 @@ def create_hdfeos_output(ts_data, date_list, mask, delta, bperp, latitude, longi
     hdfeos_metadata['FILE_PATH'] = output_path
     hdfeos_metadata['WIDTH'] = str(width)
     hdfeos_metadata['LENGTH'] = str(length)
+    hdfeos_metadata['FILE_TYPE'] = 'HDFEOS'
+    hdfeos_metadata['PROCESSOR'] = 'mintpy'
+    hdfeos_metadata['PROJECT_NAME'] = os.path.basename(os.path.dirname(output_path))
+    hdfeos_metadata['REF_DATE'] = str(date_list[0])
 
     # Write using writefile.write
     writefile.write(hdfeos_dict, out_file=output_path, metadata=hdfeos_metadata)
@@ -579,15 +586,16 @@ def main(iargs=None, namespace=None):
     horizontal_path = os.path.join(project_base_dir, 'hz_timeseries.h5')
     mask_path = os.path.join(project_base_dir, 'maskTempCoh.h5')
 
-    create_timeseries_output(
-        vertical_timeseries, date_list, mask, delta, bperp, latitude, longitude,
-        ts1.metadata, vertical_path, 'timeseries'
-    )
+    if inps.timeseries:
+        create_timeseries_output(vertical_timeseries, date_list, mask, delta, bperp, latitude, longitude, ts1.metadata, vertical_path, 'timeseries')
 
-    create_timeseries_output(
-        horizontal_timeseries, date_list, mask, delta, bperp, latitude, longitude,
-        ts1.metadata, horizontal_path, 'timeseries'
-    )
+        create_timeseries_output(horizontal_timeseries, date_list, mask, delta, bperp, latitude, longitude, ts1.metadata, horizontal_path, 'timeseries')
+
+    create_hdfeos_output(vertical_timeseries, date_list, mask, delta, bperp, latitude, longitude,
+                         ts1.metadata, vertical_path.replace('.h5', '.he5'), mask.shape[0], mask.shape[1])
+
+    create_hdfeos_output(horizontal_timeseries, date_list, mask, delta, bperp, latitude, longitude,
+                         ts1.metadata, horizontal_path.replace('.h5', '.he5'), mask.shape[0], mask.shape[1])
 
     # Write mask file
     mask_meta = {
@@ -599,6 +607,20 @@ def main(iargs=None, namespace=None):
     os.makedirs(os.path.dirname(mask_path), exist_ok=True)
     if not os.path.exists(mask_path) or inps.overwrite:
         writefile.write({'mask': mask.astype('bool')}, out_file=mask_path, metadata=mask_meta)
+
+    for path in [os.path.join(project_base_dir, 'log') if project_base_dir else None, os.path.join(os.getenv('SCRATCHDIR'), 'log') if os.getenv('SCRATCHDIR') else None]:
+        if not path:
+            continue
+        # Ensure parent directory exists so logging can create the file
+        parent = os.path.dirname(path)
+        if parent and not os.path.exists(parent):
+            os.makedirs(parent, exist_ok=True)
+        logging.basicConfig(filename=path, level=logging.INFO, format='%(asctime)s - %(message)s', datefmt='%Y-%m-%d')
+
+    # Log the command-line command
+    cmd_command = ' '.join(sys.argv)
+    logging.info(cmd_command)
+
 
 if __name__ == "__main__":
     main()
