@@ -317,10 +317,7 @@ def match_and_filter_dates(ts1, ts2, thresh_method='min'):
     date_list = ts1.dateList[valid_indexes]
 
     # Calculate delta (date differences for valid indexes)
-    delta = np.array([
-        (datetime.strptime(y, "%Y%m%d").date() - datetime.strptime(x, "%Y%m%d").date()).days
-        for x, y in zip(ts1.dateList[valid_indexes], ts2.dateList[valid_indexes])
-    ])
+    delta = np.array([(datetime.strptime(y, "%Y%m%d").date() - datetime.strptime(x, "%Y%m%d").date()).days for x, y in zip(ts1.dateList[valid_indexes], ts2.dateList[valid_indexes])])
 
     return ts1, ts2, delta, bperp, date_list
 
