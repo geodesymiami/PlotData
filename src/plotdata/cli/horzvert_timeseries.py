@@ -10,9 +10,10 @@ from scipy.stats import skew
 from datetime import datetime
 from types import SimpleNamespace
 from mintpy.objects.resample import resample
-from scipy.optimize import linear_sum_assignment
-from mintpy.utils import readfile, utils as ut, writefile
 from mintpy.objects import timeseries, HDFEOS
+from scipy.optimize import linear_sum_assignment
+from mintpy.save_hdfeos5 import get_output_filename
+from mintpy.utils import readfile, utils as ut, writefile
 from mintpy.asc_desc2horz_vert import asc_desc2horz_vert, get_overlap_lalo
 from plotdata.helper_functions import (
     get_file_names, prepend_scratchdir_if_needed, extract_window,
@@ -588,14 +589,14 @@ def main(iargs=None, namespace=None):
     ts1.metadata['ORBIT_DIRECTION_SECOND'] = ts2.metadata['ORBIT_DIRECTION']
 
     # Create output files
-    vertical_path = os.path.join(project_base_dir, 'vert_timeseries.h5')
-    horizontal_path = os.path.join(project_base_dir, 'horz_timeseries.h5')
+    vertical_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, suffix='vert'))
+    horizontal_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, suffix='horz'))
     mask_path = os.path.join(project_base_dir, 'maskTempCoh.h5')
 
     if inps.timeseries:
-        create_timeseries_output(vertical_timeseries, date_list, mask, delta, bperp, latitude, longitude, ts1.metadata, vertical_path, 'timeseries')
+        create_timeseries_output(vertical_timeseries, date_list, mask, delta, bperp, latitude, longitude, ts1.metadata, vertical_path.replace('.he5', '.h5'), 'timeseries')
 
-        create_timeseries_output(horizontal_timeseries, date_list, mask, delta, bperp, latitude, longitude, ts1.metadata, horizontal_path, 'timeseries')
+        create_timeseries_output(horizontal_timeseries, date_list, mask, delta, bperp, latitude, longitude, ts1.metadata, horizontal_path.replace('.he5', '.h5'), 'timeseries')
 
     create_hdfeos_output(vertical_timeseries, date_list, mask, delta, bperp, latitude, longitude,
                          ts1.metadata, vertical_path.replace('.h5', '.he5'), mask.shape[0], mask.shape[1])
