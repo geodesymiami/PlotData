@@ -622,8 +622,9 @@ def main(iargs=None, namespace=None):
             os.makedirs(parent, exist_ok=True)
         logging.basicConfig(filename=path, level=logging.INFO, format='%(asctime)s - %(message)s', datefmt='%Y-%m-%d')
 
-    # Log the command-line command
-    cmd_command = ' '.join(sys.argv)
+    # Log the command-line command, but use only the script name (not full path)
+    cmd_args = [os.path.basename(sys.argv[0])] + sys.argv[1:]
+    cmd_command = ' '.join(cmd_args)
     logging.info(cmd_command)
 
 
