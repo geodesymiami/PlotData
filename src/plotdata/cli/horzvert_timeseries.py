@@ -90,14 +90,15 @@ def match_dates(a, b, delta):
         delta = 12
 
     print("-"*50)
-    print(f"Matching dates with delta={delta} days\n")
+    print(f"Matching dates starting with delta={delta} days\n")
 
     a_vals = np.array([to_date(x) for x in a])
     b_vals = np.array([to_date(x) for x in b])
 
     all_pairs = []
+    shift = 0
 
-    for shift in range(delta + 1):
+    while len(all_pairs) == 0 or shift <= delta:
         date2 = a_vals + timedelta(days=shift)
         b_index = {d: idx for idx, d in enumerate(b_vals)}
         # build pairs as date tuples (a_date, b_date)
@@ -113,6 +114,7 @@ def match_dates(a, b, delta):
             all_pairs.extend(pairs)
 
         print(f"shift={shift} pairs found={len(pairs)} total unique={len(all_pairs)}")
+        shift += 1
 
     return np.array(all_pairs)
 
