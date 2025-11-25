@@ -7,17 +7,16 @@ import argparse
 import numpy as np
 from typing import Any
 from scipy.stats import skew
-from datetime import datetime
 from types import SimpleNamespace
+from datetime import datetime, timedelta
 from mintpy.objects.resample import resample
 from mintpy.objects import timeseries, HDFEOS
-from scipy.optimize import linear_sum_assignment
 from mintpy.save_hdfeos5 import get_output_filename
 from mintpy.utils import readfile, utils as ut, writefile
 from mintpy.asc_desc2horz_vert import asc_desc2horz_vert, get_overlap_lalo
 from plotdata.helper_functions import (
     get_file_names, prepend_scratchdir_if_needed, extract_window,
-    find_reference_points_from_subsets, create_geometry_file, find_longitude_degree
+    find_reference_points_from_subsets, create_geometry_file, find_longitude_degree, to_date
 )
 
 
@@ -25,6 +24,8 @@ SCRATCHDIR = os.getenv('SCRATCHDIR')
 EXAMPLE = """
 Example usage:
     horzvert_timeseries.py ChilesSenAT120/mintpy ChilesSenDT142/mintpy --ref-lalo 0.84969 -77.86430
+
+    horzvert_timeseries.py hvGalapagosSenA106/miaplpy_SN_201803_201805/network_single_reference/S1_IW3_106_20180302_XXXXXXXX_S0087W09119_S0086W09112_S0080W09113_S0081W09120_SingDS.he5 hvGalapagosSenD128/miaplpy_SN_201803_201806/network_single_reference/S1_IW1_128_20180303_XXXXXXXX_S0081W09112_S0080W09119_S0086W09120_S0087W09113_SingDS.he5 --ref-lalo -0.81 -91.190
 """
 
 
@@ -54,6 +55,7 @@ def create_parser(iargs=None, namespace=None):
     parser.add_argument('--date-filtering', dest='date_thresh_method', type=str, default='min', choices=['min', 'percentile'], help='Method for date difference threshold: "min" uses minimum difference, "percentile" uses percentile-based threshold (default: %(default)s).')
     parser.add_argument('-ow', '--overwrite', dest='overwrite', action='store_true', help='Overwrite all previously generated files')
     parser.add_argument('-ts', '--timeseries', dest='timeseries', action='store_true', help='Output timeseries file in addition to HDFEOS format')
+    parser.add_argument('--delta', dest='delta', type=int, default=0, help='Maximum allowable date difference in days for matching dates (default: %(default)s).')
 
     inps = parser.parse_args(iargs, namespace)
 
@@ -82,35 +84,38 @@ def parse_lalo(str_lalo):
     return lalo
 
 
-def match_and_get_dropped_indices(a, b):
-    """Match two date lists and return indices of unmatched dates.
+def match_dates(a, b, delta):
+    if delta > 12:
+        print("Warning: delta greater than 12 days is not supported, setting to 12.\n")
+        delta = 12
 
-    Args:
-        a: First list of dates (as integers)
-        b: Second list of dates (as integers)
+    print("-"*50)
+    print(f"Matching dates with delta={delta} days\n")
 
-    Returns:
-        tuple: (dropped_indices_a, dropped_indices_b)
-    """
-    a = np.array(a)
-    b = np.array(b)
+    a_vals = np.array([to_date(x) for x in a])
+    b_vals = np.array([to_date(x) for x in b])
 
-    # Compute pairwise absolute differences
-    cost = np.abs(a[:, None] - b[None, :])
+    all_pairs = []
 
-    # Find optimal assignment
-    i, j = linear_sum_assignment(cost)
+    for shift in range(delta + 1):
+        date2 = a_vals + timedelta(days=shift)
+        b_index = {d: idx for idx, d in enumerate(b_vals)}
+        # build pairs as date tuples (a_date, b_date)
+        pairs = [(a_vals[i], b_vals[b_index[date2[i]]]) for i in range(len(date2)) if date2[i] in b_index]
 
-    # Handle different lengths: only match the min length
-    n = min(len(a), len(b))
-    matched_i = i[:n]
-    matched_j = j[:n]
+        if pairs:
+            matched_a = np.array([p[0] for p in pairs])
+            matched_b = np.array([p[1] for p in pairs])
 
-    # Compute dropped indices
-    dropped_a = sorted(set(range(len(a))) - set(matched_i))
-    dropped_b = sorted(set(range(len(b))) - set(matched_j))
+            a_vals = a_vals[~np.isin(a_vals, matched_a)]
+            b_vals = b_vals[~np.isin(b_vals, matched_b)]
 
-    return dropped_a, dropped_b
+            all_pairs.extend(pairs)
+
+        print(f"shift={shift} pairs found={len(pairs)} total unique={len(all_pairs)}")
+
+    return np.array(all_pairs)
+
 
 
 def load_timeseries_file(file_path, geometry_file_input, inps):
@@ -246,7 +251,7 @@ def geocode_timeseries(obj, los_inc_angle, los_az_angle, mask, geometry_file, in
     return obj, los_inc_angle, los_az_angle, mask, y_step, x_step
 
 
-def match_and_filter_dates(ts1, ts2, thresh_method='min'):
+def match_and_filter_dates(ts1, ts2, inps):
     """Match dates between two timeseries and filter by date difference.
 
     Args:
@@ -258,72 +263,72 @@ def match_and_filter_dates(ts1, ts2, thresh_method='min'):
         tuple: (filtered_ts1, filtered_ts2, delta, bperp, date_list)
     """
     # Match dates and get dropped indices
-    date_list1 = [int(x) for x in ts1.dateList]
-    date_list2 = [int(x) for x in ts2.dateList]
-    index1, index2 = match_and_get_dropped_indices(date_list1, date_list2)
+    pairs = match_dates(ts1.dateList, ts2.dateList, inps.delta)
+    index1 = [i for i, d in enumerate(ts1.dateList) if to_date(d) in pairs[:, 0]]
+    index2 = [i for i, d in enumerate(ts2.dateList) if to_date(d) in pairs[:, 1]]
 
     # Remove non-matching dates
     for i, ts in zip([index1, index2], [ts1, ts2]):
-        ts.dateList = np.delete(ts.dateList, i)
-        mask = np.ones(ts.data.shape[0], dtype=bool)
-        mask[i] = False
-        ts.data = ts.data[mask]
+        ts.dateList = ts.dateList[i]
+        ts.data = ts.data[i]
+        # ts.bperp = ts.bperp[i]
 
     print('-' * 50)
     print(f'New date list length: {len(ts1.dateList)}\n')
 
     # Calculate date differences
-    diff = [(datetime.strptime(x, "%Y%m%d").date() - datetime.strptime(y, "%Y%m%d").date()).days for x, y in zip(ts1.dateList, ts2.dateList)]
+    # diff = [(datetime.strptime(x, "%Y%m%d").date() - datetime.strptime(y, "%Y%m%d").date()).days for x, y in zip(ts1.dateList, ts2.dateList)]
 
+    # TODO not needed
     # Calculate threshold based on selected method
-    if thresh_method == 'min':
-        # Use minimum difference as threshold
-        dynamic_threshold = min(np.abs(np.array(diff)))
-        print('-' * 50)
-        print(f"Minimum threshold value: {dynamic_threshold}\n")
-    elif thresh_method == 'percentile':
-        # Find indexes where the absolute difference is less than 30 (initial filter)
-        valid_indexes = [i for i, dif in enumerate(diff) if abs(dif) < 30]
+    # if inps.thresh_method == 'min':
+    #     # Use minimum difference as threshold
+    #     dynamic_threshold = min(np.abs(np.array(diff)))
+    #     print('-' * 50)
+    #     print(f"Minimum threshold value: {dynamic_threshold}\n")
+    # elif inps.thresh_method == 'percentile':
+    #     # Find indexes where the absolute difference is less than 30 (initial filter)
+    #     valid_indexes = [i for i, dif in enumerate(diff) if abs(dif) < 30]
 
-        # Convert differences to absolute values
-        differences = [abs(diff[i]) for i in valid_indexes]
+    #     # Convert differences to absolute values
+    #     differences = [abs(diff[i]) for i in valid_indexes]
 
-        if differences:
-            data_skewness = skew(differences)
+    #     if differences:
+    #         data_skewness = skew(differences)
 
-            # Dynamically determine the percentile threshold
-            if data_skewness > 1:  # Highly skewed data
-                percentile_threshold = 90  # Use a stricter threshold
-            elif data_skewness < -1:  # Left-skewed data (unlikely for absolute differences)
-                percentile_threshold = 99
-            else:  # Symmetric or moderately skewed data
-                percentile_threshold = 95
+    #         # Dynamically determine the percentile threshold
+    #         if data_skewness > 1:  # Highly skewed data
+    #             percentile_threshold = 90  # Use a stricter threshold
+    #         elif data_skewness < -1:  # Left-skewed data (unlikely for absolute differences)
+    #             percentile_threshold = 99
+    #         else:  # Symmetric or moderately skewed data
+    #             percentile_threshold = 95
 
-            dynamic_threshold = np.percentile(differences, percentile_threshold)
-            print('-' * 50)
-            print(f"Dynamic Threshold for date difference (value at {percentile_threshold}th percentile): {dynamic_threshold}\n")
-        else:
-            # Fallback to minimum if no valid differences found
-            dynamic_threshold = min(np.abs(np.array(diff)))
-            print('-' * 50)
-            print(f"No valid differences found, using minimum threshold: {dynamic_threshold}\n")
+    #         dynamic_threshold = np.percentile(differences, percentile_threshold)
+    #         print('-' * 50)
+    #         print(f"Dynamic Threshold for date difference (value at {percentile_threshold}th percentile): {dynamic_threshold}\n")
+    #     else:
+    #         # Fallback to minimum if no valid differences found
+    #         dynamic_threshold = min(np.abs(np.array(diff)))
+    #         print('-' * 50)
+    #         print(f"No valid differences found, using minimum threshold: {dynamic_threshold}\n")
 
     # Filter by threshold
-    valid_indexes = [i for i, dif in enumerate(diff) if abs(dif) <= dynamic_threshold]
-    print('-' * 50)
-    print(f'New date list length after drop: {len(valid_indexes)}\n')
+    # valid_indexes = [i for i, dif in enumerate(diff) if abs(dif) <= dynamic_threshold]
+    # print('-' * 50)
+    # print(f'New date list length after drop: {len(valid_indexes)}\n')
 
     # Apply filtering
-    ts1.data = ts1.data[valid_indexes, :]
-    ts2.data = ts2.data[valid_indexes, :]
-    bperp = ts1.bperp[valid_indexes]
-    date_list = ts1.dateList[valid_indexes]
+    # ts1.data = ts1.data[valid_indexes, :]
+    # ts2.data = ts2.data[valid_indexes, :]
+    # bperp = ts1.bperp[valid_indexes]
+    # date_list = ts1.dateList[valid_indexes]
+    bperp = ts1.bperp[index1]
+    date_list = ts1.dateList
 
     # Calculate delta (date differences for valid indexes)
-    delta = np.array([
-        (datetime.strptime(y, "%Y%m%d").date() - datetime.strptime(x, "%Y%m%d").date()).days
-        for x, y in zip(ts1.dateList[valid_indexes], ts2.dateList[valid_indexes])
-    ])
+    # delta = np.array([(datetime.strptime(y, "%Y%m%d").date() - datetime.strptime(x, "%Y%m%d").date()).days for x, y in zip(ts1.dateList[valid_indexes], ts2.dateList[valid_indexes])])
+    delta = np.array([(datetime.strptime(y, "%Y%m%d").date() - datetime.strptime(x, "%Y%m%d").date()).days for x, y in zip(ts1.dateList, ts2.dateList)])
 
     return ts1, ts2, delta, bperp, date_list
 
@@ -580,7 +585,7 @@ def main(iargs=None, namespace=None):
     ts1, ts2 = process_reference_points(*timseries, inps)
 
     # Match and filter dates
-    ts1, ts2, delta, bperp, date_list = match_and_filter_dates(ts1, ts2, inps.date_thresh_method)
+    ts1, ts2, delta, bperp, date_list = match_and_filter_dates(ts1, ts2, inps)
     ts1.metadata['REF_DATELIST_FILE'] = ts1.metadata['FILE_PATH']
 
     # Compute horizontal and vertical timeseries
