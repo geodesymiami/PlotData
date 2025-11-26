@@ -9,9 +9,34 @@ from pathlib import Path
 from scipy.ndimage import zoom
 from mintpy.utils import readfile
 from mintpy.objects import HDFEOS
+from datetime import datetime, date
 from mintpy.cli import generate_mask
 from scipy.interpolate import interp1d
 from mintpy.utils import utils, writefile
+
+
+def to_date(x) -> date:
+    # already a date/datetime
+    if isinstance(x, date):
+        return x if not isinstance(x, datetime) else x.date()
+    # numpy.datetime64
+    if isinstance(x, np.datetime64):
+        return datetime.strptime(np.datetime_as_string(x, unit='D'), "%Y-%m-%d").date()
+    # bytes -> decode
+    if isinstance(x, bytes):
+        x = x.decode()
+    s = str(x)
+    # formats we commonly see
+    for fmt in ("%Y%m%d", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except Exception:
+            pass
+    # last resort: if integer-like YYYYMMDD
+    try:
+        return datetime.strptime(s, "%Y%m%d").date()
+    except Exception:
+        raise ValueError(f"Unrecognized date format: {x!r}")
 
 
 def resize_to_match(target, reference, name):
