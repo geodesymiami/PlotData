@@ -283,7 +283,7 @@ class DataExtractor:
             'data': velocity,
             'attributes': atr,
         }
-        # TODO if form geometryRadar flip the dem for descending
+
         if not self.no_dem:
             geometry = {}
             if 'passDirection' in atr:
@@ -340,37 +340,35 @@ class DataExtractor:
 
     def _extract_geometry_data(self, file=None):
         # TODO REVIEW FOR GEOMETRY FILE
-        if file and False:
+        if file and True:
             atr = readfile.read_attribute(file)
             if atr['FILE_TYPE'] == 'geometry':
                 # TODO DITCHED THE GEOMETRY FILE BECAUSE SUCKS
                 elevation = readfile.read(file, datasetName='height')[0]
-                latitude = readfile.read(file, datasetName='latitude')[0]
-                longitude = readfile.read(file, datasetName='longitude')[0]
+                # latitude = readfile.read(file, datasetName='latitude')[0]
+                # longitude = readfile.read(file, datasetName='longitude')[0]
+                latitude, longitude = get_bounding_box(atr)
 
-                # STA ROBA NON SI GUARDA
-                # !!!!!!!!!!!!!!!!!!!!!!!!!
-                relief = pygmt.datasets.load_earth_relief(resolution=self.resolution, region=self.region)
-                elevation = relief.values.astype(float)
-                elevation[elevation < 0] = 0
+                # TODO actually not needed
+                # if atr['passDirection'] == 'DESCENDING' or 'SenD' in file:
+                #     elevation = elevation#np.flip(elevation)
 
-                lon = relief.coords["lon"].values
-                lat = relief.coords["lat"].values
-                # !!!!!!!!!!!!!!!!!!!!!!!!!
-
-                if atr['passDirection'] == 'DESCENDING' or 'SenD' in file:
-                    elevation = np.flip(elevation)
-
-                if np.isnan(elevation).any():
+                if np.isnan(elevation).any() and False: # TODO Let nan be there for now
                     lon, lat, elevation = self._get_pygmt_dem(self.region)
                     atr["region"] = [min(lon), max(lon), min(lat), max(lat)]
 
                 if not isinstance(elevation, np.ndarray):
                     self.elevation = self.elevation.where(self.elevation >= 0, 0)
 
-                atr["longitude"] = lon
-                atr["latitude"] = lat
-                atr["region"] = [min(lon), max(lon), min(lat), max(lat)]
+                dlon = float(atr['X_STEP'])
+                dlat = float(atr['Y_STEP'])
+
+                lon1d = min(longitude) + np.arange(int(atr['WIDTH'])) * dlon
+                lat1d = max(latitude) + np.arange(int(atr['LENGTH'])) * dlat
+
+                atr["longitude"] = lon1d
+                atr["latitude"] = lat1d
+                atr["region"] = [np.nanmin(longitude), np.nanmax(longitude), np.nanmin(latitude), np.nanmax(latitude)]
 
                 dictionary = {
                     'data': elevation,

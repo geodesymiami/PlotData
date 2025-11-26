@@ -10,7 +10,7 @@ import matplotlib.ticker as ticker
 from matplotlib.colors import LightSource
 from matplotlib.patheffects import withStroke
 from plotdata.volcano_functions import get_volcanoes_data
-from plotdata.helper_functions import draw_vectors, calculate_distance, get_bounding_box, parse_polygon
+from plotdata.helper_functions import draw_vectors, calculate_distance, get_bounding_box, parse_polygon, resize_to_match
 
 
 def set_default_section(line, region):
@@ -177,15 +177,35 @@ class VelocityPlot:
         lat = self.attributes['latitude']
         lon = self.attributes['longitude']
 
-        dlon = lon[1] - lon[0]
-        dlat = lat[1] - lat[0]
+        if lon.ndim > 1:
+            dlon = float(self.attributes['X_STEP'])
+            dlat = float(self.attributes['Y_STEP'])
+
+            if hasattr(self, 'lat1d') and hasattr(self, 'lon1d'):
+                lon1d = self.lon1d
+                lat1d = self.lat1d
+            else:
+                lon_min = min(self.region[0:2])
+                lat_max = max(self.region[2:4])
+                ny, nx = self.z.shape
+
+                lon1d = lon_min + np.arange(nx) * dlon
+                lat1d = lat_max + np.arange(ny) * dlat
+
+            lon2d, lat2d = np.meshgrid(lon1d, lat1d)
+        else:
+            dlon = lon[1] - lon[0]
+            dlat = lat[1] - lat[0]
+            lon2d, lat2d = np.meshgrid(lon, lat)
+ 
+        if hasattr(self, 'data') and self.data is not None:
+            resize_to_match(self.z, self.data, 'DEM')
+            resize_to_match(lat2d, self.data, 'latitude')
+            resize_to_match(lon2d, self.data, 'longitude')
 
         # Compute hillshade with real spacing
         ls = LightSource(azdeg=315, altdeg=45)
         hillshade = ls.hillshade(self.z, vert_exag=1.5, dx=dlon, dy=dlat)
-
-        # # Create meshgrid of lon/lat edges for pcolormesh
-        lon2d, lat2d = np.meshgrid(lon, lat)
 
         # Use pcolormesh to plot hillshade using real coordinates
         self.im = self.ax.pcolormesh(lon2d,lat2d,hillshade,cmap='gray',shading='auto',zorder=zorder,alpha=0.5,)
