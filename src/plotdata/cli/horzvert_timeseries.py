@@ -24,8 +24,8 @@ SCRATCHDIR = os.getenv('SCRATCHDIR')
 EXAMPLE = """
 Example usage:
     horzvert_timeseries.py ChilesSenAT120/mintpy ChilesSenDT142/mintpy --ref-lalo 0.84969 -77.86430
-
-    horzvert_timeseries.py hvGalapagosSenA106/miaplpy_SN_201803_201805/network_single_reference/S1_IW3_106_20180302_XXXXXXXX_S0087W09119_S0086W09112_S0080W09113_S0081W09120_SingDS.he5 hvGalapagosSenD128/miaplpy_SN_201803_201806/network_single_reference/S1_IW1_128_20180303_XXXXXXXX_S0081W09112_S0080W09119_S0086W09120_S0087W09113_SingDS.he5 --ref-lalo -0.81 -91.190
+    horzvert_timeseries.py hvGalapagosSenA106/mintpy hvGalapagosSenD128/mintpy --ref-lalo -0.81 -91.190
+    horzvert_timeseries.py hvGalapagosSenA106/miaplpy_SN_201803_201805/network_single_reference hvGalapagosSenD128/miaplpy_SN_201803_201806/network_single_reference --ref-lalo -0.81 -91.190
 """
 
 
@@ -620,15 +620,31 @@ def main(iargs=None, namespace=None):
     if not os.path.exists(mask_path) or inps.overwrite:
         writefile.write({'mask': mask.astype('bool')}, out_file=mask_path, metadata=mask_meta)
 
-    for path in [os.path.join(project_base_dir, 'log') if project_base_dir else None, os.path.join(os.getenv('SCRATCHDIR'), 'log') if os.getenv('SCRATCHDIR') else None]:
-        if not path:
-            continue
-        # Ensure parent directory exists so logging can create the file
-        parent = os.path.dirname(path)
-        if parent and not os.path.exists(parent):
-            os.makedirs(parent, exist_ok=True)
-        logging.basicConfig(filename=path, level=logging.INFO, format='%(asctime)s - %(message)s', datefmt='%Y-%m-%d')
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
 
+    # Prevent multiple handlers if this function runs multiple times
+    if not logger.handlers:
+        paths = [
+            os.path.join(project_base_dir, 'log') if project_base_dir else None,
+            os.path.join(os.getenv('SCRATCHDIR'), 'log') if os.getenv('SCRATCHDIR') else None,
+        ]
+
+        for path in paths:
+            if not path:
+                continue
+
+            # Ensure directory exists
+            parent = os.path.dirname(path)
+            if parent and not os.path.exists(parent):
+                os.makedirs(parent, exist_ok=True)
+
+            handler = logging.FileHandler(path)
+            formatter = logging.Formatter(
+                '%(asctime)s - %(message)s', datefmt='%Y-%m-%d'
+            )
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
     # Log the command-line command, but use only the script name (not full path)
     cmd_args = [os.path.basename(sys.argv[0])] + sys.argv[1:]
     cmd_command = ' '.join(cmd_args)
