@@ -2,15 +2,40 @@
 import os
 import sys
 import math
-import subprocess
 import glob
-from mintpy.utils import readfile
-from mintpy.objects import HDFEOS
-from scipy.interpolate import interp1d
+import subprocess
 import numpy as np
 from pathlib import Path
-from mintpy.utils import utils, writefile
+from mintpy.objects import HDFEOS
+from mintpy.utils import readfile
+from datetime import datetime, date
 from mintpy.cli import generate_mask
+from scipy.interpolate import interp1d
+from mintpy.utils import utils, writefile
+
+
+def to_date(x) -> date:
+    # already a date/datetime
+    if isinstance(x, date):
+        return x if not isinstance(x, datetime) else x.date()
+    # numpy.datetime64
+    if isinstance(x, np.datetime64):
+        return datetime.strptime(np.datetime_as_string(x, unit='D'), "%Y-%m-%d").date()
+    # bytes -> decode
+    if isinstance(x, bytes):
+        x = x.decode()
+    s = str(x)
+    # formats we commonly see
+    for fmt in ("%Y%m%d", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except Exception:
+            pass
+    # last resort: if integer-like YYYYMMDD
+    try:
+        return datetime.strptime(s, "%Y%m%d").date()
+    except Exception:
+        raise ValueError(f"Unrecognized date format: {x!r}")
 
 
 def extract_temporalCoherence(file_path, coords):
