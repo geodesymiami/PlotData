@@ -279,6 +279,42 @@ def populate_dates(inps):
 
     return inps
 
+
+def configure_logging(processors):
+    """Configure logging for the application.
+
+    - Quiet noisy third-party loggers.
+    - Configure the root logger to write to the first processor's log file.
+    - Log the invoking command, but only record the script name (basename),
+      not the full path.
+
+    Parameters
+    ----------
+    processors : list
+        List of ProcessData instances; the first element is used to determine
+        the output directory for the log file.
+    """
+    noisy = ('ipykernel', 'ipykernel.comm', 'jupyter_client', 'zmq', 'tornado', 'asyncio', 'matplotlib')
+    for name in noisy:
+        logging.getLogger(name).setLevel(logging.WARNING)
+
+    # Ensure processors exists and has directory attribute
+    log_dir = None
+    if processors and hasattr(processors[0], 'directory'):
+        log_dir = processors[0].directory
+    else:
+        log_dir = os.getcwd()
+
+    # Configure logging to write to a log file
+    logging.basicConfig(filename=os.path.join(log_dir, 'log'), level=logging.INFO,
+                        format='%(asctime)s - %(message)s', datefmt='%Y-%m-%d')
+
+    # Log the command-line command but only the script basename (not full path)
+    script_name = os.path.basename(sys.argv[0]) if len(sys.argv) > 0 else ''
+    rest = ' '.join(sys.argv[1:]) if len(sys.argv) > 1 else ''
+    cmd_command = f"{script_name} {rest}".strip()
+    logging.info(cmd_command)
+
 ######################### MAIN #############################
 
 def main(iargs=None):
@@ -294,10 +330,10 @@ def main(iargs=None):
     # inps.template = "test"  # Use a test template for demonstration
     ##################
 
-    # 2. Build template object
+    # Build template object
     template = PlotTemplate(inps.template)
 
-    # 3. Instantiate plotters with shared data
+    # Instantiate plotters with shared data
     # The plotter_map defines the mapping of plot types to their respective classes and required attributes
     # Attributes refer to the type of input file to get from the ProcessData object
     plotter_map = {
@@ -330,14 +366,10 @@ def main(iargs=None):
 
         figures[id(process)] = fig if isinstance(fig, list) else [fig]
 
-    # Configure logging to write to a log file
-    logging.basicConfig(filename=os.path.join(processors[0].directory, 'log'), level=logging.INFO, format='%(asctime)s - %(message)s', datefmt='%Y-%m-%d')
+    # Log
+    configure_logging(processors)
 
-    # Log the command-line command
-    cmd_command = ' '.join(sys.argv)
-    logging.info(cmd_command)
-
-    # 5. Save or show
+    # Save or show
     if inps.save == 'pdf':
         from matplotlib.backends.backend_pdf import PdfPages
 
