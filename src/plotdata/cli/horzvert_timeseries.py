@@ -6,18 +6,17 @@ import logging
 import argparse
 import numpy as np
 from typing import Any
-from scipy.stats import skew
 from types import SimpleNamespace
 from datetime import datetime, timedelta
 from mintpy.objects.resample import resample
 from mintpy.objects import timeseries, HDFEOS
-from mintpy.save_hdfeos5 import get_output_filename
 from mintpy.utils import readfile, utils as ut, writefile
 from mintpy.asc_desc2horz_vert import asc_desc2horz_vert, get_overlap_lalo
 from plotdata.helper_functions import (
     get_file_names, prepend_scratchdir_if_needed, extract_window,
-    find_reference_points_from_subsets, create_geometry_file, find_longitude_degree, to_date
+    find_reference_points_from_subsets, create_geometry_file, find_longitude_degree, to_date, get_output_filename
 )
+
 
 
 SCRATCHDIR = os.getenv('SCRATCHDIR')
@@ -82,6 +81,51 @@ def parse_lalo(str_lalo):
     if len(lalo) == 1:  # if given as one string containing ','
         lalo = lalo[0]
     return lalo
+
+
+def configure_logging(directory=None):
+    """
+    Configure logging so all INFO entries are written to:
+      - Quiet noisy third-party loggers.
+      - <project_base_dir>/log      (if provided)
+      - $SCRATCHDIR/log             (if SCRATCHDIR exists)
+
+    Logging handlers are added only once, even if called multiple times.
+    """
+
+    noisy = ('ipykernel', 'ipykernel.comm', 'jupyter_client', 'zmq', 'tornado', 'asyncio', 'matplotlib')
+    for name in noisy:
+        logging.getLogger(name).setLevel(logging.WARNING)
+
+    # Configure root logger
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+
+    # If logger has no handlers, configure them
+    if not logger.handlers:
+        paths = [
+            os.path.join(directory, 'log') if directory else None,
+            os.path.join(os.getenv('SCRATCHDIR'), 'log') if os.getenv('SCRATCHDIR') else None,
+        ]
+
+        for path in paths:
+            if not path:
+                continue
+
+            # Create parent directory if missing
+            parent = os.path.dirname(path)
+            if parent and not os.path.exists(parent):
+                os.makedirs(parent, exist_ok=True)
+
+            handler = logging.FileHandler(path)
+            formatter = logging.Formatter('%(asctime)s - %(message)s', datefmt='%Y-%m-%d')
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+
+    # Log the command-line call (script name + args)
+    cmd_args = [os.path.basename(sys.argv[0])] + sys.argv[1:]
+    cmd_command = ' '.join(cmd_args)
+    logger.info(cmd_command)
 
 
 def match_dates(a, b, delta):
@@ -540,6 +584,7 @@ def compute_horzvert_timeseries(ts1, ts2, date_list, inps):
     return vertical_timeseries, horizontal_timeseries, mask, latitude, longitude
 
 
+
 def main(iargs=None, namespace=None):
     """Main function to generate vertical and horizontal timeseries."""
     inps = create_parser(iargs, namespace)
@@ -596,8 +641,8 @@ def main(iargs=None, namespace=None):
     ts1.metadata['ORBIT_DIRECTION_SECOND'] = ts2.metadata['ORBIT_DIRECTION']
 
     # Create output files
-    vertical_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, suffix='vert'))
-    horizontal_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, suffix='horz'))
+    vertical_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, direction='vert',subset_mode=True))
+    horizontal_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, direction='horz',subset_mode=True))
     mask_path = os.path.join(project_base_dir, 'maskTempCoh.h5')
 
     if inps.timeseries:
@@ -620,35 +665,7 @@ def main(iargs=None, namespace=None):
     if not os.path.exists(mask_path) or inps.overwrite:
         writefile.write({'mask': mask.astype('bool')}, out_file=mask_path, metadata=mask_meta)
 
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
-
-    # Prevent multiple handlers if this function runs multiple times
-    if not logger.handlers:
-        paths = [
-            os.path.join(project_base_dir, 'log') if project_base_dir else None,
-            os.path.join(os.getenv('SCRATCHDIR'), 'log') if os.getenv('SCRATCHDIR') else None,
-        ]
-
-        for path in paths:
-            if not path:
-                continue
-
-            # Ensure directory exists
-            parent = os.path.dirname(path)
-            if parent and not os.path.exists(parent):
-                os.makedirs(parent, exist_ok=True)
-
-            handler = logging.FileHandler(path)
-            formatter = logging.Formatter(
-                '%(asctime)s - %(message)s', datefmt='%Y-%m-%d'
-            )
-            handler.setFormatter(formatter)
-            logger.addHandler(handler)
-    # Log the command-line command, but use only the script name (not full path)
-    cmd_args = [os.path.basename(sys.argv[0])] + sys.argv[1:]
-    cmd_command = ' '.join(cmd_args)
-    logging.info(cmd_command)
+    configure_logging(project_base_dir)
 
 
 if __name__ == "__main__":
