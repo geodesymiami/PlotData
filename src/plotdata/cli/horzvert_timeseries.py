@@ -665,7 +665,7 @@ def main(iargs=None, namespace=None):
     if not os.path.exists(mask_path) or inps.overwrite:
         writefile.write({'mask': mask.astype('bool')}, out_file=mask_path, metadata=mask_meta)
 
-    configure_logging(project_base_dir)
+        configure_logging(project_base_dir)
 
 
 if __name__ == "__main__":
