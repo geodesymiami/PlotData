@@ -127,6 +127,23 @@ def configure_logging(directory=None):
     logger.info(cmd_command)
 
 
+def _infer_project_base_dir(input_paths):
+    """Best-effort guess of the project base directory from input paths."""
+    scratchdir = os.getenv('SCRATCHDIR')
+    keywords = ('SenD', 'SenA', 'SenDT', 'SenAT', 'CskAT', 'CskDT')
+    dir = scratchdir
+
+    for path in input_paths:
+        for element in os.path.normpath(path).split(os.sep):
+            for keyword in keywords:
+                if keyword in element:
+                    base = element.split(keyword)[0]
+                    dir = os.path.join(scratchdir, base)
+                    break
+
+    return dir
+
+
 # Globals used by worker
 _G_DATA = None
 _G_INC = None
@@ -634,6 +651,7 @@ def compute_horzvert_timeseries(ts1, ts2, date_list, inps):
 def main(iargs=None, namespace=None):
     """Main function to generate vertical and horizontal timeseries."""
     inps = create_parser(iargs, namespace)
+    configure_logging(_infer_project_base_dir(inps.file))
     os.chdir(SCRATCHDIR)
 
     # Load and process both timeseries files
@@ -712,9 +730,6 @@ def main(iargs=None, namespace=None):
     os.makedirs(os.path.dirname(mask_path), exist_ok=True)
     if not os.path.exists(mask_path) or inps.overwrite:
         writefile.write({'mask': mask.astype('bool')}, out_file=mask_path, metadata=mask_meta)
-
-        #configure_logging(project_base_dir)
-    configure_logging(project_base_dir)
 
 
 if __name__ == "__main__":
