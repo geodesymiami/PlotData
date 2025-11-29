@@ -237,7 +237,11 @@ class DataExtractor:
             geometry = None
 
         # Convert geocoordinates to radar
-        coord = coordinate(atr, lookup_file=geometry)
+        # TODO Fix stupid mintpy behaviour
+        if "geo_" in geometry:
+            coord = coordinate(atr, lookup_file=geometry.replace("geo_",""))
+        else:
+            coord = coordinate(atr, lookup_file=geometry)
         lalo = coord.geo2radar(lat=self.lalo[0], lon=self.lalo[1])
 
         # Reference data to a specific point if provided
@@ -348,6 +352,8 @@ class DataExtractor:
                 # latitude = readfile.read(file, datasetName='latitude')[0]
                 # longitude = readfile.read(file, datasetName='longitude')[0]
                 latitude, longitude = get_bounding_box(atr)
+                if not latitude or not longitude:
+                    latitude, longitude = self.region[2:4], self.region[0:2]
 
                 # TODO actually not needed
                 # if atr['passDirection'] == 'DESCENDING' or 'SenD' in file:
@@ -360,8 +366,12 @@ class DataExtractor:
                 if not isinstance(elevation, np.ndarray):
                     self.elevation = self.elevation.where(self.elevation >= 0, 0)
 
-                dlon = float(atr['X_STEP'])
-                dlat = float(atr['Y_STEP'])
+                if 'Y_STEP' in atr:
+                    dlon = float(atr['X_STEP'])
+                    dlat = float(atr['Y_STEP'])
+                else:
+                    dlon = (max(longitude) - min(longitude)) / (int(atr['WIDTH']) - 1)
+                    dlat = (min(latitude) - max(latitude)) / (int(atr['LENGTH']) - 1)
 
                 lon1d = min(longitude) + np.arange(int(atr['WIDTH'])) * dlon
                 lat1d = max(latitude) + np.arange(int(atr['LENGTH'])) * dlat
