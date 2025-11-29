@@ -217,7 +217,9 @@ def match_dates(a, b, delta):
         print(f"shift={shift} pairs found={len(pairs)} total unique={len(all_pairs)}")
         shift += 1
 
-    return np.array(all_pairs)
+    if not all_pairs:
+        return np.empty((0, 2), dtype=object)
+    return np.array(all_pairs, dtype=object)
 
 
 def load_timeseries_file(file_path, geometry_file_input, inps):
@@ -437,6 +439,24 @@ def match_and_filter_dates(ts1, ts2, inps):
     return ts1, ts2, delta, bperp, date_list, pairs
 
 
+def describe_shift(ts1_dates, ts2_dates, meta1, meta2, limit=12):
+    """Describe the minimal non-negative shift (in days) from ts1 to ts2."""
+    a_vals = np.array([to_date(x) for x in ts1_dates])
+    b_vals = set(to_date(x) for x in ts2_dates)
+    shift_val = None
+    for shift in range(limit + 1):
+        shifted = a_vals + timedelta(days=shift)
+        if any(d in b_vals for d in shifted):
+            shift_val = shift
+            break
+
+    if shift_val is None:
+        return f"diff {_track_label(meta1)} to {_track_label(meta2)}: none"
+
+    suffix = "day" if shift_val == 1 else "days"
+    return f"diff {_track_label(meta1)} to {_track_label(meta2)}: {shift_val} {suffix}"
+
+
 def limit_timeseries(ts_obj, inps):
     """Limit a timeseries to the requested date windows."""
     intervals = []
@@ -465,22 +485,23 @@ def limit_timeseries(ts_obj, inps):
     return ts_obj
 
 
-def write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, output_path):
+def _track_label(meta):
+    direction = meta.get('ORBIT_DIRECTION', '')
+    direction_char = direction[0].upper() if direction else ''
+    rel = meta.get('relative_orbit') or meta.get('relativeOrbit')
+    try:
+        rel_num = f"{int(rel):03d}"
+    except Exception:
+        rel_num = str(rel) if rel is not None else ''
+    return f"{direction_char}{rel_num}"
+
+
+def write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, output_path, note=None):
     """Write a table aligning timeseries dates and marking matched pairs."""
     col_width = 8  # YYYYMMDD
 
     def _fmt_date(val):
         return to_date(val).strftime("%Y%m%d")
-
-    def _track_label(meta):
-        direction = meta.get('ORBIT_DIRECTION', '')
-        direction_char = direction[0].upper() if direction else ''
-        rel = meta.get('relative_orbit') or meta.get('relativeOrbit')
-        try:
-            rel_num = f"{int(rel):03d}"
-        except Exception:
-            rel_num = str(rel) if rel is not None else ''
-        return f"{direction_char}{rel_num}"
 
     def _date_key(date_str):
         return datetime.strptime(date_str, "%Y%m%d").date()
@@ -511,8 +532,11 @@ def write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, output_path):
     for marker, d1, d2, _ in entries:
         lines.append(f"{marker}{d1:>{col_width}}  {d2:>{col_width}}")
 
-    summary = f"Totals: {_track_label(meta1)}={len(ts1_dates)}, {_track_label(meta2)}={len(ts2_dates)}, pairs={len(pair_list)}\n"
+    summary = f"Totals: {_track_label(meta1)} {len(ts1_dates)}, {_track_label(meta2)} {len(ts2_dates)}, pairs {len(pair_list)}"
     lines.append(summary)
+    if note:
+        lines.append(note)
+    lines.append("")  # ensure trailing newline when joined
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, "w") as f:
@@ -798,7 +822,9 @@ def main(iargs=None, namespace=None):
     # Match and filter dates
     ts1, ts2, delta, bperp, date_list, pairs = match_and_filter_dates(ts1, ts2, inps)
     ts1.metadata['REF_DATELIST_FILE'] = ts1.metadata['FILE_PATH']
-    write_date_table(original_ts1_dates, original_ts2_dates, pairs, ts1.metadata, ts2.metadata, os.path.join(project_base_dir, "dates.txt"))
+    diff_msg = describe_shift(ts1.dateList, ts2.dateList, ts1.metadata, ts2.metadata)
+    print(diff_msg)
+    write_date_table(original_ts1_dates, original_ts2_dates, pairs, ts1.metadata, ts2.metadata, os.path.join(project_base_dir, "dates.txt"), note=diff_msg)
 
     # Compute horizontal and vertical timeseries
     vertical_timeseries, horizontal_timeseries, mask, latitude, longitude = compute_horzvert_timeseries(ts1, ts2, date_list, inps)
