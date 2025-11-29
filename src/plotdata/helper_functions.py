@@ -53,7 +53,7 @@ def configure_logging(directory=None):
     logging.info(cmd_command)
 
 
-def get_output_filename(metadata, template, direction=None, update_mode=False, subset_mode=False):
+def get_output_filename(metadata, template, direction=None):
     """Get output file name of HDF-EOS5 time-series file."""
     SAT = metadata['mission']
     # SW = metadata['beam_mode']
@@ -64,7 +64,10 @@ def get_output_filename(metadata, template, direction=None, update_mode=False, s
 
     DATE1 = datetime.strptime(metadata['first_date'], '%Y-%m-%d').strftime('%Y%m%d')
     DATE2 = datetime.strptime(metadata['last_date'], '%Y-%m-%d').strftime('%Y%m%d')
-    if update_mode:
+
+    # prefer explicit flag from metadata if present; fall back to passed flag
+    update_flag =  (str(metadata.get('cfg.mintpy.save.hdfEos5.update', '')).lower() == 'yes') or False
+    if update_flag:
         print('Update mode is ON, put endDate as XXXXXXXX.')
         DATE2 = 'XXXXXXXX'
 
@@ -73,36 +76,10 @@ def get_output_filename(metadata, template, direction=None, update_mode=False, s
     else:
         outName = f'{SAT}_{RELORB}_{RELORB2}_{DATE1}_{DATE2}.he5'
 
-    if subset_mode:
-        print('Subset mode is enabled, put subset range info in output filename.')
-        if 'Y_FIRST' in metadata.keys():
-            lat1 = float(metadata['Y_FIRST'])
-            lon0 = float(metadata['X_FIRST'])
-            lat0 = lat1 + float(metadata['Y_STEP']) * int(metadata['LENGTH'])
-            lon1 = lon0 + float(metadata['X_STEP']) * int(metadata['WIDTH'])
-
-            lat0Str = f'N{round(lat0*1e3):05d}'
-            lat1Str = f'N{round(lat1*1e3):05d}'
-            lon0Str = f'E{round(lon0*1e3):06d}'
-            lon1Str = f'E{round(lon1*1e3):06d}'
-
-            if lat0 < 0.0: lat0Str = f'S{round(abs(lat0)*1e3):05d}'
-            if lat1 < 0.0: lat1Str = f'S{round(abs(lat1)*1e3):05d}'
-            if lon0 < 0.0: lon0Str = f'W{round(abs(lon0)*1e3):06d}'
-            if lon1 < 0.0: lon1Str = f'W{round(abs(lon1)*1e3):06d}'
-
-            SUB = f'_{lat0Str}_{lat1Str}_{lon0Str}_{lon1Str}'
-
-        else:
-            polygon_str =  metadata.get('data_footprint')
-            SUB = polygon_corners_string(polygon_str)
-
-        fbase, fext = os.path.splitext(outName)
-
-        # if suffix:
-        #     outName = fbase.removesuffix('_' + suffix) + '_' + SUB + '_' + suffix + fext
-        # else:
-        outName = fbase + SUB + fext
+    fbase, fext = os.path.splitext(outName)
+    polygon_str =  metadata.get('data_footprint')
+    SUB = polygon_corners_string(polygon_str)
+    outName = fbase + '_' + SUB + fext
 
     return outName
 

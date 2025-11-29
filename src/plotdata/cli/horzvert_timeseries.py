@@ -641,8 +641,9 @@ def main(iargs=None, namespace=None):
     ts1.metadata['ORBIT_DIRECTION_SECOND'] = ts2.metadata['ORBIT_DIRECTION']
 
     # Create output files
-    vertical_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, direction='vert',subset_mode=True))
-    horizontal_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, direction='horz',subset_mode=True))
+
+    vertical_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, direction='vert'))
+    horizontal_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, direction='horz'))
     mask_path = os.path.join(project_base_dir, 'maskTempCoh.h5')
 
     if inps.timeseries:
