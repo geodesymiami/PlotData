@@ -4,6 +4,7 @@ import os
 import sys
 import logging
 import argparse
+import re
 import numpy as np
 from typing import Any
 from types import SimpleNamespace
@@ -54,11 +55,25 @@ def create_parser(iargs=None, namespace=None):
     parser.add_argument('-ow', '--overwrite', dest='overwrite', action='store_true', help='Overwrite all previously generated files')
     parser.add_argument('-ts', '--timeseries', dest='timeseries', action='store_true', help='Output timeseries file in addition to HDFEOS format')
     parser.add_argument('--delta', dest='delta', type=int, default=0, help='Maximum allowable date difference in days for matching dates (default: %(default)s).')
+    parser.add_argument('--start-date', dest='start_date', nargs='*', default=[], metavar='YYYYMMDD', help='Start date of limited period')
+    parser.add_argument('--end-date', dest='stop_date', nargs='*', default=[], metavar='YYYYMMDD', help='End date of limited period')
+    parser.add_argument('--period', dest='period', nargs='*', default=[], metavar='YYYYMMDD:YYYYMMDD', help='Period of the search')
 
     inps = parser.parse_args(iargs, namespace)
 
     if inps.ref_lalo:
         inps.ref_lalo = parse_lalo(inps.ref_lalo)
+
+    if inps.period:
+        for p in inps.period:
+            delimiters = '[,:\\-\\s]'
+            dates = re.split(delimiters, p)
+
+            if len(dates) < 2 or len(dates[0]) != 8 or len(dates[1]) != 8:
+                raise ValueError('Date format not valid, it must be in the format YYYYMMDD')
+
+            inps.start_date.append(dates[0])
+            inps.stop_date.append(dates[1])
 
     return inps
 
@@ -205,7 +220,6 @@ def match_dates(a, b, delta):
     return np.array(all_pairs)
 
 
-
 def load_timeseries_file(file_path, geometry_file_input, inps):
     """Load and process a timeseries file.
 
@@ -292,6 +306,8 @@ def load_timeseries_file(file_path, geometry_file_input, inps):
     # Ensure consistent metadata
     ts_obj.metadata['FILE_TYPE'] = 'timeseries'
     ts_obj.metadata['FILE_PATH'] = eos_file
+
+    ts_obj = limit_timeseries(ts_obj, inps)
 
     return ts_obj, los_inc_angle, los_az_angle, mask, project_base_dir, geometry_file
 
@@ -419,6 +435,34 @@ def match_and_filter_dates(ts1, ts2, inps):
     delta = np.array([(datetime.strptime(y, "%Y%m%d").date() - datetime.strptime(x, "%Y%m%d").date()).days for x, y in zip(ts1.dateList, ts2.dateList)])
 
     return ts1, ts2, delta, bperp, date_list, pairs
+
+
+def limit_timeseries(ts_obj, inps):
+    """Limit a timeseries to the requested date windows."""
+    intervals = []
+    max_len = max(len(inps.start_date), len(inps.stop_date))
+    for i in range(max_len):
+        start = inps.start_date[i] if i < len(inps.start_date) else None
+        stop = inps.stop_date[i] if i < len(inps.stop_date) else None
+        intervals.append((start, stop))
+
+    if not intervals:
+        return ts_obj
+
+    dates = np.array([to_date(d) for d in ts_obj.dateList])
+    mask = np.zeros(len(dates), dtype=bool)
+
+    for start, stop in intervals:
+        start_d = to_date(start) if start else dates.min()
+        stop_d = to_date(stop) if stop else dates.max()
+        mask |= (dates >= start_d) & (dates <= stop_d)
+
+    ts_obj.dateList = ts_obj.dateList[mask]
+    ts_obj.data = ts_obj.data[mask]
+    if getattr(ts_obj, 'bperp', None) is not None:
+        ts_obj.bperp = ts_obj.bperp[mask]
+
+    return ts_obj
 
 
 def write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, output_path):
