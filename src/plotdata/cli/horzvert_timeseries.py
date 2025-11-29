@@ -348,7 +348,7 @@ def match_and_filter_dates(ts1, ts2, inps):
         thresh_method: Method for threshold calculation ('min' or 'percentile')
 
     Returns:
-        tuple: (filtered_ts1, filtered_ts2, delta, bperp, date_list)
+        tuple: (filtered_ts1, filtered_ts2, delta, bperp, date_list, pairs)
     """
     # Match dates and get dropped indices
     pairs = match_dates(ts1.dateList, ts2.dateList, inps.delta)
@@ -418,7 +418,61 @@ def match_and_filter_dates(ts1, ts2, inps):
     # delta = np.array([(datetime.strptime(y, "%Y%m%d").date() - datetime.strptime(x, "%Y%m%d").date()).days for x, y in zip(ts1.dateList[valid_indexes], ts2.dateList[valid_indexes])])
     delta = np.array([(datetime.strptime(y, "%Y%m%d").date() - datetime.strptime(x, "%Y%m%d").date()).days for x, y in zip(ts1.dateList, ts2.dateList)])
 
-    return ts1, ts2, delta, bperp, date_list
+    return ts1, ts2, delta, bperp, date_list, pairs
+
+
+def write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, output_path):
+    """Write a table aligning timeseries dates and marking matched pairs."""
+    col_width = 8  # YYYYMMDD
+
+    def _fmt_date(val):
+        return to_date(val).strftime("%Y%m%d")
+
+    def _track_label(meta):
+        direction = meta.get('ORBIT_DIRECTION', '')
+        direction_char = direction[0].upper() if direction else ''
+        rel = meta.get('relative_orbit') or meta.get('relativeOrbit')
+        try:
+            rel_num = f"{int(rel):03d}"
+        except Exception:
+            rel_num = str(rel) if rel is not None else ''
+        return f"{direction_char}{rel_num}"
+
+    def _date_key(date_str):
+        return datetime.strptime(date_str, "%Y%m%d").date()
+
+    ts1_list = [_fmt_date(d) for d in ts1_dates]
+    ts2_list = [_fmt_date(d) for d in ts2_dates]
+    pair_list = [(_fmt_date(p[0]), _fmt_date(p[1])) for p in pairs]
+
+    matched1 = {d1 for d1, _ in pair_list}
+    matched2 = {d2 for _, d2 in pair_list}
+
+    entries = []
+    for d1, d2 in pair_list:
+        entries.append(('*', d1, d2, min(_date_key(d1), _date_key(d2))))
+
+    for d1 in ts1_list:
+        if d1 not in matched1:
+            entries.append((' ', d1, '', _date_key(d1)))
+
+    for d2 in ts2_list:
+        if d2 not in matched2:
+            entries.append((' ', '', d2, _date_key(d2)))
+
+    entries.sort(key=lambda x: x[3])
+
+    header = f" {_track_label(meta1):>{col_width}}  {_track_label(meta2):>{col_width}}"
+    lines = [header]
+    for marker, d1, d2, _ in entries:
+        lines.append(f"{marker}{d1:>{col_width}}  {d2:>{col_width}}")
+
+    summary = f"Totals: {_track_label(meta1)}={len(ts1_dates)}, {_track_label(meta2)}={len(ts2_dates)}, pairs={len(pair_list)}\n"
+    lines.append(summary)
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    with open(output_path, "w") as f:
+        f.write("\n".join(lines))
 
 
 def create_timeseries_output(ts_data, date_list, mask, delta, bperp, latitude, longitude,
@@ -694,10 +748,13 @@ def main(iargs=None, namespace=None):
 
     # Process reference points
     ts1, ts2 = process_reference_points(*timseries, inps)
+    original_ts1_dates = list(ts1.dateList)
+    original_ts2_dates = list(ts2.dateList)
 
     # Match and filter dates
-    ts1, ts2, delta, bperp, date_list = match_and_filter_dates(ts1, ts2, inps)
+    ts1, ts2, delta, bperp, date_list, pairs = match_and_filter_dates(ts1, ts2, inps)
     ts1.metadata['REF_DATELIST_FILE'] = ts1.metadata['FILE_PATH']
+    write_date_table(original_ts1_dates, original_ts2_dates, pairs, ts1.metadata, ts2.metadata, os.path.join(project_base_dir, "dates.txt"))
 
     # Compute horizontal and vertical timeseries
     vertical_timeseries, horizontal_timeseries, mask, latitude, longitude = compute_horzvert_timeseries(ts1, ts2, date_list, inps)
