@@ -677,11 +677,14 @@ def get_bounding_box(metadata):
     length = int(metadata['LENGTH'])
     width = int(metadata['WIDTH'])
 
-    for y_i, x_i in zip([0, length], [0, width]):
-        lat_i = None if y_i is None else (y_i + 0.5) * float(metadata['Y_STEP']) + float(metadata['Y_FIRST'])
-        lon_i = None if x_i is None else (x_i + 0.5) * float(metadata['X_STEP']) + float(metadata['X_FIRST'])
-        lat_out.append(lat_i)
-        lon_out.append(lon_i)
+    if 'Y_FIRST' in metadata and 'X_FIRST' in metadata:
+        for y_i, x_i in zip([0, length], [0, width]):
+            lat_i = None if y_i is None else (y_i + 0.5) * float(metadata['Y_STEP']) + float(metadata['Y_FIRST'])
+            lon_i = None if x_i is None else (x_i + 0.5) * float(metadata['X_STEP']) + float(metadata['X_FIRST'])
+            lat_out.append(lat_i)
+            lon_out.append(lon_i)
+    else:
+        return None, None
 
     return [min(lat_out), max(lat_out)], [min(lon_out), max(lon_out)]
 
