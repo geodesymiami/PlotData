@@ -18,7 +18,6 @@ from plotdata.helper_functions import (
 )
 from concurrent.futures import ProcessPoolExecutor
 
-
 SCRATCHDIR = os.getenv('SCRATCHDIR')
 EXAMPLE = """
 Example usage:
@@ -29,7 +28,7 @@ Example usage:
 
 
 def create_parser(iargs=None, namespace=None):
-    """ 
+    """
     Creates command line argument parser object.
 
     Args:
@@ -127,8 +126,6 @@ def configure_logging(directory=None):
     cmd_command = ' '.join(cmd_args)
     logger.info(cmd_command)
 
-from concurrent.futures import ProcessPoolExecutor
-import numpy as np
 
 # Globals used by worker
 _G_DATA = None
@@ -626,7 +623,7 @@ def compute_horzvert_timeseries(ts1, ts2, date_list, inps):
         for i, dvert, hvert in pool.map(_asc_desc_worker, range(n_times)):
             vertical_list[i] = dvert
             horizontal_list[i] = hvert
-            
+
     vertical_timeseries = np.stack(vertical_list, axis=0)
     horizontal_timeseries = np.stack(horizontal_list, axis=0)
 
@@ -693,6 +690,7 @@ def main(iargs=None, namespace=None):
 
     vertical_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, direction='vert'))
     horizontal_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, direction='horz'))
+
     mask_path = os.path.join(project_base_dir, 'maskTempCoh.h5')
 
     if inps.timeseries:
@@ -715,7 +713,8 @@ def main(iargs=None, namespace=None):
     if not os.path.exists(mask_path) or inps.overwrite:
         writefile.write({'mask': mask.astype('bool')}, out_file=mask_path, metadata=mask_meta)
 
-        configure_logging(project_base_dir)
+        #configure_logging(project_base_dir)
+    configure_logging(project_base_dir)
 
 
 if __name__ == "__main__":

@@ -53,7 +53,6 @@ def configure_logging(directory=None):
     cmd_command = f"{script_name} {rest}".strip()
     logging.info(cmd_command)
 
-
 def get_output_filename(metadata, template, direction=None):
     """Get output file name of HDF-EOS5 time-series file."""
     SAT = metadata['mission']
