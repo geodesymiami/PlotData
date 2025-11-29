@@ -13,10 +13,10 @@ from mintpy.objects import timeseries, HDFEOS
 from mintpy.utils import readfile, utils as ut, writefile
 from mintpy.asc_desc2horz_vert import asc_desc2horz_vert, get_overlap_lalo
 from plotdata.helper_functions import (
-    get_file_names, prepend_scratchdir_if_needed, extract_window,
+    get_file_names, prepend_scratchdir_if_needed, extract_window, detect_cores,
     find_reference_points_from_subsets, create_geometry_file, find_longitude_degree, to_date, get_output_filename
 )
-
+from concurrent.futures import ProcessPoolExecutor
 
 
 SCRATCHDIR = os.getenv('SCRATCHDIR')
@@ -127,6 +127,34 @@ def configure_logging(directory=None):
     cmd_command = ' '.join(cmd_args)
     logger.info(cmd_command)
 
+from concurrent.futures import ProcessPoolExecutor
+import numpy as np
+
+# Globals used by worker
+_G_DATA = None
+_G_INC = None
+_G_AZ = None
+_G_HORZ_AZ_ANGLE = None
+
+def _init_worker(data, los_inc_angle, los_az_angle, horz_az_angle):
+    """Initializer: sets global variables in each worker process."""
+    global _G_DATA, _G_INC, _G_AZ, _G_HORZ_AZ_ANGLE
+    _G_DATA = data
+    _G_INC = los_inc_angle
+    _G_AZ = los_az_angle
+    _G_HORZ_AZ_ANGLE = horz_az_angle
+
+def _asc_desc_worker(i):
+    """Worker for a single time slice index i."""
+    # Use globals set by _init_worker
+    slice_data = _G_DATA[:, i]    # shape (2, length, width)
+    hvert, dvert = asc_desc2horz_vert(
+        slice_data,
+        _G_INC,
+        _G_AZ,
+        _G_HORZ_AZ_ANGLE,
+    )
+    return i, dvert, hvert
 
 def match_dates(a, b, delta):
     if delta > 12:
@@ -571,13 +599,34 @@ def compute_horzvert_timeseries(ts1, ts2, date_list, inps):
     mask = np.logical_and(mask[0], mask[1])
 
     # Compute horizontal and vertical components
-    vertical_list = []
-    horizontal_list = []
-    for i in range(data.shape[1]):
-        hvert, dvert = asc_desc2horz_vert(data[:, i], los_inc_angle, los_az_angle, inps.horz_az_angle)
-        vertical_list.append(dvert)
-        horizontal_list.append(hvert)
+    # vertical_list = []
+    # horizontal_list = []
+    # for i in range(data.shape[1]):
+    #     hvert, dvert = asc_desc2horz_vert(data[:, i], los_inc_angle, los_az_angle, inps.horz_az_angle)
+    #     vertical_list.append(dvert)
+    #     horizontal_list.append(hvert)
 
+    # vertical_timeseries = np.stack(vertical_list, axis=0)
+    # horizontal_timeseries = np.stack(horizontal_list, axis=0)
+
+    # Compute horizontal and vertical components (parallel)
+    # Compute horizontal and vertical components in parallel
+    n_times = data.shape[1]
+    ncores = detect_cores()
+    print(f"Using {ncores} cores for horz/vert decomposition")
+
+    vertical_list = [None] * n_times
+    horizontal_list = [None] * n_times
+
+    with ProcessPoolExecutor(
+        max_workers=ncores,
+        initializer=_init_worker,
+        initargs=(data, los_inc_angle, los_az_angle, inps.horz_az_angle),
+    ) as pool:
+        for i, dvert, hvert in pool.map(_asc_desc_worker, range(n_times)):
+            vertical_list[i] = dvert
+            horizontal_list[i] = hvert
+            
     vertical_timeseries = np.stack(vertical_list, axis=0)
     horizontal_timeseries = np.stack(horizontal_list, axis=0)
 
