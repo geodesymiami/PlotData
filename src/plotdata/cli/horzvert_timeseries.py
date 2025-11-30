@@ -61,6 +61,7 @@ def create_parser(iargs=None, namespace=None):
     parser.add_argument('--period', dest='period', nargs='*', default=[], metavar='YYYYMMDD:YYYYMMDD', help='Period of the search')
     parser.add_argument('--exclude-dates', dest='exclude_dates', nargs='*', default=[], metavar='YYYYMMDD[,YYYYMMDD...]', help='Dates to exclude before pairing')
     parser.add_argument('--dry-run', dest='dry_run', action='store_true', help='Only compute image pairs and write image_pairs.txt (no horz/vert processing)')
+    parser.add_argument('--no-swap', dest='no_swap', action='store_true', help='Do not swap datasets even if negative delta dominates')
 
     inps = parser.parse_args(iargs, namespace)
 
@@ -545,6 +546,24 @@ def limit_timeseries(ts_obj, inps):
     return ts_obj
 
 
+def is_delta_days_max_occurrence_negative(delta_days_array):
+    """Return True if the most frequent delta is negative."""
+    if delta_days_array.size == 0:
+        return False
+    vals, counts = np.unique(delta_days_array, return_counts=True)
+    idx = np.argmax(counts)
+    return vals[idx] < 0
+
+
+def delta_days_max_occurrence(delta_days_array):
+    """Return (value, count) of the most frequent delta_days entry."""
+    if delta_days_array.size == 0:
+        return None, 0
+    vals, counts = np.unique(delta_days_array, return_counts=True)
+    idx = np.argmax(counts)
+    return vals[idx], counts[idx]
+
+
 def _track_label(meta):
     direction = meta.get('ORBIT_DIRECTION', '')
     direction_char = direction[0].upper() if direction else ''
@@ -855,26 +874,62 @@ def main(iargs=None, namespace=None):
 
     # Always write image_pairs.txt using the fast pairing logic
     fp.parse_periods(inps)
-    dates_meta = []
-    project_base_dir = None
-    for f in inps.file:
-        dates, meta, project_base_dir = fp.load_dates(f, inps)
-        dates_meta.append((dates, meta))
 
-    (ts1_dates, meta1), (ts2_dates, meta2) = dates_meta
-    ts1_f, ts2_f, _, pairs_fast, block_ranges, block_counts, block_pairs, block_map, shift_map = fp.match_and_filter_dates(ts1_dates, ts2_dates, meta1, meta2, inps)
+    def run_fast(files):
+        dates_meta_local = []
+        project_base = None
+        for f in files:
+            dates, meta, project_base = fp.load_dates(f, inps)
+            dates_meta_local.append((dates, meta))
+        (d1, m1), (d2, m2) = dates_meta_local
+        ts1_f, ts2_f, delta_fast, pairs_fast, block_ranges, block_counts, block_pairs, block_map, shift_map = fp.match_and_filter_dates(d1, d2, m1, m2, inps)
+        mode_val, mode_count = delta_days_max_occurrence(delta_fast)
+        return {
+            "d1": d1, "d2": d2, "m1": m1, "m2": m2,
+            "ts1_f": ts1_f, "ts2_f": ts2_f,
+            "delta": delta_fast, "pairs": pairs_fast,
+            "block_ranges": block_ranges, "block_counts": block_counts,
+            "block_pairs": block_pairs, "block_map": block_map, "shift_map": shift_map,
+            "mode_val": mode_val, "mode_count": mode_count,
+            "base": project_base,
+        }
+
+    res_orig = run_fast(inps.file)
+    res_swap = run_fast(list(reversed(inps.file))) if not inps.no_swap else res_orig
+
+    chosen = res_swap if (not inps.no_swap and res_swap["mode_count"] > res_orig["mode_count"]) else res_orig
+    if chosen is res_swap and not inps.no_swap:
+        inps.file = list(reversed(inps.file))
+        if inps.geom_file:
+            inps.geom_file = list(reversed(inps.geom_file))
+
+    d1 = chosen["d1"]
+    d2 = chosen["d2"]
+    m1 = chosen["m1"]
+    m2 = chosen["m2"]
+    ts1_f = chosen["ts1_f"]
+    ts2_f = chosen["ts2_f"]
+    delta_fast = chosen["delta"]
+    pairs_fast = chosen["pairs"]
+    block_ranges = chosen["block_ranges"]
+    block_counts = chosen["block_counts"]
+    block_pairs = chosen["block_pairs"]
+    block_map = chosen["block_map"]
+    shift_map = chosen["shift_map"]
+    project_base_dir = chosen["base"]
+
     max_shift = max((max(abs(r[0]), abs(r[1])) for r in block_ranges), default=0)
-    diff_msg = fp.describe_shift(ts1_f, ts2_f, meta1, meta2, limit=max_shift)
+    diff_msg = fp.describe_shift(ts1_f, ts2_f, m1, m2, limit=max_shift)
     symbols = list("*+-:!@#$%^&():\";'<>,.?/")
     symbol_map = {}
     shift_display = {}
     for (da, db), block_idx in block_map.items():
-        d1 = fp.to_date(da).strftime("%Y%m%d")
-        d2 = fp.to_date(db).strftime("%Y%m%d")
+        d1s = fp.to_date(da).strftime("%Y%m%d")
+        d2s = fp.to_date(db).strftime("%Y%m%d")
         s_val = shift_map.get((da, db), 0)
         symbol = symbols[block_idx % len(symbols)]
-        symbol_map[(d1, d2)] = symbol
-        shift_display[(d1, d2)] = s_val
+        symbol_map[(d1s, d2s)] = symbol
+        shift_display[(d1s, d2s)] = s_val
 
     interval_lines = []
     for idx, rng in enumerate(block_ranges):
@@ -885,12 +940,12 @@ def main(iargs=None, namespace=None):
         for (da, db), bidx in block_map.items():
             if bidx != idx:
                 continue
-            d1 = fp.to_date(da).strftime("%Y%m%d")
-            d2 = fp.to_date(db).strftime("%Y%m%d")
-            s_val = shift_display.get((d1, d2), 0)
+            d1s = fp.to_date(da).strftime("%Y%m%d")
+            d2s = fp.to_date(db).strftime("%Y%m%d")
+            s_val = shift_display.get((d1s, d2s), 0)
             sign = "+" if s_val > 0 else ""
-            sym = symbol_map.get((d1, d2), symbols[idx % len(symbols)])
-            interval_lines.append(f"{sym}{d1}  {d2} ({sign}{s_val})")
+            sym = symbol_map.get((d1s, d2s), symbols[idx % len(symbols)])
+            interval_lines.append(f"{sym}{d1s}  {d2s} ({sign}{s_val})")
 
     legend_lines = []
     for s in sorted(set(symbol_map.values()), key=lambda x: symbols.index(x)):
@@ -906,11 +961,11 @@ def main(iargs=None, namespace=None):
         note_text += "\n" + "\n".join(legend_lines)
 
     fp.write_date_table(
-        ts1_dates,
-        ts2_dates,
+        d1,
+        d2,
         pairs_fast,
-        meta1,
-        meta2,
+        m1,
+        m2,
         os.path.join(project_base_dir, "image_pairs.txt"),
         note=note_text,
         pair_symbols=symbol_map,
