@@ -28,7 +28,7 @@ def _track_label(meta):
 
 def create_parser(iargs=None):
     parser = argparse.ArgumentParser(
-        description='Find date pairs between two timeseries and write dates.txt',
+        description='Find date pairs between two timeseries and write image_pairs.txt',
         formatter_class=argparse.RawTextHelpFormatter,
     )
     parser.add_argument('file', nargs=2, help='Ascending and descending files; both geocoded similarly.')
@@ -156,7 +156,7 @@ def describe_shift(ts1_dates, ts2_dates, meta1, meta2, limit):
     return f"diff {_track_label(meta1)} to {_track_label(meta2)}: {sign_str}{shift_val} {suffix}"
 
 
-def write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, output_path, note=None, pair_symbols=None, pair_shifts=None):
+def write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, output_path, note=None, pair_symbols=None, pair_shifts=None, legend_lines=None):
     """Write a table aligning timeseries dates and marking matched pairs."""
     col_width = 8  # YYYYMMDD
 
@@ -205,6 +205,9 @@ def write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, output_path, not
     lines.append(summary)
     if note:
         lines.append(note)
+    if legend_lines:
+        lines.append("")
+        lines.extend(legend_lines)
     lines.append("")  # trailing newline
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -308,16 +311,25 @@ def main(iargs=None):
             d2 = to_date(db).strftime("%Y%m%d")
             s_val = shift_map.get((da, db), 0)
             sign = "+" if s_val > 0 else ""
-            interval_lines.append(f"{symbols[idx % len(symbols)]}{d1}  {d2} ({sign}{s_val})")
+            sym = symbols[idx % len(symbols)]
+            interval_lines.append(f"{sym}{d1}  {d2} ({sign}{s_val})")
     symbol_map = {}
     shift_display = {}
     for (da, db), block_idx in block_map.items():
         d1 = to_date(da).strftime("%Y%m%d")
         d2 = to_date(db).strftime("%Y%m%d")
-        symbol_map[(d1, d2)] = symbols[block_idx % len(symbols)]
-        shift_display[(d1, d2)] = shift_map.get((da, db), 0)
+        s_val = shift_map.get((da, db), 0)
+        symbol = symbols[block_idx % len(symbols)]
+        symbol_map[(d1, d2)] = symbol
+        shift_display[(d1, d2)] = s_val
     extra = diff_msg + ("\n" + "\n".join(interval_lines) if interval_lines else "")
-    write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, os.path.join(project_base_dir, "dates.txt"), note=extra, pair_symbols=symbol_map, pair_shifts=shift_display)
+    legend_lines = []
+    for s in sorted(set(symbol_map.values()), key=lambda x: symbols.index(x)):
+        shifts = sorted({shift_display[k] for k, v in symbol_map.items() if v == s}, key=abs)
+        if shifts:
+            shift_txt = ", ".join([f"{'+' if sv > 0 else ''}{sv} days" for sv in shifts])
+            legend_lines.append(f"{s} {shift_txt}")
+    write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, os.path.join(project_base_dir, "image_pairs.txt"), note=extra, pair_symbols=symbol_map, pair_shifts=shift_display, legend_lines=legend_lines)
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ from mintpy.objects.resample import resample
 from mintpy.objects import timeseries, HDFEOS
 from mintpy.utils import readfile, utils as ut, writefile
 from mintpy.asc_desc2horz_vert import asc_desc2horz_vert, get_overlap_lalo
+from plotdata.cli import find_pairs as fp
 from plotdata.helper_functions import (
     get_file_names, prepend_scratchdir_if_needed, extract_window, detect_cores,
     find_reference_points_from_subsets, create_geometry_file, find_longitude_degree, to_date, get_output_filename
@@ -59,6 +60,7 @@ def create_parser(iargs=None, namespace=None):
     parser.add_argument('--end-date', dest='stop_date', nargs='*', default=[], metavar='YYYYMMDD', help='End date of limited period')
     parser.add_argument('--period', dest='period', nargs='*', default=[], metavar='YYYYMMDD:YYYYMMDD', help='Period of the search')
     parser.add_argument('--exclude-dates', dest='exclude_dates', nargs='*', default=[], metavar='YYYYMMDD[,YYYYMMDD...]', help='Dates to exclude before pairing')
+    parser.add_argument('--dry-run', dest='dry_run', action='store_true', help='Only compute image pairs and write image_pairs.txt (no horz/vert processing)')
 
     inps = parser.parse_args(iargs, namespace)
 
@@ -554,7 +556,7 @@ def _track_label(meta):
     return f"{direction_char}{rel_num}"
 
 
-def write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, output_path, note=None, extra_lines=None, pair_symbols=None, pair_shifts=None):
+def write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, output_path, note=None, extra_lines=None, pair_symbols=None, pair_shifts=None, legend_lines=None):
     """Write a table aligning timeseries dates and marking matched pairs."""
     col_width = 8  # YYYYMMDD
     SYMBOLS = list("*+-:!@#$%^&():\";'<>,.?/")
@@ -606,6 +608,9 @@ def write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, output_path, not
         lines.append(note)
     if extra_lines:
         lines.extend(extra_lines)
+    if legend_lines:
+        lines.append("")
+        lines.extend(legend_lines)
     lines.append("")  # ensure trailing newline when joined
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -844,6 +849,78 @@ def main(iargs=None, namespace=None):
     """Main function to generate vertical and horizontal timeseries."""
     inps = create_parser(iargs, namespace)
     configure_logging(_infer_project_base_dir(inps.file))
+    image_pairs_written = False
+    symbol_map = {}
+    shift_display = {}
+
+    # Always write image_pairs.txt using the fast pairing logic
+    fp.parse_periods(inps)
+    dates_meta = []
+    project_base_dir = None
+    for f in inps.file:
+        dates, meta, project_base_dir = fp.load_dates(f, inps)
+        dates_meta.append((dates, meta))
+
+    (ts1_dates, meta1), (ts2_dates, meta2) = dates_meta
+    ts1_f, ts2_f, _, pairs_fast, block_ranges, block_counts, block_pairs, block_map, shift_map = fp.match_and_filter_dates(ts1_dates, ts2_dates, meta1, meta2, inps)
+    max_shift = max((max(abs(r[0]), abs(r[1])) for r in block_ranges), default=0)
+    diff_msg = fp.describe_shift(ts1_f, ts2_f, meta1, meta2, limit=max_shift)
+    symbols = list("*+-:!@#$%^&():\";'<>,.?/")
+    symbol_map = {}
+    shift_display = {}
+    for (da, db), block_idx in block_map.items():
+        d1 = fp.to_date(da).strftime("%Y%m%d")
+        d2 = fp.to_date(db).strftime("%Y%m%d")
+        s_val = shift_map.get((da, db), 0)
+        symbol = symbols[block_idx % len(symbols)]
+        symbol_map[(d1, d2)] = symbol
+        shift_display[(d1, d2)] = s_val
+
+    interval_lines = []
+    for idx, rng in enumerate(block_ranges):
+        rng_str = f"{rng[0]}..{rng[1]}"
+        count = block_counts.get(idx, 0)
+        interval_lines.append("")
+        interval_lines.append(f"Interval {idx+1} [{rng_str}]: {count} pairs")
+        for (da, db), bidx in block_map.items():
+            if bidx != idx:
+                continue
+            d1 = fp.to_date(da).strftime("%Y%m%d")
+            d2 = fp.to_date(db).strftime("%Y%m%d")
+            s_val = shift_display.get((d1, d2), 0)
+            sign = "+" if s_val > 0 else ""
+            sym = symbol_map.get((d1, d2), symbols[idx % len(symbols)])
+            interval_lines.append(f"{sym}{d1}  {d2} ({sign}{s_val})")
+
+    legend_lines = []
+    for s in sorted(set(symbol_map.values()), key=lambda x: symbols.index(x)):
+        shifts = sorted({shift_display[k] for k, v in symbol_map.items() if v == s}, key=abs)
+        if shifts:
+            shift_txt = ", ".join([f"{'+' if sv > 0 else ''}{sv} days" for sv in shifts])
+            legend_lines.append(f"{s} {shift_txt}")
+
+    note_text = diff_msg
+    if interval_lines:
+        note_text += "\n" + "\n".join(interval_lines)
+    if legend_lines:
+        note_text += "\n" + "\n".join(legend_lines)
+
+    fp.write_date_table(
+        ts1_dates,
+        ts2_dates,
+        pairs_fast,
+        meta1,
+        meta2,
+        os.path.join(project_base_dir, "image_pairs.txt"),
+        note=note_text,
+        pair_symbols=symbol_map,
+        pair_shifts=shift_display,
+    )
+    image_pairs_written = True
+
+    if inps.dry_run:
+        return
+
     os.chdir(SCRATCHDIR)
 
     # Load and process both timeseries files
@@ -884,6 +961,48 @@ def main(iargs=None, namespace=None):
 
         timseries.append(obj)
 
+    # Dry-run: delegate to fast pair-finding and exit
+    if inps.dry_run:
+        dates_meta = []
+        project_base_dir = None
+        for f in inps.file:
+            dates, meta, project_base_dir = fp.load_dates(f, inps)
+            dates_meta.append((dates, meta))
+        (ts1_dates, meta1), (ts2_dates, meta2) = dates_meta
+        ts1_f, ts2_f, _, pairs, block_ranges, block_counts, block_pairs, block_map, shift_map = fp.match_and_filter_dates(ts1_dates, ts2_dates, meta1, meta2, inps)
+        max_shift = max((max(abs(r[0]), abs(r[1])) for r in block_ranges), default=0)
+        diff_msg = fp.describe_shift(ts1_f, ts2_f, meta1, meta2, limit=max_shift)
+        symbols = list("*+-:!@#$%^&():\";'<>,.?/")
+        interval_lines = []
+        for idx, rng in enumerate(block_ranges):
+            rng_str = f"{rng[0]}..{rng[1]}"
+            count = block_counts.get(idx, 0)
+            interval_lines.append("")
+            interval_lines.append(f"Interval {idx+1} [{rng_str}]: {count} pairs")
+            for (da, db), bidx in block_map.items():
+                if bidx != idx:
+                    continue
+                d1 = fp.to_date(da).strftime("%Y%m%d")
+                d2 = fp.to_date(db).strftime("%Y%m%d")
+                s_val = shift_map.get((da, db), 0)
+                sign = "+" if s_val > 0 else ""
+                interval_lines.append(f"{symbols[idx % len(symbols)]}{d1}  {d2} ({sign}{s_val})")
+        symbol_map = {}
+        shift_display = {}
+        for (da, db), block_idx in block_map.items():
+            d1 = fp.to_date(da).strftime("%Y%m%d")
+            d2 = fp.to_date(db).strftime("%Y%m%d")
+            symbol_map[(d1, d2)] = symbols[block_idx % len(symbols)]
+            shift_display[(d1, d2)] = shift_map.get((da, db), 0)
+        legend_lines = []
+        for s in sorted(set(symbol_map.values()), key=lambda x: ["*", "+", "-"].index(x) if x in ["*", "+", "-"] else symbols.index(x)):
+            shifts = sorted({shift_display[k] for k, v in symbol_map.items() if v == s}, key=abs)
+            if shifts:
+                shift_txt = ", ".join([f"{'+' if sv > 0 else ''}{sv} days" for sv in shifts])
+                legend_lines.append(f"{s} {shift_txt}")
+        fp.write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, os.path.join(project_base_dir, "image_pairs.txt"), note=diff_msg, extra_lines=interval_lines, pair_symbols=symbol_map, pair_shifts=shift_display, legend_lines=legend_lines)
+        return
+
     # Process reference points
     ts1, ts2 = process_reference_points(*timseries, inps)
     original_ts1_dates = list(ts1.dateList)
@@ -910,7 +1029,7 @@ def main(iargs=None, namespace=None):
             d2 = to_date(db).strftime("%Y%m%d")
             s_val = shift_map.get((da, db), 0)
             sign = "+" if s_val > 0 else ""
-            interval_lines.append(f"{symbols[idx % len(symbols)]}{d1}  {d2} ({sign}{s_val})")
+            interval_lines.append(f"{sign if sign else ''}{d1}  {d2} ({sign}{s_val})")
     # Build symbol/shift map per pair using interval index
     symbol_map = {}
     shift_display = {}
@@ -920,7 +1039,17 @@ def main(iargs=None, namespace=None):
         symbol_map[(d1, d2)] = symbols[block_idx % len(symbols)]
         shift_display[(d1, d2)] = shift_map.get((da, db), 0)
 
-    write_date_table(original_ts1_dates, original_ts2_dates, pairs, ts1.metadata, ts2.metadata, os.path.join(project_base_dir, "dates.txt"), note=diff_msg, extra_lines=interval_lines, pair_symbols=symbol_map, pair_shifts=shift_display)
+    # Legend for symbols
+    # Only write image_pairs.txt once (already written in fast path)
+    if not image_pairs_written:
+        legend_lines = []
+        for s in sorted(set(symbol_map.values()), key=lambda x: symbols.index(x)):
+            shifts = sorted({shift_display[k] for k, v in symbol_map.items() if v == s}, key=abs)
+            if shifts:
+                shift_txt = ", ".join([f"{'+' if sv > 0 else ''}{sv} days" for sv in shifts])
+                legend_lines.append(f"{s} {shift_txt}")
+
+        write_date_table(original_ts1_dates, original_ts2_dates, pairs, ts1.metadata, ts2.metadata, os.path.join(project_base_dir, "image_pairs.txt"), note=diff_msg, extra_lines=interval_lines, pair_symbols=symbol_map, pair_shifts=shift_display, legend_lines=legend_lines)
 
     # Compute horizontal and vertical timeseries
     vertical_timeseries, horizontal_timeseries, mask, latitude, longitude = compute_horzvert_timeseries(ts1, ts2, date_list, inps)
