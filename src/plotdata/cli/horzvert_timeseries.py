@@ -13,11 +13,10 @@ from mintpy.objects import timeseries, HDFEOS
 from mintpy.utils import readfile, utils as ut, writefile
 from mintpy.asc_desc2horz_vert import asc_desc2horz_vert, get_overlap_lalo
 from plotdata.helper_functions import (
-    get_file_names, prepend_scratchdir_if_needed, extract_window,
+    get_file_names, prepend_scratchdir_if_needed, extract_window, detect_cores,
     find_reference_points_from_subsets, create_geometry_file, find_longitude_degree, to_date, get_output_filename
 )
-
-
+from concurrent.futures import ProcessPoolExecutor
 
 SCRATCHDIR = os.getenv('SCRATCHDIR')
 EXAMPLE = """
@@ -29,7 +28,7 @@ Example usage:
 
 
 def create_parser(iargs=None, namespace=None):
-    """ 
+    """
     Creates command line argument parser object.
 
     Args:
@@ -127,6 +126,49 @@ def configure_logging(directory=None):
     cmd_command = ' '.join(cmd_args)
     logger.info(cmd_command)
 
+
+def _infer_project_base_dir(input_paths):
+    """Best-effort guess of the project base directory from input paths."""
+    scratchdir = os.getenv('SCRATCHDIR')
+    keywords = ('SenD', 'SenA', 'SenDT', 'SenAT', 'CskAT', 'CskDT')
+    dir = scratchdir
+
+    for path in input_paths:
+        for element in os.path.normpath(path).split(os.sep):
+            for keyword in keywords:
+                if keyword in element:
+                    base = element.split(keyword)[0]
+                    dir = os.path.join(scratchdir, base)
+                    break
+
+    return dir
+
+
+# Globals used by worker
+_G_DATA = None
+_G_INC = None
+_G_AZ = None
+_G_HORZ_AZ_ANGLE = None
+
+def _init_worker(data, los_inc_angle, los_az_angle, horz_az_angle):
+    """Initializer: sets global variables in each worker process."""
+    global _G_DATA, _G_INC, _G_AZ, _G_HORZ_AZ_ANGLE
+    _G_DATA = data
+    _G_INC = los_inc_angle
+    _G_AZ = los_az_angle
+    _G_HORZ_AZ_ANGLE = horz_az_angle
+
+def _asc_desc_worker(i):
+    """Worker for a single time slice index i."""
+    # Use globals set by _init_worker
+    slice_data = _G_DATA[:, i]    # shape (2, length, width)
+    hvert, dvert = asc_desc2horz_vert(
+        slice_data,
+        _G_INC,
+        _G_AZ,
+        _G_HORZ_AZ_ANGLE,
+    )
+    return i, dvert, hvert
 
 def match_dates(a, b, delta):
     if delta > 12:
@@ -306,7 +348,7 @@ def match_and_filter_dates(ts1, ts2, inps):
         thresh_method: Method for threshold calculation ('min' or 'percentile')
 
     Returns:
-        tuple: (filtered_ts1, filtered_ts2, delta, bperp, date_list)
+        tuple: (filtered_ts1, filtered_ts2, delta, bperp, date_list, pairs)
     """
     # Match dates and get dropped indices
     pairs = match_dates(ts1.dateList, ts2.dateList, inps.delta)
@@ -376,7 +418,61 @@ def match_and_filter_dates(ts1, ts2, inps):
     # delta = np.array([(datetime.strptime(y, "%Y%m%d").date() - datetime.strptime(x, "%Y%m%d").date()).days for x, y in zip(ts1.dateList[valid_indexes], ts2.dateList[valid_indexes])])
     delta = np.array([(datetime.strptime(y, "%Y%m%d").date() - datetime.strptime(x, "%Y%m%d").date()).days for x, y in zip(ts1.dateList, ts2.dateList)])
 
-    return ts1, ts2, delta, bperp, date_list
+    return ts1, ts2, delta, bperp, date_list, pairs
+
+
+def write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, output_path):
+    """Write a table aligning timeseries dates and marking matched pairs."""
+    col_width = 8  # YYYYMMDD
+
+    def _fmt_date(val):
+        return to_date(val).strftime("%Y%m%d")
+
+    def _track_label(meta):
+        direction = meta.get('ORBIT_DIRECTION', '')
+        direction_char = direction[0].upper() if direction else ''
+        rel = meta.get('relative_orbit') or meta.get('relativeOrbit')
+        try:
+            rel_num = f"{int(rel):03d}"
+        except Exception:
+            rel_num = str(rel) if rel is not None else ''
+        return f"{direction_char}{rel_num}"
+
+    def _date_key(date_str):
+        return datetime.strptime(date_str, "%Y%m%d").date()
+
+    ts1_list = [_fmt_date(d) for d in ts1_dates]
+    ts2_list = [_fmt_date(d) for d in ts2_dates]
+    pair_list = [(_fmt_date(p[0]), _fmt_date(p[1])) for p in pairs]
+
+    matched1 = {d1 for d1, _ in pair_list}
+    matched2 = {d2 for _, d2 in pair_list}
+
+    entries = []
+    for d1, d2 in pair_list:
+        entries.append(('*', d1, d2, min(_date_key(d1), _date_key(d2))))
+
+    for d1 in ts1_list:
+        if d1 not in matched1:
+            entries.append((' ', d1, '', _date_key(d1)))
+
+    for d2 in ts2_list:
+        if d2 not in matched2:
+            entries.append((' ', '', d2, _date_key(d2)))
+
+    entries.sort(key=lambda x: x[3])
+
+    header = f" {_track_label(meta1):>{col_width}}  {_track_label(meta2):>{col_width}}"
+    lines = [header]
+    for marker, d1, d2, _ in entries:
+        lines.append(f"{marker}{d1:>{col_width}}  {d2:>{col_width}}")
+
+    summary = f"Totals: {_track_label(meta1)}={len(ts1_dates)}, {_track_label(meta2)}={len(ts2_dates)}, pairs={len(pair_list)}\n"
+    lines.append(summary)
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    with open(output_path, "w") as f:
+        f.write("\n".join(lines))
 
 
 def create_timeseries_output(ts_data, date_list, mask, delta, bperp, latitude, longitude,
@@ -571,12 +667,33 @@ def compute_horzvert_timeseries(ts1, ts2, date_list, inps):
     mask = np.logical_and(mask[0], mask[1])
 
     # Compute horizontal and vertical components
-    vertical_list = []
-    horizontal_list = []
-    for i in range(data.shape[1]):
-        hvert, dvert = asc_desc2horz_vert(data[:, i], los_inc_angle, los_az_angle, inps.horz_az_angle)
-        vertical_list.append(dvert)
-        horizontal_list.append(hvert)
+    # vertical_list = []
+    # horizontal_list = []
+    # for i in range(data.shape[1]):
+    #     hvert, dvert = asc_desc2horz_vert(data[:, i], los_inc_angle, los_az_angle, inps.horz_az_angle)
+    #     vertical_list.append(dvert)
+    #     horizontal_list.append(hvert)
+
+    # vertical_timeseries = np.stack(vertical_list, axis=0)
+    # horizontal_timeseries = np.stack(horizontal_list, axis=0)
+
+    # Compute horizontal and vertical components (parallel)
+    # Compute horizontal and vertical components in parallel
+    n_times = data.shape[1]
+    ncores = detect_cores()
+    print(f"Using {ncores} cores for horz/vert decomposition")
+
+    vertical_list = [None] * n_times
+    horizontal_list = [None] * n_times
+
+    with ProcessPoolExecutor(
+        max_workers=ncores,
+        initializer=_init_worker,
+        initargs=(data, los_inc_angle, los_az_angle, inps.horz_az_angle),
+    ) as pool:
+        for i, dvert, hvert in pool.map(_asc_desc_worker, range(n_times)):
+            vertical_list[i] = dvert
+            horizontal_list[i] = hvert
 
     vertical_timeseries = np.stack(vertical_list, axis=0)
     horizontal_timeseries = np.stack(horizontal_list, axis=0)
@@ -588,6 +705,7 @@ def compute_horzvert_timeseries(ts1, ts2, date_list, inps):
 def main(iargs=None, namespace=None):
     """Main function to generate vertical and horizontal timeseries."""
     inps = create_parser(iargs, namespace)
+    configure_logging(_infer_project_base_dir(inps.file))
     os.chdir(SCRATCHDIR)
 
     # Load and process both timeseries files
@@ -630,10 +748,13 @@ def main(iargs=None, namespace=None):
 
     # Process reference points
     ts1, ts2 = process_reference_points(*timseries, inps)
+    original_ts1_dates = list(ts1.dateList)
+    original_ts2_dates = list(ts2.dateList)
 
     # Match and filter dates
-    ts1, ts2, delta, bperp, date_list = match_and_filter_dates(ts1, ts2, inps)
+    ts1, ts2, delta, bperp, date_list, pairs = match_and_filter_dates(ts1, ts2, inps)
     ts1.metadata['REF_DATELIST_FILE'] = ts1.metadata['FILE_PATH']
+    write_date_table(original_ts1_dates, original_ts2_dates, pairs, ts1.metadata, ts2.metadata, os.path.join(project_base_dir, "dates.txt"))
 
     # Compute horizontal and vertical timeseries
     vertical_timeseries, horizontal_timeseries, mask, latitude, longitude = compute_horzvert_timeseries(ts1, ts2, date_list, inps)
@@ -641,8 +762,10 @@ def main(iargs=None, namespace=None):
     ts1.metadata['ORBIT_DIRECTION_SECOND'] = ts2.metadata['ORBIT_DIRECTION']
 
     # Create output files
-    vertical_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, direction='vert',subset_mode=True))
-    horizontal_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, direction='horz',subset_mode=True))
+
+    vertical_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, direction='vert'))
+    horizontal_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, direction='horz'))
+
     mask_path = os.path.join(project_base_dir, 'maskTempCoh.h5')
 
     if inps.timeseries:
@@ -664,8 +787,6 @@ def main(iargs=None, namespace=None):
     os.makedirs(os.path.dirname(mask_path), exist_ok=True)
     if not os.path.exists(mask_path) or inps.overwrite:
         writefile.write({'mask': mask.astype('bool')}, out_file=mask_path, metadata=mask_meta)
-
-        configure_logging(project_base_dir)
 
 
 if __name__ == "__main__":
