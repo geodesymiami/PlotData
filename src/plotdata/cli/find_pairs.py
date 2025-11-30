@@ -36,6 +36,7 @@ def create_parser(iargs=None):
     parser.add_argument('--end-date', dest='stop_date', nargs='*', default=[], metavar='YYYYMMDD', help='End date of limited period')
     parser.add_argument('--period', dest='period', nargs='*', default=[], metavar='YYYYMMDD:YYYYMMDD', help='Period of the search')
     parser.add_argument('--search-interval', dest='search_interval', type=int, default=1, help='Number of repeat intervals to search for date pairing (default: %(default)s).')
+    parser.add_argument('--exclude-dates', dest='exclude_dates', nargs='*', default=[], metavar='YYYYMMDD[,YYYYMMDD...]', help='Dates to exclude before pairing')
     return parser.parse_args(iargs)
 
 
@@ -50,6 +51,11 @@ def parse_periods(inps):
 
             inps.start_date.append(dates[0])
             inps.stop_date.append(dates[1])
+    # Normalize exclude dates (split comma-separated entries)
+    excludes = []
+    for item in inps.exclude_dates:
+        excludes.extend([d for d in item.split(',') if d])
+    inps.exclude_dates = excludes
 
 
 def limit_dates(date_list, inps):
@@ -61,64 +67,68 @@ def limit_dates(date_list, inps):
         intervals.append((start, stop))
 
     if not intervals:
-        return date_list
+        mask = np.ones(len(date_list), dtype=bool)
+        dates = np.array([to_date(d) for d in date_list])
+    else:
+        dates = np.array([to_date(d) for d in date_list])
+        mask = np.zeros(len(dates), dtype=bool)
 
-    dates = np.array([to_date(d) for d in date_list])
-    mask = np.zeros(len(dates), dtype=bool)
+        for start, stop in intervals:
+            start_d = to_date(start) if start else dates.min()
+            stop_d = to_date(stop) if stop else dates.max()
+            mask |= (dates >= start_d) & (dates <= stop_d)
 
-    for start, stop in intervals:
-        start_d = to_date(start) if start else dates.min()
-        stop_d = to_date(stop) if stop else dates.max()
-        mask |= (dates >= start_d) & (dates <= stop_d)
+    if inps.exclude_dates:
+        exclude_set = {to_date(d) for d in inps.exclude_dates}
+        mask &= ~np.isin(dates, list(exclude_set))
 
     return date_list[mask]
 
 
-def match_dates(a, b, lower_shift, upper_shift):
-    """Match dates allowing shifts between lower_shift and upper_shift (inclusive)."""
-    if lower_shift > upper_shift:
-        lower_shift, upper_shift = upper_shift, lower_shift
-
+def match_dates(a, b, schedule):
+    """Match dates following the provided shift schedule (ordered list of (shift, block))."""
     print("-" * 50)
-    print(f"Matching dates with shift range [{lower_shift}, {upper_shift}] days\n")
+    print("Matching dates with custom shift schedule\n")
 
     a_vals = np.array([to_date(x) for x in a])
     b_vals = np.array([to_date(x) for x in b])
 
     b_index = {d: idx for idx, d in enumerate(b_vals)}
-    shift_candidates = {}
-    for shift in range(lower_shift, upper_shift + 1):
-        shifted = a_vals + timedelta(days=shift)
-        matches = []
-        for i, shifted_date in enumerate(shifted):
-            if shifted_date in b_index:
-                matches.append((a_vals[i], b_vals[b_index[shifted_date]]))
-        shift_candidates[shift] = matches
 
     matched_a = set()
     matched_b = set()
     all_pairs = []
-    shifts_ordered = []
-    for s in range(0, upper_shift + 1):
-        shifts_ordered.append(s)
-    for s in range(-1, lower_shift - 1, -1):
-        shifts_ordered.append(s)
-
-    for shift_val in shifts_ordered:
+    block_counts = {}
+    block_pairs = {}
+    block_map = {}
+    shift_map = {}
+    for shift_num, block_idx in schedule:
         added = 0
-        for da, db in shift_candidates[shift_val]:
+        shifted = a_vals + timedelta(days=shift_num)
+        for i, shifted_date in enumerate(shifted):
+            if shifted_date not in b_index:
+                continue
+            da = a_vals[i]
+            db = b_vals[b_index[shifted_date]]
             if da in matched_a or db in matched_b:
                 continue
             matched_a.add(da)
             matched_b.add(db)
             all_pairs.append((da, db))
+            block_map[(da, db)] = block_idx
+            shift_map[(da, db)] = shift_num
             added += 1
-        shift_str = f"+{shift_val}" if shift_val > 0 else str(shift_val)
+            if shift_num != 0:
+                block_counts[block_idx] = block_counts.get(block_idx, 0) + 1
+                block_pairs.setdefault(block_idx, []).append(
+                    f"{to_date(da).strftime('%Y%m%d')}->{to_date(db).strftime('%Y%m%d')} ({'+' if shift_num>0 else ''}{shift_num})"
+                )
+        shift_str = f"+{shift_num}" if shift_num > 0 else str(shift_num)
         print(f"shift={shift_str} pairs found={added}")
 
     if not all_pairs:
-        return np.empty((0, 2), dtype=object)
-    return np.array(all_pairs, dtype=object)
+        return np.empty((0, 2), dtype=object), block_counts, block_pairs, block_map, shift_map
+    return np.array(all_pairs, dtype=object), block_counts, block_pairs, block_map, shift_map
 
 
 def describe_shift(ts1_dates, ts2_dates, meta1, meta2, limit):
@@ -146,7 +156,7 @@ def describe_shift(ts1_dates, ts2_dates, meta1, meta2, limit):
     return f"diff {_track_label(meta1)} to {_track_label(meta2)}: {sign_str}{shift_val} {suffix}"
 
 
-def write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, output_path, note=None):
+def write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, output_path, note=None, pair_symbols=None, pair_shifts=None):
     """Write a table aligning timeseries dates and marking matched pairs."""
     col_width = 8  # YYYYMMDD
 
@@ -165,7 +175,10 @@ def write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, output_path, not
 
     entries = []
     for d1, d2 in pair_list:
-        entries.append(('*', d1, d2, min(_date_key(d1), _date_key(d2))))
+        symbol = '*'
+        if pair_symbols:
+            symbol = pair_symbols.get((d1, d2), symbol)
+        entries.append((symbol, d1, d2, min(_date_key(d1), _date_key(d2))))
 
     for d1 in ts1_list:
         if d1 not in matched1:
@@ -180,7 +193,13 @@ def write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, output_path, not
     header = f" {_track_label(meta1):>{col_width}}  {_track_label(meta2):>{col_width}}"
     lines = [header]
     for marker, d1, d2, _ in entries:
-        lines.append(f"{marker}{d1:>{col_width}}  {d2:>{col_width}}")
+        shift_txt = ""
+        if pair_shifts is not None:
+            s_val = pair_shifts.get((d1, d2))
+            if s_val is not None:
+                sign = "+" if s_val > 0 else ""
+                shift_txt = f" ({sign}{s_val})" if s_val != 0 else " (0)"
+        lines.append(f"{marker}{d1:>{col_width}}  {d2:>{col_width}}{shift_txt}")
 
     summary = f"Totals: {_track_label(meta1)} {len(ts1_dates)}, {_track_label(meta2)} {len(ts2_dates)}, pairs {len(pair_list)}"
     lines.append(summary)
@@ -195,29 +214,40 @@ def write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, output_path, not
 
 def match_and_filter_dates(ts1_dates, ts2_dates, meta1, meta2, inps):
     """Match dates between two date arrays."""
-    def _repeat_interval(meta):
-        mission = meta.get('mission', '')
-        if 'Sen' in mission:
-            return 12
-        return 12
+    def _shift_schedule(search_interval):
+        schedule = []
+        block_ranges = []
+        pos_start, pos_end = 0, 6
+        neg_start, neg_end = -1, -5
+        for block in range(max(1, search_interval) * 2):
+            if block % 2 == 0:
+                block_ranges.append((pos_start, pos_end))
+                for s in range(pos_start, pos_end + 1):
+                    schedule.append((s, block))
+                pos_start = pos_end + 1
+                if block == 0:
+                    pos_end = pos_start + 4  # 7..11
+                else:
+                    pos_end = pos_start + 5  # 12..17 onward
+            else:
+                block_ranges.append((neg_start, neg_end))
+                for s in range(neg_start, neg_end - 1, -1):
+                    schedule.append((s, block))
+                neg_start = neg_end - 1
+                neg_end = neg_start - 5
+        return schedule, block_ranges
 
-    repeat_interval = _repeat_interval(meta1)
-    span = max(0, inps.search_interval) * repeat_interval
-    if span == 0:
-        lower_shift = upper_shift = 0
-    else:
-        lower_shift = -(span // 2) + (1 if span % 2 == 0 else 0)
-        upper_shift = lower_shift + span - 1
-    print(f"Shift search window: [{lower_shift}, {upper_shift}] days (span={span})")
+    schedule, block_ranges = _shift_schedule(inps.search_interval)
+    print(f"Shift schedule blocks: {block_ranges}")
 
-    pairs = match_dates(ts1_dates, ts2_dates, lower_shift, upper_shift)
+    pairs, block_counts, block_pairs, block_map, shift_map = match_dates(ts1_dates, ts2_dates, schedule)
 
     ts1_filtered = np.array([d for d in ts1_dates if to_date(d) in pairs[:, 0]], dtype=object)
     ts2_filtered = np.array([d for d in ts2_dates if to_date(d) in pairs[:, 1]], dtype=object)
 
     delta_days_array = np.array([(datetime.strptime(to_date(y).strftime("%Y%m%d"), "%Y%m%d").date() - datetime.strptime(to_date(x).strftime("%Y%m%d"), "%Y%m%d").date()).days for x, y in zip(ts1_filtered, ts2_filtered)])
 
-    return ts1_filtered, ts2_filtered, delta_days_array, pairs, (lower_shift, upper_shift)
+    return ts1_filtered, ts2_filtered, delta_days_array, pairs, block_ranges, block_counts, block_pairs, block_map, shift_map
 
 
 def load_dates(file_path, inps):
@@ -260,11 +290,34 @@ def main(iargs=None):
 
     (ts1_dates, meta1), (ts2_dates, meta2) = dates_meta
 
-    ts1_filtered, ts2_filtered, delta_days, pairs, shift_window = match_and_filter_dates(ts1_dates, ts2_dates, meta1, meta2, inps)
-    max_shift = max(abs(shift_window[0]), abs(shift_window[1]))
+    ts1_filtered, ts2_filtered, delta_days, pairs, block_ranges, block_counts, block_pairs, block_map, shift_map = match_and_filter_dates(ts1_dates, ts2_dates, meta1, meta2, inps)
+    max_shift = max((max(abs(r[0]), abs(r[1])) for r in block_ranges), default=0)
     diff_msg = describe_shift(ts1_filtered, ts2_filtered, meta1, meta2, limit=max_shift)
     print(diff_msg)
-    write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, os.path.join(project_base_dir, "dates.txt"), note=diff_msg)
+    interval_lines = []
+    symbols = list("*+-:!@#$%^&():\";'<>,.?/")
+    for idx, rng in enumerate(block_ranges):
+        rng_str = f"{rng[0]}..{rng[1]}"
+        count = block_counts.get(idx, 0)
+        interval_lines.append("")
+        interval_lines.append(f"Interval {idx+1} [{rng_str}]: {count} pairs")
+        for (da, db), bidx in block_map.items():
+            if bidx != idx:
+                continue
+            d1 = to_date(da).strftime("%Y%m%d")
+            d2 = to_date(db).strftime("%Y%m%d")
+            s_val = shift_map.get((da, db), 0)
+            sign = "+" if s_val > 0 else ""
+            interval_lines.append(f"{symbols[idx % len(symbols)]}{d1}  {d2} ({sign}{s_val})")
+    symbol_map = {}
+    shift_display = {}
+    for (da, db), block_idx in block_map.items():
+        d1 = to_date(da).strftime("%Y%m%d")
+        d2 = to_date(db).strftime("%Y%m%d")
+        symbol_map[(d1, d2)] = symbols[block_idx % len(symbols)]
+        shift_display[(d1, d2)] = shift_map.get((da, db), 0)
+    extra = diff_msg + ("\n" + "\n".join(interval_lines) if interval_lines else "")
+    write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, os.path.join(project_base_dir, "dates.txt"), note=extra, pair_symbols=symbol_map, pair_shifts=shift_display)
 
 
 if __name__ == "__main__":
