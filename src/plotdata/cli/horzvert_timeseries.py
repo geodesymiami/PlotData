@@ -54,7 +54,7 @@ def create_parser(iargs=None, namespace=None):
     parser.add_argument('--date-filtering', dest='date_thresh_method', type=str, default='min', choices=['min', 'percentile'], help='Method for date difference threshold: "min" uses minimum difference, "percentile" uses percentile-based threshold (default: %(default)s).')
     parser.add_argument('-ow', '--overwrite', dest='overwrite', action='store_true', help='Overwrite all previously generated files')
     parser.add_argument('-ts', '--timeseries', dest='timeseries', action='store_true', help='Output timeseries file in addition to HDFEOS format')
-    parser.add_argument('--delta', dest='delta', type=int, default=0, help='Maximum allowable date difference in days for matching dates (default: %(default)s).')
+    parser.add_argument('--search-interval', dest='search_interval', type=int, default=1, help='Number of repeat intervals to search for date pairing (default: %(default)s).')
     parser.add_argument('--start-date', dest='start_date', nargs='*', default=[], metavar='YYYYMMDD', help='Start date of limited period')
     parser.add_argument('--end-date', dest='stop_date', nargs='*', default=[], metavar='YYYYMMDD', help='End date of limited period')
     parser.add_argument('--period', dest='period', nargs='*', default=[], metavar='YYYYMMDD:YYYYMMDD', help='Period of the search')
@@ -185,13 +185,12 @@ def _asc_desc_worker(i):
     )
     return i, dvert, hvert
 
-def match_dates(a, b, delta):
-    if delta > 12:
-        print("Warning: delta greater than 12 days is not supported, setting to 12.\n")
-        delta = 12
+def match_dates(a, b, delta_days):
+    if delta_days < 0:
+        delta_days = 0
 
     print("-"*50)
-    print(f"Matching dates starting with delta={delta} days\n")
+    print(f"Matching dates starting with delta={delta_days} days\n")
 
     a_vals = np.array([to_date(x) for x in a])
     b_vals = np.array([to_date(x) for x in b])
@@ -199,7 +198,7 @@ def match_dates(a, b, delta):
     all_pairs = []
     shift = 0
 
-    while len(all_pairs) == 0 or shift <= delta:
+    while len(all_pairs) == 0 or shift <= delta_days:
         date2 = a_vals + timedelta(days=shift)
         b_index = {d: idx for idx, d in enumerate(b_vals)}
         # build pairs as date tuples (a_date, b_date)
@@ -366,10 +365,19 @@ def match_and_filter_dates(ts1, ts2, inps):
         thresh_method: Method for threshold calculation ('min' or 'percentile')
 
     Returns:
-        tuple: (filtered_ts1, filtered_ts2, delta, bperp, date_list, pairs)
+        tuple: (filtered_ts1, filtered_ts2, delta_days, bperp, date_list, pairs)
     """
+    def _repeat_interval(meta):
+        mission = meta.get('mission', '')
+        if 'Sen' in mission:
+            return 12
+        return 12
+
+    repeat_interval = _repeat_interval(ts1.metadata)
+    delta_days = max(0, inps.search_interval * repeat_interval)
+
     # Match dates and get dropped indices
-    pairs = match_dates(ts1.dateList, ts2.dateList, inps.delta)
+    pairs = match_dates(ts1.dateList, ts2.dateList, delta_days)
     index1 = [i for i, d in enumerate(ts1.dateList) if to_date(d) in pairs[:, 0]]
     index2 = [i for i, d in enumerate(ts2.dateList) if to_date(d) in pairs[:, 1]]
 
@@ -434,9 +442,9 @@ def match_and_filter_dates(ts1, ts2, inps):
 
     # Calculate delta (date differences for valid indexes)
     # delta = np.array([(datetime.strptime(y, "%Y%m%d").date() - datetime.strptime(x, "%Y%m%d").date()).days for x, y in zip(ts1.dateList[valid_indexes], ts2.dateList[valid_indexes])])
-    delta = np.array([(datetime.strptime(y, "%Y%m%d").date() - datetime.strptime(x, "%Y%m%d").date()).days for x, y in zip(ts1.dateList, ts2.dateList)])
+    delta_days_array = np.array([(datetime.strptime(y, "%Y%m%d").date() - datetime.strptime(x, "%Y%m%d").date()).days for x, y in zip(ts1.dateList, ts2.dateList)])
 
-    return ts1, ts2, delta, bperp, date_list, pairs
+    return ts1, ts2, delta_days_array, bperp, date_list, pairs
 
 
 def describe_shift(ts1_dates, ts2_dates, meta1, meta2, limit=12):
@@ -543,7 +551,7 @@ def write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, output_path, not
         f.write("\n".join(lines))
 
 
-def create_timeseries_output(ts_data, date_list, mask, delta, bperp, latitude, longitude,
+def create_timeseries_output(ts_data, date_list, mask, delta_days, bperp, latitude, longitude,
                              metadata, output_path, file_type='timeseries'):
     """Create and write a timeseries output file.
 
@@ -551,7 +559,7 @@ def create_timeseries_output(ts_data, date_list, mask, delta, bperp, latitude, l
         ts_data: Timeseries data array
         date_list: List of dates
         mask: Mask array
-        delta: Date difference array
+        delta_days: Date difference array
         bperp: Perpendicular baseline array
         latitude: Latitude array
         longitude: Longitude array
@@ -574,7 +582,7 @@ def create_timeseries_output(ts_data, date_list, mask, delta, bperp, latitude, l
         'timeseries': ts_data.astype('float32'),
         'date': date_list.astype('S8'),
         'mask': mask.astype(mask_dtype),
-        'delta': delta.astype('uint8'),
+        'delta': delta_days.astype('uint8'),
         'bperp': bperp.astype('float32'),
         'latitude': latitude.astype('float32'),
         'longitude': longitude.astype('float32')
@@ -583,7 +591,7 @@ def create_timeseries_output(ts_data, date_list, mask, delta, bperp, latitude, l
     writefile.write(ts_dict, output_path, metadata=output_metadata)
 
 
-def create_hdfeos_output(ts_data, date_list, mask, delta, bperp, latitude, longitude,
+def create_hdfeos_output(ts_data, date_list, mask, delta_days, bperp, latitude, longitude,
                          metadata, output_path, length, width):
     """Create and write an HDFEOS output file with proper structure.
 
@@ -591,7 +599,7 @@ def create_hdfeos_output(ts_data, date_list, mask, delta, bperp, latitude, longi
         ts_data: Timeseries data array (n_time, length, width)
         date_list: List of dates
         mask: Mask array (length, width)
-        delta: Date difference array
+        delta_days: Date difference array
         bperp: Perpendicular baseline array
         latitude: Latitude array (length,)
         longitude: Longitude array (width,)
@@ -627,7 +635,7 @@ def create_hdfeos_output(ts_data, date_list, mask, delta, bperp, latitude, longi
         'HDFEOS/GRIDS/timeseries/observation/bperp': bperp.astype('float32'),
         'HDFEOS/GRIDS/timeseries/observation/date': date_list.astype('S8'),
         'HDFEOS/GRIDS/timeseries/observation/displacement': ts_data.astype('float32'),
-        'HDFEOS/GRIDS/timeseries/observation/delta': delta.astype('uint8'),
+        'HDFEOS/GRIDS/timeseries/observation/delta': delta_days.astype('uint8'),
         # Quality datasets (using NaN placeholders where None is requested)
         'HDFEOS/GRIDS/timeseries/quality/avgSpatialCoherence': np.full((length, width), np.nan, dtype='float32'),
         'HDFEOS/GRIDS/timeseries/quality/mask': mask.astype('bool'),
@@ -820,7 +828,7 @@ def main(iargs=None, namespace=None):
     original_ts2_dates = list(ts2.dateList)
 
     # Match and filter dates
-    ts1, ts2, delta, bperp, date_list, pairs = match_and_filter_dates(ts1, ts2, inps)
+    ts1, ts2, delta_days, bperp, date_list, pairs = match_and_filter_dates(ts1, ts2, inps)
     ts1.metadata['REF_DATELIST_FILE'] = ts1.metadata['FILE_PATH']
     diff_msg = describe_shift(ts1.dateList, ts2.dateList, ts1.metadata, ts2.metadata)
     print(diff_msg)
@@ -839,12 +847,12 @@ def main(iargs=None, namespace=None):
     mask_path = os.path.join(project_base_dir, 'maskTempCoh.h5')
 
     if inps.timeseries:
-        create_timeseries_output(vertical_timeseries, date_list, mask, delta, bperp, latitude, longitude, ts1.metadata, vertical_path.replace('.he5', '.h5'), 'timeseries')
+        create_timeseries_output(vertical_timeseries, date_list, mask, delta_days, bperp, latitude, longitude, ts1.metadata, vertical_path.replace('.he5', '.h5'), 'timeseries')
 
-        create_timeseries_output(horizontal_timeseries, date_list, mask, delta, bperp, latitude, longitude, ts1.metadata, horizontal_path.replace('.he5', '.h5'), 'timeseries')
+        create_timeseries_output(horizontal_timeseries, date_list, mask, delta_days, bperp, latitude, longitude, ts1.metadata, horizontal_path.replace('.he5', '.h5'), 'timeseries')
 
     for path in [vertical_path, horizontal_path]:
-        create_hdfeos_output(vertical_timeseries, date_list, mask, delta, bperp, latitude, longitude,
+        create_hdfeos_output(vertical_timeseries, date_list, mask, delta_days, bperp, latitude, longitude,
                          ts1.metadata, path.replace('.h5', '.he5'), mask.shape[0], mask.shape[1])
 
     # Write mask file
