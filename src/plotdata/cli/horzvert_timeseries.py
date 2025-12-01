@@ -200,6 +200,20 @@ def _asc_desc_worker(i):
     )
     return i, dvert, hvert
 
+def _strip_marker_lines(lines, symbols):
+    """Remove leading marker+space when present to print summaries cleanly."""
+    sym_set = set(symbols)
+    cleaned = []
+    for ln in lines:
+        if ln and ln[0] in sym_set:
+            stripped = ln[1:]
+            if stripped.startswith(" "):
+                stripped = stripped[1:]
+            cleaned.append(stripped)
+        else:
+            cleaned.append(ln)
+    return cleaned
+
 def get_repeat_interval(meta1, meta2):
     """Return repeat interval (days) based on mission/project naming."""
     names = [meta1.get('mission', ''), meta2.get('mission', '')]
@@ -1089,7 +1103,7 @@ def main(iargs=None, namespace=None):
         shift_counts[shift_val] = shift_counts.get(shift_val, 0) + 1
         if shift_val not in shift_symbol:
             shift_symbol[shift_val] = symbol_map[pair]
-    legend_lines = ["Summary:"]
+    legend_lines = ["Summary:", f"{_track_label(m1)}: {len(d1)} images, {_track_label(m2)}: {len(d2)} images"]
     total_pairs = 0
     for shift_val in sorted(shift_counts.keys(), key=_sign_order):
         sym = shift_symbol.get(shift_val, symbols[shift_val % len(symbols)] if shift_counts else symbols[0])
@@ -1104,6 +1118,9 @@ def main(iargs=None, namespace=None):
     if interval_lines:
         note_text += "\n" + "\n".join(interval_lines)
 
+    print("Writing image_pairs.txt .....")
+    for line in _strip_marker_lines(legend_lines, symbols):
+        print(line)
     write_date_table(
         d1,
         d2,
@@ -1208,7 +1225,7 @@ def main(iargs=None, namespace=None):
             shift_counts[shift_val] = shift_counts.get(shift_val, 0) + 1
             if shift_val not in shift_symbol:
                 shift_symbol[shift_val] = symbol_map[pair]
-        legend_lines = ["Summary:"]
+        legend_lines = ["Summary:", f"{_track_label(meta1)}: {len(ts1_dates)} images, {_track_label(meta2)}: {len(ts2_dates)} images"]
         total_pairs = 0
         for shift_val in sorted(shift_counts.keys(), key=_sign_order):
             sym = shift_symbol.get(shift_val, symbols[shift_val % len(symbols)] if shift_counts else symbols[0])
@@ -1218,6 +1235,9 @@ def main(iargs=None, namespace=None):
             pair_txt = "pair" if count == 1 else "pairs"
             legend_lines.append(f"{sym} {sign}{shift_val} days  {count} {pair_txt}")
         legend_lines.append(f"Total: {total_pairs} pairs")
+        print("Writing image_pairs.txt .....")
+        for line in _strip_marker_lines(legend_lines, symbols):
+            print(line)
         write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, os.path.join(project_base_dir, "image_pairs.txt"), note=diff_msg, extra_lines=interval_lines, pair_symbols=symbol_map, pair_shifts=shift_display, legend_lines=legend_lines)
         return
 
@@ -1275,7 +1295,7 @@ def main(iargs=None, namespace=None):
             if shift_val not in shift_symbol:
                 shift_symbol[shift_val] = symbol_map[pair]
 
-        legend_lines = ["Summary:"]
+        legend_lines = ["Summary:", f"{_track_label(ts1.metadata)}: {len(original_ts1_dates)} images, {_track_label(ts2.metadata)}: {len(original_ts2_dates)} images"]
         total_pairs = 0
         for shift_val in sorted(shift_counts.keys(), key=_sign_order):
             sym = shift_symbol.get(shift_val, symbols[shift_val % len(symbols)] if shift_counts else symbols[0])
@@ -1286,6 +1306,9 @@ def main(iargs=None, namespace=None):
             legend_lines.append(f"{sym} {sign}{shift_val} days  {count} {pair_txt}")
         legend_lines.append(f"Total: {total_pairs} pairs")
 
+        print("Writing image_pairs.txt .....")
+        for line in _strip_marker_lines(legend_lines, symbols):
+            print(line)
         write_date_table(original_ts1_dates, original_ts2_dates, pairs, ts1.metadata, ts2.metadata, os.path.join(project_base_dir, "image_pairs.txt"), note=diff_msg, extra_lines=interval_lines, pair_symbols=symbol_map, pair_shifts=shift_display, legend_lines=legend_lines)
 
     # Compute horizontal and vertical timeseries
