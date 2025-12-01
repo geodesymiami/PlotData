@@ -6,6 +6,7 @@ import logging
 import argparse
 import re
 import numpy as np
+import math
 from typing import Any
 from types import SimpleNamespace
 from datetime import datetime, timedelta
@@ -390,28 +391,22 @@ def match_and_filter_dates(ts1, ts2, inps):
     def _shift_schedule(search_interval):
         schedule = []
         block_ranges = []
-        pos_start, pos_end = 0, 6
-        neg_start, neg_end = -1, -5
-        for block in range(max(1, search_interval) * 2):
-            if block % 2 == 0:
-                # positive block
-                block_idx = block
-                block_ranges.append((pos_start, pos_end))
-                for s in range(pos_start, pos_end + 1):
-                    schedule.append((s, block_idx))
-                pos_start = pos_end + 1
-                if block == 0:
-                    pos_end = pos_start + 4  # 7..11
-                else:
-                    pos_end = pos_start + 5  # 12..17 onward
-            else:
-                # negative block
-                block_idx = block
-                block_ranges.append((neg_start, neg_end))
-                for s in range(neg_start, neg_end - 1, -1):
-                    schedule.append((s, block_idx))
-                neg_start = neg_end - 1
-                neg_end = neg_start - 5
+        repeat = fp.get_repeat_interval(ts1.metadata, ts2.metadata)
+        step = math.ceil(repeat / 2)
+        for k in range(max(1, search_interval)):
+            # positive block for this interval
+            pos_start = k * step if k == 0 else k * step + 1  # avoid duplicate boundaries
+            pos_end = (k + 1) * step
+            block_idx_pos = len(block_ranges)
+            block_ranges.append((pos_start, pos_end))
+            for s in range(pos_start, pos_end + 1):
+                schedule.append((s, block_idx_pos))
+            # negative block for this interval
+            neg_start, neg_end = -(k + 1) * step, -(k * step + 1)
+            block_idx_neg = len(block_ranges)
+            block_ranges.append((neg_start, neg_end))
+            for s in range(neg_start, neg_end - 1, -1):
+                schedule.append((s, block_idx_neg))
         return schedule, block_ranges
 
     schedule, block_ranges = _shift_schedule(inps.search_interval)

@@ -8,6 +8,7 @@ but without computing horizontal/vertical outputs.
 import os
 import argparse
 import re
+import math
 import numpy as np
 from datetime import datetime, timedelta
 from plotdata.helper_functions import get_file_names, prepend_scratchdir_if_needed, to_date
@@ -156,6 +157,20 @@ def describe_shift(ts1_dates, ts2_dates, meta1, meta2, limit):
     return f"diff {_track_label(meta1)} to {_track_label(meta2)}: {sign_str}{shift_val} {suffix}"
 
 
+def get_repeat_interval(meta1, meta2):
+    """Return repeat interval (days) based on mission/project naming."""
+    names = [meta1.get('mission', ''), meta2.get('mission', '')]
+    for n in names:
+        low = (n or '').lower()
+        if 'csk' in low or 'cosmo' in low:
+            return 1
+        if 'tsx' in low or 'terr' in low:
+            return 11
+        if 'sen' in low:
+            return 12
+    return 12  # sensible default if unknown
+
+
 def write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, output_path, note=None, pair_symbols=None, pair_shifts=None, legend_lines=None):
     """Write a table aligning timeseries dates and marking matched pairs."""
     col_width = 8  # YYYYMMDD
@@ -220,24 +235,22 @@ def match_and_filter_dates(ts1_dates, ts2_dates, meta1, meta2, inps):
     def _shift_schedule(search_interval):
         schedule = []
         block_ranges = []
-        pos_start, pos_end = 0, 6
-        neg_start, neg_end = -1, -5
-        for block in range(max(1, search_interval) * 2):
-            if block % 2 == 0:
-                block_ranges.append((pos_start, pos_end))
-                for s in range(pos_start, pos_end + 1):
-                    schedule.append((s, block))
-                pos_start = pos_end + 1
-                if block == 0:
-                    pos_end = pos_start + 4  # 7..11
-                else:
-                    pos_end = pos_start + 5  # 12..17 onward
-            else:
-                block_ranges.append((neg_start, neg_end))
-                for s in range(neg_start, neg_end - 1, -1):
-                    schedule.append((s, block))
-                neg_start = neg_end - 1
-                neg_end = neg_start - 5
+        repeat = get_repeat_interval(meta1, meta2)
+        step = math.ceil(repeat / 2)
+        for k in range(max(1, search_interval)):
+            # positive block for this interval
+            pos_start = k * step if k == 0 else k * step + 1  # avoid duplicate boundaries
+            pos_end = (k + 1) * step
+            block_idx_pos = len(block_ranges)
+            block_ranges.append((pos_start, pos_end))
+            for s in range(pos_start, pos_end + 1):
+                schedule.append((s, block_idx_pos))
+            # negative block for this interval
+            neg_start, neg_end = -(k + 1) * step, -(k * step + 1)
+            block_idx_neg = len(block_ranges)
+            block_ranges.append((neg_start, neg_end))
+            for s in range(neg_start, neg_end - 1, -1):
+                schedule.append((s, block_idx_neg))
         return schedule, block_ranges
 
     schedule, block_ranges = _shift_schedule(inps.search_interval)
