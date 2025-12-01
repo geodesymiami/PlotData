@@ -14,7 +14,6 @@ from mintpy.objects.resample import resample
 from mintpy.objects import timeseries, HDFEOS
 from mintpy.utils import readfile, utils as ut, writefile
 from mintpy.asc_desc2horz_vert import asc_desc2horz_vert, get_overlap_lalo
-from plotdata.cli import find_pairs as fp
 from plotdata.helper_functions import (
     get_file_names, prepend_scratchdir_if_needed, extract_window, detect_cores,
     find_reference_points_from_subsets, create_geometry_file, find_longitude_degree, to_date, get_output_filename
@@ -72,23 +71,6 @@ def create_parser(iargs=None, namespace=None):
     if inps.ref_lalo:
         inps.ref_lalo = parse_lalo(inps.ref_lalo)
 
-    if inps.period:
-        for p in inps.period:
-            delimiters = '[,:\\-\\s]'
-            dates = re.split(delimiters, p)
-
-            if len(dates) < 2 or len(dates[0]) != 8 or len(dates[1]) != 8:
-                raise ValueError('Date format not valid, it must be in the format YYYYMMDD')
-
-            inps.start_date.append(dates[0])
-            inps.stop_date.append(dates[1])
-
-    # Normalize exclude dates (split comma-separated entries)
-    excludes = []
-    for item in inps.exclude_dates:
-        excludes.extend([d for d in item.split(',') if d])
-    inps.exclude_dates = excludes
-
     return inps
 
 
@@ -109,6 +91,25 @@ def parse_lalo(str_lalo):
     if len(lalo) == 1:  # if given as one string containing ','
         lalo = lalo[0]
     return lalo
+
+
+def parse_periods(inps):
+    """Expand --period entries into start/stop lists and normalize excludes."""
+    if inps.period:
+        for p in inps.period:
+            delimiters = '[,:\\-\\s]'
+            dates = re.split(delimiters, p)
+
+            if len(dates) < 2 or len(dates[0]) != 8 or len(dates[1]) != 8:
+                raise ValueError('Date format not valid, it must be in the format YYYYMMDD')
+
+            inps.start_date.append(dates[0])
+            inps.stop_date.append(dates[1])
+
+    excludes = []
+    for item in inps.exclude_dates:
+        excludes.extend([d for d in item.split(',') if d])
+    inps.exclude_dates = excludes
 
 
 def configure_logging(directory=None):
@@ -199,6 +200,19 @@ def _asc_desc_worker(i):
     )
     return i, dvert, hvert
 
+def get_repeat_interval(meta1, meta2):
+    """Return repeat interval (days) based on mission/project naming."""
+    names = [meta1.get('mission', ''), meta2.get('mission', '')]
+    for n in names:
+        low = (n or '').lower()
+        if 'csk' in low or 'cosmo' in low:
+            return 1
+        if 'tsx' in low or 'terr' in low:
+            return 11
+        if 'sen' in low:
+            return 12
+    return 12  # sensible default if unknown
+
 def match_dates(a, b, schedule):
     """Match dates following the provided shift schedule (ordered list of (shift, block))."""
     print("-"*50)
@@ -243,6 +257,106 @@ def match_dates(a, b, schedule):
     if not all_pairs:
         return np.empty((0, 2), dtype=object), block_counts, block_pairs, block_map, shift_map
     return np.array(all_pairs, dtype=object), block_counts, block_pairs, block_map, shift_map
+
+
+def limit_dates(date_list, inps):
+    intervals = []
+    max_len = max(len(inps.start_date), len(inps.stop_date))
+    for i in range(max_len):
+        start = inps.start_date[i] if i < len(inps.start_date) else None
+        stop = inps.stop_date[i] if i < len(inps.stop_date) else None
+        intervals.append((start, stop))
+
+    if not intervals:
+        mask = np.ones(len(date_list), dtype=bool)
+        dates = np.array([to_date(d) for d in date_list])
+    else:
+        dates = np.array([to_date(d) for d in date_list])
+        mask = np.zeros(len(dates), dtype=bool)
+
+        for start, stop in intervals:
+            start_d = to_date(start) if start else dates.min()
+            stop_d = to_date(stop) if stop else dates.max()
+            mask |= (dates >= start_d) & (dates <= stop_d)
+
+    if inps.exclude_dates:
+        exclude_set = {to_date(d) for d in inps.exclude_dates}
+        mask &= ~np.isin(dates, list(exclude_set))
+
+    return date_list[mask]
+
+
+def load_dates(file_path, inps):
+    work_dir = prepend_scratchdir_if_needed(file_path)
+    eos_file, _, _, project_base_dir, _, _ = get_file_names(work_dir)
+    attr = readfile.read_attribute(eos_file)
+
+    file_type = attr.get('FILE_TYPE')
+    if file_type == 'timeseries':
+        obj = timeseries(eos_file)
+    elif file_type == 'HDFEOS':
+        obj = HDFEOS(eos_file)
+    else:
+        raise ValueError(f"Unsupported input file type: {file_type}")
+
+    obj.open()
+    dates = np.array(obj.dateList)
+    obj.close()
+
+    dates = limit_dates(dates, inps)
+    meta = {
+        'mission': attr.get('mission', ''),
+        'relative_orbit': attr.get('relative_orbit') or attr.get('relativeOrbit'),
+        'ORBIT_DIRECTION': attr.get('ORBIT_DIRECTION', ''),
+        'FILE_PATH': eos_file,
+        'project_base_dir': project_base_dir,
+    }
+    return dates, meta, project_base_dir
+
+
+def match_and_filter_pairs(ts1_dates, ts2_dates, meta1, meta2, inps):
+    """Match dates between two date arrays (used by fast/dry-run paths)."""
+    def _shift_schedule(interval_index):
+        schedule = []
+        block_ranges = []
+        repeat = get_repeat_interval(meta1, meta2)
+        step = math.ceil(repeat / 2)
+        max_blocks = max(1, interval_index)
+        k = 0
+        while len(block_ranges) < max_blocks:
+            # positive block for this interval
+            pos_start = k * step if k == 0 else k * step + 1  # avoid duplicate boundaries
+            pos_end = (k + 1) * step
+            block_idx_pos = len(block_ranges)
+            block_ranges.append((pos_start, pos_end))
+            for s in range(pos_start, pos_end + 1):
+                schedule.append((s, block_idx_pos))
+            if len(block_ranges) >= max_blocks:
+                break
+            # negative block for this interval
+            neg_start, neg_end = -(k * step + 1), -(k + 1) * step
+            block_idx_neg = len(block_ranges)
+            block_ranges.append((neg_start, neg_end))
+            for s in range(neg_start, neg_end - 1, -1):
+                schedule.append((s, block_idx_neg))
+            k += 1
+        return schedule, block_ranges
+
+    schedule, block_ranges = _shift_schedule(inps.interval_index)
+    print(f"Shift schedule blocks: {block_ranges}")
+
+    pairs, block_counts, block_pairs, block_map, shift_map = match_dates(ts1_dates, ts2_dates, schedule)
+
+    ts1_filtered = np.array([d for d in ts1_dates if to_date(d) in pairs[:, 0]], dtype=object)
+    ts2_filtered = np.array([d for d in ts2_dates if to_date(d) in pairs[:, 1]], dtype=object)
+
+    delta_days_array = np.array([
+        (datetime.strptime(to_date(y).strftime("%Y%m%d"), "%Y%m%d").date() -
+         datetime.strptime(to_date(x).strftime("%Y%m%d"), "%Y%m%d").date()).days
+        for x, y in zip(ts1_filtered, ts2_filtered)
+    ])
+
+    return ts1_filtered, ts2_filtered, delta_days_array, pairs, block_ranges, block_counts, block_pairs, block_map, shift_map
 
 
 def load_timeseries_file(file_path, geometry_file_input, inps):
@@ -395,7 +509,7 @@ def match_and_filter_dates(ts1, ts2, inps):
     def _shift_schedule(interval_index):
         schedule = []
         block_ranges = []
-        repeat = fp.get_repeat_interval(ts1.metadata, ts2.metadata)
+        repeat = get_repeat_interval(ts1.metadata, ts2.metadata)
         step = math.ceil(repeat / 2)
         max_blocks = max(1, interval_index)
         k = 0
@@ -879,16 +993,16 @@ def main(iargs=None, namespace=None):
     shift_display = {}
 
     # Always write image_pairs.txt using the fast pairing logic
-    fp.parse_periods(inps)
+    parse_periods(inps)
 
     def run_fast(files):
         dates_meta_local = []
         project_base = None
         for f in files:
-            dates, meta, project_base = fp.load_dates(f, inps)
+            dates, meta, project_base = load_dates(f, inps)
             dates_meta_local.append((dates, meta))
         (d1, m1), (d2, m2) = dates_meta_local
-        ts1_f, ts2_f, delta_fast, pairs_fast, block_ranges, block_counts, block_pairs, block_map, shift_map = fp.match_and_filter_dates(d1, d2, m1, m2, inps)
+        ts1_f, ts2_f, delta_fast, pairs_fast, block_ranges, block_counts, block_pairs, block_map, shift_map = match_and_filter_pairs(d1, d2, m1, m2, inps)
         mode_val, mode_count = delta_days_max_occurrence(delta_fast)
         return {
             "d1": d1, "d2": d2, "m1": m1, "m2": m2,
@@ -929,7 +1043,7 @@ def main(iargs=None, namespace=None):
     project_base_dir = chosen["base"]
 
     max_shift = max((max(abs(r[0]), abs(r[1])) for r in block_ranges), default=0)
-    diff_msg = fp.describe_shift(ts1_f, ts2_f, m1, m2, limit=max_shift)
+    diff_msg = describe_shift(ts1_f, ts2_f, m1, m2, limit=max_shift)
     symbols = list("*+-:!@#$%^&():\";'<>,.?/")
     # Assign symbols by signed shift: positives first, then zero, then negatives.
     def _sign_order(val):
@@ -945,8 +1059,8 @@ def main(iargs=None, namespace=None):
     symbol_map = {}
     shift_display = {}
     for (da, db), _ in block_map.items():
-        d1s = fp.to_date(da).strftime("%Y%m%d")
-        d2s = fp.to_date(db).strftime("%Y%m%d")
+        d1s = to_date(da).strftime("%Y%m%d")
+        d2s = to_date(db).strftime("%Y%m%d")
         s_val = shift_map.get((da, db), 0)
         symbol = shift_symbol.get(s_val, symbols[len(shift_symbol) % len(symbols)])
         symbol_map[(d1s, d2s)] = symbol
@@ -961,8 +1075,8 @@ def main(iargs=None, namespace=None):
         for (da, db), bidx in block_map.items():
             if bidx != idx:
                 continue
-            d1s = fp.to_date(da).strftime("%Y%m%d")
-            d2s = fp.to_date(db).strftime("%Y%m%d")
+            d1s = to_date(da).strftime("%Y%m%d")
+            d2s = to_date(db).strftime("%Y%m%d")
             s_val = shift_display.get((d1s, d2s), 0)
             sign = "+" if s_val > 0 else ""
             sym = symbol_map.get((d1s, d2s), symbols[idx % len(symbols)])
@@ -990,7 +1104,7 @@ def main(iargs=None, namespace=None):
     if interval_lines:
         note_text += "\n" + "\n".join(interval_lines)
 
-    fp.write_date_table(
+    write_date_table(
         d1,
         d2,
         pairs_fast,
@@ -1052,12 +1166,12 @@ def main(iargs=None, namespace=None):
         dates_meta = []
         project_base_dir = None
         for f in inps.file:
-            dates, meta, project_base_dir = fp.load_dates(f, inps)
+            dates, meta, project_base_dir = load_dates(f, inps)
             dates_meta.append((dates, meta))
         (ts1_dates, meta1), (ts2_dates, meta2) = dates_meta
-        ts1_f, ts2_f, _, pairs, block_ranges, block_counts, block_pairs, block_map, shift_map = fp.match_and_filter_dates(ts1_dates, ts2_dates, meta1, meta2, inps)
+        ts1_f, ts2_f, _, pairs, block_ranges, block_counts, block_pairs, block_map, shift_map = match_and_filter_pairs(ts1_dates, ts2_dates, meta1, meta2, inps)
         max_shift = max((max(abs(r[0]), abs(r[1])) for r in block_ranges), default=0)
-        diff_msg = fp.describe_shift(ts1_f, ts2_f, meta1, meta2, limit=max_shift)
+        diff_msg = describe_shift(ts1_f, ts2_f, meta1, meta2, limit=max_shift)
         symbols = list("*+-:!@#$%^&():\";'<>,.?/")
         interval_lines = []
         for idx, rng in enumerate(block_ranges):
@@ -1068,16 +1182,16 @@ def main(iargs=None, namespace=None):
             for (da, db), bidx in block_map.items():
                 if bidx != idx:
                     continue
-                d1 = fp.to_date(da).strftime("%Y%m%d")
-                d2 = fp.to_date(db).strftime("%Y%m%d")
+                d1 = to_date(da).strftime("%Y%m%d")
+                d2 = to_date(db).strftime("%Y%m%d")
                 s_val = shift_map.get((da, db), 0)
                 sign = "+" if s_val > 0 else ""
                 interval_lines.append(f"{symbols[idx % len(symbols)]}{d1}  {d2} ({sign}{s_val})")
         symbol_map = {}
         shift_display = {}
         for (da, db), block_idx in block_map.items():
-            d1 = fp.to_date(da).strftime("%Y%m%d")
-            d2 = fp.to_date(db).strftime("%Y%m%d")
+            d1 = to_date(da).strftime("%Y%m%d")
+            d2 = to_date(db).strftime("%Y%m%d")
             symbol_map[(d1, d2)] = symbols[block_idx % len(symbols)]
             shift_display[(d1, d2)] = shift_map.get((da, db), 0)
         # Summary with counts per signed shift (positive first, then zero, then negative).
@@ -1104,7 +1218,7 @@ def main(iargs=None, namespace=None):
             pair_txt = "pair" if count == 1 else "pairs"
             legend_lines.append(f"{sym} {sign}{shift_val} days  {count} {pair_txt}")
         legend_lines.append(f"Total: {total_pairs} pairs")
-        fp.write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, os.path.join(project_base_dir, "image_pairs.txt"), note=diff_msg, extra_lines=interval_lines, pair_symbols=symbol_map, pair_shifts=shift_display, legend_lines=legend_lines)
+        write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, os.path.join(project_base_dir, "image_pairs.txt"), note=diff_msg, extra_lines=interval_lines, pair_symbols=symbol_map, pair_shifts=shift_display, legend_lines=legend_lines)
         return
 
     # Process reference points
