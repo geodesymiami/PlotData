@@ -25,6 +25,8 @@ SCRATCHDIR = os.getenv('SCRATCHDIR')
 EXAMPLE = """
 Example usage:
     horzvert_timeseries.py ChilesSenAT120/mintpy ChilesSenDT142/mintpy --ref-lalo 0.84969 -77.86430
+    horzvert_timeseries.py ChilesSenAT120/mintpy ChilesSenDT142/mintpy --ref-lalo 0.84969 -77.86430 --dry-run
+    horzvert_timeseries.py ChilesSenAT120/mintpy ChilesSenDT142/mintpy --ref-lalo 0.84969 -77.86430 --intervals 6
     horzvert_timeseries.py hvGalapagosSenA106/mintpy hvGalapagosSenD128/mintpy --ref-lalo -0.81 -91.190
     horzvert_timeseries.py hvGalapagosSenA106/miaplpy_SN_201803_201805/network_single_reference hvGalapagosSenD128/miaplpy_SN_201803_201806/network_single_reference --ref-lalo -0.81 -91.190
 """
@@ -53,16 +55,17 @@ def create_parser(iargs=None, namespace=None):
     parser.add_argument('--lat-step', dest='lat_step', type=float, default=-0.0002, help='latitude step for geocoding (default: %(default)s).')
     parser.add_argument('--horz-az-angle', dest='horz_az_angle', type=float, default=90, help='Horizontal azimuth angle (default: %(default)s).')
     parser.add_argument('--window-size', dest='window_size', type=int, default=3, help='window size (square side in number of pixels) for reference point look up (default: %(default)s).')
-    parser.add_argument('--date-filtering', dest='date_thresh_method', type=str, default='min', choices=['min', 'percentile'], help='Method for date difference threshold: "min" uses minimum difference, "percentile" uses percentile-based threshold (default: %(default)s).')
-    parser.add_argument('-ow', '--overwrite', dest='overwrite', action='store_true', help='Overwrite all previously generated files')
+    # parser.add_argument('-ow', '--overwrite', dest='overwrite', action='store_true', help='Overwrite all previously generated files')
     parser.add_argument('-ts', '--timeseries', dest='timeseries', action='store_true', help='Output timeseries file in addition to HDFEOS format')
-    parser.add_argument('--search-interval', dest='search_interval', type=int, default=1, help='Number of repeat intervals to search for date pairing (default: %(default)s).')
+    parser.add_argument('--intervals', dest='interval_index', type=int, default=2,
+            help=('Interval block index [0..repeat_interval/2] to search (1=first positive block, 2=first negative, etc.). '
+                  '\n>3: pairs larger than repeat_interval/2 can be formed. (Default: 2, immediate pairs only).'))
     parser.add_argument('--start-date', dest='start_date', nargs='*', default=[], metavar='YYYYMMDD', help='Start date of limited period')
     parser.add_argument('--end-date', dest='stop_date', nargs='*', default=[], metavar='YYYYMMDD', help='End date of limited period')
     parser.add_argument('--period', dest='period', nargs='*', default=[], metavar='YYYYMMDD:YYYYMMDD', help='Period of the search')
-    parser.add_argument('--exclude-dates', dest='exclude_dates', nargs='*', default=[], metavar='YYYYMMDD[,YYYYMMDD...]', help='Dates to exclude before pairing')
-    parser.add_argument('--dry-run', dest='dry_run', action='store_true', help='Only compute image pairs and write image_pairs.txt (no horz/vert processing)')
-    parser.add_argument('--no-swap', dest='no_swap', action='store_true', help='Do not swap datasets even if negative delta dominates')
+    parser.add_argument('--dry-run', dest='dry_run', action='store_true', help='Write image_pairs.txt only (no horz/vert processing)')
+    parser.add_argument('--exclude-dates', dest='exclude_dates', nargs='*', default=[], metavar='YYYYMMDD[,YYYYMMDD...]', help='Dates to exclude before pairing (for debugging)')
+    parser.add_argument('--no-swap', dest='no_swap', action='store_true', help='Do not swap datasets (for debugging)')
 
     inps = parser.parse_args(iargs, namespace)
 
@@ -388,12 +391,14 @@ def match_and_filter_dates(ts1, ts2, inps):
     Returns:
         tuple: (filtered_ts1, filtered_ts2, delta_days, bperp, date_list, pairs)
     """
-    def _shift_schedule(search_interval):
+    def _shift_schedule(interval_index):
         schedule = []
         block_ranges = []
         repeat = fp.get_repeat_interval(ts1.metadata, ts2.metadata)
         step = math.ceil(repeat / 2)
-        for k in range(max(1, search_interval)):
+        max_blocks = max(1, interval_index)
+        k = 0
+        while len(block_ranges) < max_blocks:
             # positive block for this interval
             pos_start = k * step if k == 0 else k * step + 1  # avoid duplicate boundaries
             pos_end = (k + 1) * step
@@ -401,15 +406,18 @@ def match_and_filter_dates(ts1, ts2, inps):
             block_ranges.append((pos_start, pos_end))
             for s in range(pos_start, pos_end + 1):
                 schedule.append((s, block_idx_pos))
+            if len(block_ranges) >= max_blocks:
+                break
             # negative block for this interval
-            neg_start, neg_end = -(k + 1) * step, -(k * step + 1)
+            neg_start, neg_end = -(k * step + 1), -(k + 1) * step
             block_idx_neg = len(block_ranges)
             block_ranges.append((neg_start, neg_end))
             for s in range(neg_start, neg_end - 1, -1):
                 schedule.append((s, block_idx_neg))
+            k += 1
         return schedule, block_ranges
 
-    schedule, block_ranges = _shift_schedule(inps.search_interval)
+    schedule, block_ranges = _shift_schedule(inps.interval_index)
     print(f"Shift schedule blocks: {block_ranges}")
 
     # Match dates and get dropped indices
@@ -892,7 +900,11 @@ def main(iargs=None, namespace=None):
         }
 
     res_orig = run_fast(inps.file)
-    res_swap = run_fast(list(reversed(inps.file))) if not inps.no_swap else res_orig
+    res_swap = res_orig
+    if not inps.no_swap:
+        print()
+        print("Testing swapped input files:")
+        res_swap = run_fast(list(reversed(inps.file)))
 
     chosen = res_swap if (not inps.no_swap and res_swap["mode_count"] > res_orig["mode_count"]) else res_orig
     if chosen is res_swap and not inps.no_swap:
@@ -1156,6 +1168,10 @@ def main(iargs=None, namespace=None):
     vertical_timeseries, horizontal_timeseries, mask, latitude, longitude = compute_horzvert_timeseries(ts1, ts2, date_list, inps)
     ts1.metadata['relative_orbit_second'] = ts2.metadata['relative_orbit']
     ts1.metadata['ORBIT_DIRECTION_SECOND'] = ts2.metadata['ORBIT_DIRECTION']
+    # Derive start/end dates from the paired date_list (horz/vert range).
+    date_objs = [to_date(d) for d in date_list]
+    ts1.metadata['first_date'] = min(date_objs).strftime('%Y-%m-%d')
+    ts1.metadata['last_date'] = max(date_objs).strftime('%Y-%m-%d')
 
     # Create output files
 

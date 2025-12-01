@@ -36,7 +36,7 @@ def create_parser(iargs=None):
     parser.add_argument('--start-date', dest='start_date', nargs='*', default=[], metavar='YYYYMMDD', help='Start date of limited period')
     parser.add_argument('--end-date', dest='stop_date', nargs='*', default=[], metavar='YYYYMMDD', help='End date of limited period')
     parser.add_argument('--period', dest='period', nargs='*', default=[], metavar='YYYYMMDD:YYYYMMDD', help='Period of the search')
-    parser.add_argument('--search-interval', dest='search_interval', type=int, default=1, help='Number of repeat intervals to search for date pairing (default: %(default)s).')
+    parser.add_argument('--intervals', dest='interval_index', type=int, default=2, help='Interval block index to search (1=first positive block, 2=first negative, etc.).')
     parser.add_argument('--exclude-dates', dest='exclude_dates', nargs='*', default=[], metavar='YYYYMMDD[,YYYYMMDD...]', help='Dates to exclude before pairing')
     return parser.parse_args(iargs)
 
@@ -232,12 +232,14 @@ def write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, output_path, not
 
 def match_and_filter_dates(ts1_dates, ts2_dates, meta1, meta2, inps):
     """Match dates between two date arrays."""
-    def _shift_schedule(search_interval):
+    def _shift_schedule(interval_index):
         schedule = []
         block_ranges = []
         repeat = get_repeat_interval(meta1, meta2)
         step = math.ceil(repeat / 2)
-        for k in range(max(1, search_interval)):
+        max_blocks = max(1, interval_index)
+        k = 0
+        while len(block_ranges) < max_blocks:
             # positive block for this interval
             pos_start = k * step if k == 0 else k * step + 1  # avoid duplicate boundaries
             pos_end = (k + 1) * step
@@ -245,15 +247,18 @@ def match_and_filter_dates(ts1_dates, ts2_dates, meta1, meta2, inps):
             block_ranges.append((pos_start, pos_end))
             for s in range(pos_start, pos_end + 1):
                 schedule.append((s, block_idx_pos))
+            if len(block_ranges) >= max_blocks:
+                break
             # negative block for this interval
-            neg_start, neg_end = -(k + 1) * step, -(k * step + 1)
+            neg_start, neg_end = -(k * step + 1), -(k + 1) * step
             block_idx_neg = len(block_ranges)
             block_ranges.append((neg_start, neg_end))
             for s in range(neg_start, neg_end - 1, -1):
                 schedule.append((s, block_idx_neg))
+            k += 1
         return schedule, block_ranges
 
-    schedule, block_ranges = _shift_schedule(inps.search_interval)
+    schedule, block_ranges = _shift_schedule(inps.interval_index)
     print(f"Shift schedule blocks: {block_ranges}")
 
     pairs, block_counts, block_pairs, block_map, shift_map = match_dates(ts1_dates, ts2_dates, schedule)
