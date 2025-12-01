@@ -921,13 +921,17 @@ def main(iargs=None, namespace=None):
     max_shift = max((max(abs(r[0]), abs(r[1])) for r in block_ranges), default=0)
     diff_msg = fp.describe_shift(ts1_f, ts2_f, m1, m2, limit=max_shift)
     symbols = list("*+-:!@#$%^&():\";'<>,.?/")
+    # Assign symbols by ascending absolute shift so +/- pairs share the same marker.
+    abs_values = sorted({abs(s) for s in shift_map.values()})
+    abs_symbol = {abs_shift: symbols[i % len(symbols)] for i, abs_shift in enumerate(abs_values)}
+
     symbol_map = {}
     shift_display = {}
-    for (da, db), block_idx in block_map.items():
+    for (da, db), _ in block_map.items():
         d1s = fp.to_date(da).strftime("%Y%m%d")
         d2s = fp.to_date(db).strftime("%Y%m%d")
         s_val = shift_map.get((da, db), 0)
-        symbol = symbols[block_idx % len(symbols)]
+        symbol = abs_symbol.get(abs(s_val), symbols[0])
         symbol_map[(d1s, d2s)] = symbol
         shift_display[(d1s, d2s)] = s_val
 
