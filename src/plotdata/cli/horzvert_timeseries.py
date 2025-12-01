@@ -55,7 +55,7 @@ def create_parser(iargs=None, namespace=None):
     parser.add_argument('--lat-step', dest='lat_step', type=float, default=-0.0002, help='latitude step for geocoding (default: %(default)s).')
     parser.add_argument('--horz-az-angle', dest='horz_az_angle', type=float, default=90, help='Horizontal azimuth angle (default: %(default)s).')
     parser.add_argument('--window-size', dest='window_size', type=int, default=3, help='window size (square side in number of pixels) for reference point look up (default: %(default)s).')
-    # parser.add_argument('-ow', '--overwrite', dest='overwrite', action='store_true', help='Overwrite all previously generated files')
+    parser.add_argument('-ow', '--overwrite', dest='overwrite', action='store_true', help='Overwrite all previously generated files')
     parser.add_argument('-ts', '--timeseries', dest='timeseries', action='store_true', help='Output timeseries file in addition to HDFEOS format')
     parser.add_argument('--intervals', dest='interval_index', type=int, default=2,
             help=('Interval block index [0..repeat_interval/2] to search (1=first positive block, 2=first negative, etc.). '
@@ -270,7 +270,8 @@ def load_timeseries_file(file_path, geometry_file_input, inps):
         inps.ref_lalo = parse_lalo([metadata['REF_LAT'], metadata['REF_LON']])
 
     # Create geometry file if needed
-    if not os.path.exists(geometry_file) or inps.overwrite:
+    overwrite_flag = getattr(inps, 'overwrite', False)
+    if not os.path.exists(geometry_file) or overwrite_flag:
         os.makedirs(os.path.dirname(geometry_file), exist_ok=True)
         create_geometry_file(eos_file, os.path.dirname(geometry_file))
 
