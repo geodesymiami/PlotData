@@ -976,12 +976,15 @@ def main(iargs=None, namespace=None):
         if shift_val not in shift_symbol:
             shift_symbol[shift_val] = symbol_map[pair]
     legend_lines = ["Summary:"]
+    total_pairs = 0
     for shift_val in sorted(shift_counts.keys(), key=_sign_order):
         sym = shift_symbol.get(shift_val, symbols[shift_val % len(symbols)] if shift_counts else symbols[0])
         sign = "+" if shift_val > 0 else ""
         count = shift_counts[shift_val]
+        total_pairs += count
         pair_txt = "pair" if count == 1 else "pairs"
         legend_lines.append(f"{sym} {sign}{shift_val} days  {count} {pair_txt}")
+    legend_lines.append(f"Total: {total_pairs} pairs")
 
     note_text = diff_msg
     if interval_lines:
@@ -1092,12 +1095,15 @@ def main(iargs=None, namespace=None):
             if shift_val not in shift_symbol:
                 shift_symbol[shift_val] = symbol_map[pair]
         legend_lines = ["Summary:"]
+        total_pairs = 0
         for shift_val in sorted(shift_counts.keys(), key=_sign_order):
             sym = shift_symbol.get(shift_val, symbols[shift_val % len(symbols)] if shift_counts else symbols[0])
             sign = "+" if shift_val > 0 else ""
             count = shift_counts[shift_val]
+            total_pairs += count
             pair_txt = "pair" if count == 1 else "pairs"
             legend_lines.append(f"{sym} {sign}{shift_val} days  {count} {pair_txt}")
+        legend_lines.append(f"Total: {total_pairs} pairs")
         fp.write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, os.path.join(project_base_dir, "image_pairs.txt"), note=diff_msg, extra_lines=interval_lines, pair_symbols=symbol_map, pair_shifts=shift_display, legend_lines=legend_lines)
         return
 
@@ -1156,12 +1162,15 @@ def main(iargs=None, namespace=None):
                 shift_symbol[shift_val] = symbol_map[pair]
 
         legend_lines = ["Summary:"]
+        total_pairs = 0
         for shift_val in sorted(shift_counts.keys(), key=_sign_order):
             sym = shift_symbol.get(shift_val, symbols[shift_val % len(symbols)] if shift_counts else symbols[0])
             sign = "+" if shift_val > 0 else ""
             count = shift_counts[shift_val]
+            total_pairs += count
             pair_txt = "pair" if count == 1 else "pairs"
             legend_lines.append(f"{sym} {sign}{shift_val} days  {count} {pair_txt}")
+        legend_lines.append(f"Total: {total_pairs} pairs")
 
         write_date_table(original_ts1_dates, original_ts2_dates, pairs, ts1.metadata, ts2.metadata, os.path.join(project_base_dir, "image_pairs.txt"), note=diff_msg, extra_lines=interval_lines, pair_symbols=symbol_map, pair_shifts=shift_display, legend_lines=legend_lines)
 

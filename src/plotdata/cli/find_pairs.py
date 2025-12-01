@@ -357,12 +357,15 @@ def main(iargs=None):
         shift_counts[val] = shift_counts.get(val, 0) + 1
     shift_order = sorted(shift_counts.keys(), key=_sign_order)
     legend_lines = ["Summary:"]
+    total_pairs = 0
     for shift_val in shift_order:
         sym = shift_symbol.get(shift_val, symbols[len(shift_symbol) % len(symbols)])
         sign = "+" if shift_val > 0 else ""
         count = shift_counts[shift_val]
+        total_pairs += count
         pair_txt = "pair" if count == 1 else "pairs"
         legend_lines.append(f"{sym} {sign}{shift_val} days  {count} {pair_txt}")
+    legend_lines.append(f"Total: {total_pairs} pairs")
     write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, os.path.join(project_base_dir, "image_pairs.txt"), note=extra, pair_symbols=symbol_map, pair_shifts=shift_display, legend_lines=legend_lines)
 
 
