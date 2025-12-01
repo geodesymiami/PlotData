@@ -299,23 +299,16 @@ def main(iargs=None):
     print(diff_msg)
     interval_lines = []
     symbols = list("*+-:!@#$%^&():\";'<>,.?/")
-    # Assign markers by ascending absolute shift so +/- shifts share the same symbol.
-    abs_values = sorted({abs(s) for s in shift_map.values()})
-    abs_symbol = {abs_shift: symbols[i % len(symbols)] for i, abs_shift in enumerate(abs_values)}
+    # Assign markers by signed shift: positives first, then zero, then negatives.
+    def _sign_order(val):
+        if val > 0:
+            return (abs(val), 0)
+        if val == 0:
+            return (abs(val), 1)
+        return (abs(val), 2)
 
-    # Map each block to the symbol for the smallest absolute shift within that block.
-    block_symbol = {}
-    for (da, db), bidx in block_map.items():
-        s_val = shift_map.get((da, db), 0)
-        abs_shift = abs(s_val)
-        if bidx not in block_symbol:
-            block_symbol[bidx] = (abs_shift, abs_symbol.get(abs_shift, symbols[0]))
-        else:
-            current_abs, _ = block_symbol[bidx]
-            if abs_shift < current_abs:
-                block_symbol[bidx] = (abs_shift, abs_symbol.get(abs_shift, symbols[0]))
-    # Simplify block_symbol to just symbol strings
-    block_symbol = {k: v[1] for k, v in block_symbol.items()}
+    shifts_sorted = sorted(set(shift_map.values()), key=_sign_order)
+    shift_symbol = {s: symbols[i % len(symbols)] for i, s in enumerate(shifts_sorted)}
     for idx, rng in enumerate(block_ranges):
         rng_str = f"{rng[0]}..{rng[1]}"
         count = block_counts.get(idx, 0)
@@ -328,7 +321,7 @@ def main(iargs=None):
             d2 = to_date(db).strftime("%Y%m%d")
             s_val = shift_map.get((da, db), 0)
             sign = "+" if s_val > 0 else ""
-            sym = block_symbol.get(idx, symbols[idx % len(symbols)])
+            sym = shift_symbol.get(s_val, symbols[idx % len(symbols)])
             interval_lines.append(f"{sym}{d1}  {d2} ({sign}{s_val})")
     symbol_map = {}
     shift_display = {}
@@ -336,17 +329,22 @@ def main(iargs=None):
         d1 = to_date(da).strftime("%Y%m%d")
         d2 = to_date(db).strftime("%Y%m%d")
         s_val = shift_map.get((da, db), 0)
-        abs_shift = abs(s_val)
-        symbol = abs_symbol.get(abs_shift, symbols[0])  # fallback shouldn't hit
+        symbol = shift_symbol.get(s_val, symbols[len(shift_symbol) % len(symbols)])  # fallback shouldn't hit
         symbol_map[(d1, d2)] = symbol
         shift_display[(d1, d2)] = s_val
     extra = diff_msg + ("\n" + "\n".join(interval_lines) if interval_lines else "")
-    legend_lines = []
-    for s in sorted(set(symbol_map.values()), key=lambda x: symbols.index(x)):
-        shifts = sorted({shift_display[k] for k, v in symbol_map.items() if v == s}, key=abs)
-        if shifts:
-            shift_txt = ", ".join([f"{'+' if sv > 0 else ''}{sv} days" for sv in shifts])
-            legend_lines.append(f"{s} {shift_txt}")
+    # Summary with counts per signed shift, respecting the positive/zero/negative ordering.
+    shift_counts = {}
+    for val in shift_display.values():
+        shift_counts[val] = shift_counts.get(val, 0) + 1
+    shift_order = sorted(shift_counts.keys(), key=_sign_order)
+    legend_lines = ["Summary:"]
+    for shift_val in shift_order:
+        sym = shift_symbol.get(shift_val, symbols[len(shift_symbol) % len(symbols)])
+        sign = "+" if shift_val > 0 else ""
+        count = shift_counts[shift_val]
+        pair_txt = "pair" if count == 1 else "pairs"
+        legend_lines.append(f"{sym} {sign}{shift_val} days  {count} {pair_txt}")
     write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, os.path.join(project_base_dir, "image_pairs.txt"), note=extra, pair_symbols=symbol_map, pair_shifts=shift_display, legend_lines=legend_lines)
 
 

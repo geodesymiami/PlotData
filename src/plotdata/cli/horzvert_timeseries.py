@@ -923,9 +923,16 @@ def main(iargs=None, namespace=None):
     max_shift = max((max(abs(r[0]), abs(r[1])) for r in block_ranges), default=0)
     diff_msg = fp.describe_shift(ts1_f, ts2_f, m1, m2, limit=max_shift)
     symbols = list("*+-:!@#$%^&():\";'<>,.?/")
-    # Assign symbols by ascending absolute shift so +/- pairs share the same marker.
-    abs_values = sorted({abs(s) for s in shift_map.values()})
-    abs_symbol = {abs_shift: symbols[i % len(symbols)] for i, abs_shift in enumerate(abs_values)}
+    # Assign symbols by signed shift: positives first, then zero, then negatives.
+    def _sign_order(val):
+        if val > 0:
+            return (abs(val), 0)
+        if val == 0:
+            return (abs(val), 1)
+        return (abs(val), 2)
+
+    shifts_sorted = sorted(set(shift_map.values()), key=_sign_order)
+    shift_symbol = {s: symbols[i % len(symbols)] for i, s in enumerate(shifts_sorted)}
 
     symbol_map = {}
     shift_display = {}
@@ -933,7 +940,7 @@ def main(iargs=None, namespace=None):
         d1s = fp.to_date(da).strftime("%Y%m%d")
         d2s = fp.to_date(db).strftime("%Y%m%d")
         s_val = shift_map.get((da, db), 0)
-        symbol = abs_symbol.get(abs(s_val), symbols[0])
+        symbol = shift_symbol.get(s_val, symbols[len(shift_symbol) % len(symbols)])
         symbol_map[(d1s, d2s)] = symbol
         shift_display[(d1s, d2s)] = s_val
 
@@ -953,18 +960,24 @@ def main(iargs=None, namespace=None):
             sym = symbol_map.get((d1s, d2s), symbols[idx % len(symbols)])
             interval_lines.append(f"{sym}{d1s}  {d2s} ({sign}{s_val})")
 
-    legend_lines = []
-    for s in sorted(set(symbol_map.values()), key=lambda x: symbols.index(x)):
-        shifts = sorted({shift_display[k] for k, v in symbol_map.items() if v == s}, key=abs)
-        if shifts:
-            shift_txt = ", ".join([f"{'+' if sv > 0 else ''}{sv} days" for sv in shifts])
-            legend_lines.append(f"{s} {shift_txt}")
+    # Summary with counts per signed shift (positive first, then zero, then negative).
+    shift_counts = {}
+    shift_symbol = {}
+    for pair, shift_val in shift_display.items():
+        shift_counts[shift_val] = shift_counts.get(shift_val, 0) + 1
+        if shift_val not in shift_symbol:
+            shift_symbol[shift_val] = symbol_map[pair]
+    legend_lines = ["Summary:"]
+    for shift_val in sorted(shift_counts.keys(), key=_sign_order):
+        sym = shift_symbol.get(shift_val, symbols[shift_val % len(symbols)] if shift_counts else symbols[0])
+        sign = "+" if shift_val > 0 else ""
+        count = shift_counts[shift_val]
+        pair_txt = "pair" if count == 1 else "pairs"
+        legend_lines.append(f"{sym} {sign}{shift_val} days  {count} {pair_txt}")
 
     note_text = diff_msg
     if interval_lines:
         note_text += "\n" + "\n".join(interval_lines)
-    if legend_lines:
-        note_text += "\n" + "\n".join(legend_lines)
 
     fp.write_date_table(
         d1,
@@ -976,6 +989,7 @@ def main(iargs=None, namespace=None):
         note=note_text,
         pair_symbols=symbol_map,
         pair_shifts=shift_display,
+        legend_lines=legend_lines,
     )
     image_pairs_written = True
 
@@ -1055,12 +1069,27 @@ def main(iargs=None, namespace=None):
             d2 = fp.to_date(db).strftime("%Y%m%d")
             symbol_map[(d1, d2)] = symbols[block_idx % len(symbols)]
             shift_display[(d1, d2)] = shift_map.get((da, db), 0)
-        legend_lines = []
-        for s in sorted(set(symbol_map.values()), key=lambda x: ["*", "+", "-"].index(x) if x in ["*", "+", "-"] else symbols.index(x)):
-            shifts = sorted({shift_display[k] for k, v in symbol_map.items() if v == s}, key=abs)
-            if shifts:
-                shift_txt = ", ".join([f"{'+' if sv > 0 else ''}{sv} days" for sv in shifts])
-                legend_lines.append(f"{s} {shift_txt}")
+        # Summary with counts per signed shift (positive first, then zero, then negative).
+        def _sign_order(val):
+            if val > 0:
+                return (abs(val), 0)
+            if val == 0:
+                return (abs(val), 1)
+            return (abs(val), 2)
+
+        shift_counts = {}
+        shift_symbol = {}
+        for pair, shift_val in shift_display.items():
+            shift_counts[shift_val] = shift_counts.get(shift_val, 0) + 1
+            if shift_val not in shift_symbol:
+                shift_symbol[shift_val] = symbol_map[pair]
+        legend_lines = ["Summary:"]
+        for shift_val in sorted(shift_counts.keys(), key=_sign_order):
+            sym = shift_symbol.get(shift_val, symbols[shift_val % len(symbols)] if shift_counts else symbols[0])
+            sign = "+" if shift_val > 0 else ""
+            count = shift_counts[shift_val]
+            pair_txt = "pair" if count == 1 else "pairs"
+            legend_lines.append(f"{sym} {sign}{shift_val} days  {count} {pair_txt}")
         fp.write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, os.path.join(project_base_dir, "image_pairs.txt"), note=diff_msg, extra_lines=interval_lines, pair_symbols=symbol_map, pair_shifts=shift_display, legend_lines=legend_lines)
         return
 
@@ -1103,12 +1132,28 @@ def main(iargs=None, namespace=None):
     # Legend for symbols
     # Only write image_pairs.txt once (already written in fast path)
     if not image_pairs_written:
-        legend_lines = []
-        for s in sorted(set(symbol_map.values()), key=lambda x: symbols.index(x)):
-            shifts = sorted({shift_display[k] for k, v in symbol_map.items() if v == s}, key=abs)
-            if shifts:
-                shift_txt = ", ".join([f"{'+' if sv > 0 else ''}{sv} days" for sv in shifts])
-                legend_lines.append(f"{s} {shift_txt}")
+        # Summary with counts per signed shift (positive first, then zero, then negative).
+        def _sign_order(val):
+            if val > 0:
+                return (abs(val), 0)
+            if val == 0:
+                return (abs(val), 1)
+            return (abs(val), 2)
+
+        shift_counts = {}
+        shift_symbol = {}
+        for pair, shift_val in shift_display.items():
+            shift_counts[shift_val] = shift_counts.get(shift_val, 0) + 1
+            if shift_val not in shift_symbol:
+                shift_symbol[shift_val] = symbol_map[pair]
+
+        legend_lines = ["Summary:"]
+        for shift_val in sorted(shift_counts.keys(), key=_sign_order):
+            sym = shift_symbol.get(shift_val, symbols[shift_val % len(symbols)] if shift_counts else symbols[0])
+            sign = "+" if shift_val > 0 else ""
+            count = shift_counts[shift_val]
+            pair_txt = "pair" if count == 1 else "pairs"
+            legend_lines.append(f"{sym} {sign}{shift_val} days  {count} {pair_txt}")
 
         write_date_table(original_ts1_dates, original_ts2_dates, pairs, ts1.metadata, ts2.metadata, os.path.join(project_base_dir, "image_pairs.txt"), note=diff_msg, extra_lines=interval_lines, pair_symbols=symbol_map, pair_shifts=shift_display, legend_lines=legend_lines)
 
