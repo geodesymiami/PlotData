@@ -557,9 +557,11 @@ def is_delta_days_max_occurrence_negative(delta_days_array):
 
 def delta_days_max_occurrence(delta_days_array):
     """Return (value, count) of the most frequent delta_days entry."""
-    if delta_days_array.size == 0:
+    # Only consider positive deltas when selecting the mode.
+    pos_vals = delta_days_array[delta_days_array > 0]
+    if pos_vals.size == 0:
         return None, 0
-    vals, counts = np.unique(delta_days_array, return_counts=True)
+    vals, counts = np.unique(pos_vals, return_counts=True)
     idx = np.argmax(counts)
     return vals[idx], counts[idx]
 
