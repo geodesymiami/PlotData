@@ -231,10 +231,7 @@ class DataExtractor:
             print('Input data is complex, calculating amplitude.')
             data = np.abs(data)
 
-        if 'X_FIRST' not in atr:
-            geometry = self.ascending_geometry if 'SenA' in file else self.descending_geometry
-        else:
-            geometry = None
+        geometry = self.ascending_geometry if 'SenA' in file else self.descending_geometry
 
         # Convert geocoordinates to radar
         # TODO Fix stupid mintpy behaviour

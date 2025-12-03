@@ -23,7 +23,7 @@ from plotdata.utils.argument_parsers import add_date_arguments, add_location_arg
 ############################################################
 EXAMPLE = """
 example:
-        plot_data.py MaunaLoaSenDT87/mintpy MaunaLoaSenAT124/mintpy --period 20181001:20191031 --ref-lalo 19.50068,-155.55856 --lalo 19.47373,-155.59617 --resolution=01s --contour=2 --section 19.45,-155.75:19.45,-155.35 --resample-vector 40 --seismicity=3
+        plot_data.py MaunaLoaSenDT87/mintpy MaunaLoaSenAT124/mintpy --period 20181001:20191031 --ref-lalo 19.50068,-155.55856 --lalo 19.47373,-155.59617 --resolution=01s --contour=2 --section 19.45,-155.75:19.45,-155.35 --num-vectors 40 --seismicity=3
 
         Add events on timeseries plot:
         plot_data.py MaunaLoaSenDT87/mintpy MaunaLoaSenAT124/mintpy --template default  --period 20181001:20191031 --ref-lalo 19.50068 -155.55856 --resolution '01s' --contour 2 --lalo 19.461,-155.558 --num-vectors 40 --add-event 20181201 --event-magnitude 5.0
