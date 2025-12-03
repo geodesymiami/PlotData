@@ -75,12 +75,24 @@ class ProcessData:
             metadata = readfile.read(file)[1] if os.path.exists(file) else None
 
             if not metadata or 'Y_STEP' not in metadata:
+                # Geocode velocity file
                 self._geocode_velocity_file(metadata, file, geometry)
+                # Geocode geometry file
+                self._geocode_velocity_file(metadata, geometry, geometry)
 
                 # Add 'geo_' to the front of the file name
                 geo_masked_files.append(os.path.join(os.path.dirname(file), f"geo_{os.path.basename(file)}"))
+                geo_geometry = os.path.join(os.path.dirname(geometry), f"geo_{os.path.basename(geometry)}")
+
+                for i,f in enumerate(geometry_files):
+                    if not f:
+                        continue
+                    if os.path.dirname(f) == os.path.dirname(geometry):
+                        geometry_files[i] = geo_geometry
                 self.ascending = next((file for file in geo_masked_files if 'SenA' in file or 'CskA' in file), None)
                 self.descending = next((file for file in geo_masked_files if 'SenD' in file or 'CskD' in file), None)
+                self.ascending_geometry = next((file for file in geometry_files if 'SenA' in file or 'CskA' in file), None)
+                self.descending_geometry = next((file for file in geometry_files if 'SenD' in file or 'CskD' in file), None)
 
         if self.ref_lalo:
             self.ref_lalo = select_reference_point(geo_masked_files, self.window_size, self.ref_lalo)
@@ -129,7 +141,8 @@ class ProcessData:
         return horz_name, vert_name
 
     def _convert_timeseries_to_velocity(self, eos_file, start_date, end_date, output_file):
-        if not os.path.exists(output_file):
+        # TODO Overwrite option, this create conflicts if you use a new S1 file
+        if not os.path.exists(output_file) and True:
             cmd = f'{eos_file} --start-date {start_date} --end-date {end_date} --output {output_file}'
             ts2v.main(cmd.split())
 

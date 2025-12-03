@@ -199,9 +199,9 @@ class VelocityPlot:
             lon2d, lat2d = np.meshgrid(lon, lat)
  
         if hasattr(self, 'data') and self.data is not None:
-            resize_to_match(self.z, self.data, 'DEM')
-            resize_to_match(lat2d, self.data, 'latitude')
-            resize_to_match(lon2d, self.data, 'longitude')
+            self.z = resize_to_match(self.z, self.data, 'DEM')
+            lat2d = resize_to_match(lat2d, self.data, 'latitude')
+            lon2d = resize_to_match(lon2d, self.data, 'longitude')
 
         # Compute hillshade with real spacing
         ls = LightSource(azdeg=315, altdeg=45)

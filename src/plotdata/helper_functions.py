@@ -6,6 +6,8 @@ import glob
 import logging
 import subprocess
 import numpy as np
+import multiprocessing
+import shutil
 from pathlib import Path
 from scipy.ndimage import zoom
 from mintpy.utils import readfile
@@ -15,7 +17,6 @@ from mintpy.cli import generate_mask
 from scipy.interpolate import interp1d
 from mintpy.utils import utils, writefile
 from mintpy.save_hdfeos5 import polygon_corners_string
-
 
 def configure_logging(directory=None):
     """Configure logging for the application.
@@ -52,8 +53,7 @@ def configure_logging(directory=None):
     cmd_command = f"{script_name} {rest}".strip()
     logging.info(cmd_command)
 
-
-def get_output_filename(metadata, template, direction=None, update_mode=False, subset_mode=False):
+def get_output_filename(metadata, template, direction=None):
     """Get output file name of HDF-EOS5 time-series file."""
     SAT = metadata['mission']
     # SW = metadata['beam_mode']
@@ -64,8 +64,10 @@ def get_output_filename(metadata, template, direction=None, update_mode=False, s
 
     DATE1 = datetime.strptime(metadata['first_date'], '%Y-%m-%d').strftime('%Y%m%d')
     DATE2 = datetime.strptime(metadata['last_date'], '%Y-%m-%d').strftime('%Y%m%d')
-    if update_mode:
-        print('Update mode is ON, put endDate as XXXXXXXX.')
+
+    # prefer explicit flag from metadata if present; fall back to passed flag
+    update_flag =  (str(metadata.get('cfg.mintpy.save.hdfEos5.update', '')).lower() == 'yes') or False
+    if update_flag:
         DATE2 = 'XXXXXXXX'
 
     if direction:
@@ -73,36 +75,10 @@ def get_output_filename(metadata, template, direction=None, update_mode=False, s
     else:
         outName = f'{SAT}_{RELORB}_{RELORB2}_{DATE1}_{DATE2}.he5'
 
-    if subset_mode:
-        print('Subset mode is enabled, put subset range info in output filename.')
-        if 'Y_FIRST' in metadata.keys():
-            lat1 = float(metadata['Y_FIRST'])
-            lon0 = float(metadata['X_FIRST'])
-            lat0 = lat1 + float(metadata['Y_STEP']) * int(metadata['LENGTH'])
-            lon1 = lon0 + float(metadata['X_STEP']) * int(metadata['WIDTH'])
-
-            lat0Str = f'N{round(lat0*1e3):05d}'
-            lat1Str = f'N{round(lat1*1e3):05d}'
-            lon0Str = f'E{round(lon0*1e3):06d}'
-            lon1Str = f'E{round(lon1*1e3):06d}'
-
-            if lat0 < 0.0: lat0Str = f'S{round(abs(lat0)*1e3):05d}'
-            if lat1 < 0.0: lat1Str = f'S{round(abs(lat1)*1e3):05d}'
-            if lon0 < 0.0: lon0Str = f'W{round(abs(lon0)*1e3):06d}'
-            if lon1 < 0.0: lon1Str = f'W{round(abs(lon1)*1e3):06d}'
-
-            SUB = f'_{lat0Str}_{lat1Str}_{lon0Str}_{lon1Str}'
-
-        else:
-            polygon_str =  metadata.get('data_footprint')
-            SUB = polygon_corners_string(polygon_str)
-
-        fbase, fext = os.path.splitext(outName)
-
-        # if suffix:
-        #     outName = fbase.removesuffix('_' + suffix) + '_' + SUB + '_' + suffix + fext
-        # else:
-        outName = fbase + SUB + fext
+    fbase, fext = os.path.splitext(outName)
+    polygon_str =  metadata.get('data_footprint')
+    SUB = polygon_corners_string(polygon_str)
+    outName = fbase + '_' + SUB + fext
 
     return outName
 
@@ -611,7 +587,7 @@ def expand_bbox(bbox):
     Expands the bounding box to cover a distance of 150 km in both directions.
     The bounding box is defined by the coordinates [min_lon, max_lon, min_lat, max_lat].
     Args:
-        bbox (list): A list containing the bounding box coordinates in the 
+        bbox (list): A list containing the bounding box coordinates in the
         format [min_lon, max_lon, min_lat, max_lat].
     Returns:
         list: A new bounding box that is expanded by 150 km in both directions.
@@ -677,11 +653,14 @@ def get_bounding_box(metadata):
     length = int(metadata['LENGTH'])
     width = int(metadata['WIDTH'])
 
-    for y_i, x_i in zip([0, length], [0, width]):
-        lat_i = None if y_i is None else (y_i + 0.5) * float(metadata['Y_STEP']) + float(metadata['Y_FIRST'])
-        lon_i = None if x_i is None else (x_i + 0.5) * float(metadata['X_STEP']) + float(metadata['X_FIRST'])
-        lat_out.append(lat_i)
-        lon_out.append(lon_i)
+    if 'Y_FIRST' in metadata and 'X_FIRST' in metadata:
+        for y_i, x_i in zip([0, length], [0, width]):
+            lat_i = None if y_i is None else (y_i + 0.5) * float(metadata['Y_STEP']) + float(metadata['Y_FIRST'])
+            lon_i = None if x_i is None else (x_i + 0.5) * float(metadata['X_STEP']) + float(metadata['X_FIRST'])
+            lat_out.append(lat_i)
+            lon_out.append(lon_i)
+    else:
+        return None, None
 
     return [min(lat_out), max(lat_out)], [min(lon_out), max(lon_out)]
 
@@ -750,3 +729,43 @@ def set_default_section(line, region):
 
 def plot_point(ax, lat, lon, marker='o', color='black', size=5, alpha=1, zorder=None):
     ax.plot(lon, lat, marker, color=color, markersize=size, alpha=alpha, zorder=zorder)
+
+
+
+def are_we_on_slurm_system():
+    """Determine whether we are on a SLURM system. Returns
+        "no"           : not a SLURM cluster (regular Linux, macOS, etc.)
+        "compute_node" : SLURM compute node
+        "login_node"  : SLURM login or head/controller node
+    """
+
+    # No SLURM binaries → definitely not a SLURM system
+    if not (shutil.which("sinfo") or shutil.which("scontrol")):
+        return "no"
+
+    # SLURMD_NODENAME is set only on compute nodes
+    if "SLURMD_NODENAME" in os.environ:
+        return "compute_node"
+
+    # SLURM installed but not a compute node → login/head node
+    return "login_node"
+
+def detect_cores():
+    """
+    Determine number of usable CPU cores.
+    - On SLURM compute nodes: use SLURM_CPUS_ON_NODE * 0.8
+    - On SLURM head/login nodes: use 2
+    - On macOS/Linux use local cpu_count() * 0.8
+    """
+
+    slurm_system = are_we_on_slurm_system()
+
+    if slurm_system == "compute_node":
+        slurm_cpus = os.environ.get("SLURM_CPUS_ON_NODE")
+        n = int(slurm_cpus)
+    elif slurm_system == "login_node":
+        n = 2
+    else:
+        n = multiprocessing.cpu_count()       # Local machine (macOS/Linux workstation)
+
+    return max(1, round(n * 0.8))
