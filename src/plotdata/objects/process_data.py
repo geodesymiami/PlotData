@@ -141,7 +141,8 @@ class ProcessData:
         return horz_name, vert_name
 
     def _convert_timeseries_to_velocity(self, eos_file, start_date, end_date, output_file):
-        if not os.path.exists(output_file):
+        # TODO Overwrite option, this create conflicts if you use a new S1 file
+        if not os.path.exists(output_file) and True:
             cmd = f'{eos_file} --start-date {start_date} --end-date {end_date} --output {output_file}'
             ts2v.main(cmd.split())
 
