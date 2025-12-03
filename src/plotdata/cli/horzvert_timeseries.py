@@ -47,11 +47,11 @@ def create_parser(iargs=None, namespace=None):
         formatter_class=argparse.RawTextHelpFormatter,
         epilog=EXAMPLE)
 
-    parser.add_argument('file', nargs=2, help='Ascending and descending files\n' 'Both files need to be geocoded in the same spatial resolution.')
+    parser.add_argument('file', nargs=2, help='Ascending and descending files\n' 'If geocoded in needs to be same posting.')
     parser.add_argument('-g','--geom-file', dest='geom_file', nargs=2, help='Geometry files for the input data files.')
     parser.add_argument('--mask-thresh', dest='mask_vmin', type=float, default=0.55, help='coherence threshold for masking (default: %(default)s).')
     parser.add_argument('--ref-lalo', nargs='*', metavar=('LATITUDE,LONGITUDE or LATITUDE LONGITUDE'), default=None, type=str, help='reference point (default: existing reference point)')
-    parser.add_argument('--lat-step', dest='lat_step', type=float, default=-0.0002, help='latitude step for geocoding (default: %(default)s).')
+    parser.add_argument('--lat-step', dest='lat_step', type=float, default=-0.00014, help='latitude step for geocoding (lon step same, from find_longitude_degree) (default: %(default)s).')
     parser.add_argument('--horz-az-angle', dest='horz_az_angle', type=float, default=90, help='Horizontal azimuth angle (default: %(default)s).')
     parser.add_argument('--window-size', dest='window_size', type=int, default=3, help='window size (square side in number of pixels) for reference point look up (default: %(default)s).')
     parser.add_argument('-ow', '--overwrite', dest='overwrite', action='store_true', help='Overwrite all previously generated files')
