@@ -49,7 +49,7 @@ def create_parser(iargs=None, namespace=None):
 
     parser.add_argument('file', nargs=2, help='Ascending and descending files\n' 'If geocoded in needs to be same posting.')
     parser.add_argument('-g','--geom-file', dest='geom_file', nargs=2, help='Geometry files for the input data files.')
-    parser.add_argument('--mask-thresh', dest='mask_vmin', type=float, default=0.55, help='coherence threshold for masking (default: %(default)s).')
+    parser.add_argument('--mask-thresh', dest='mask_vmin', nargs='+', type=float, default=[None, None], help='coherence threshold for masking (default: %(default)s).')
     parser.add_argument('--ref-lalo', nargs='*', metavar=('LATITUDE,LONGITUDE or LATITUDE LONGITUDE'), default=None, type=str, help='reference point (default: existing reference point)')
     parser.add_argument('--lat-step', dest='lat_step', type=float, default=-0.00014, help='latitude step for geocoding (lon step same, from find_longitude_degree) (default: %(default)s).')
     parser.add_argument('--horz-az-angle', dest='horz_az_angle', type=float, default=90, help='Horizontal azimuth angle (default: %(default)s).')
@@ -70,6 +70,12 @@ def create_parser(iargs=None, namespace=None):
 
     if inps.ref_lalo:
         inps.ref_lalo = parse_lalo(inps.ref_lalo)
+
+    if len(inps.mask_vmin) > len(inps.file):
+        inps.mask_vmin = inps.mask_vmin[:len(inps.file)]
+    elif len(inps.mask_vmin) < len(inps.file):
+        inps.mask_vmin = (inps.mask_vmin * (len(inps.file)))[:len(inps.file)]
+
 
     return inps
 
@@ -373,7 +379,7 @@ def match_and_filter_pairs(ts1_dates, ts2_dates, meta1, meta2, inps):
     return ts1_filtered, ts2_filtered, delta_days_array, pairs, block_ranges, block_counts, block_pairs, block_map, shift_map
 
 
-def load_timeseries_file(file_path, geometry_file_input, inps):
+def load_timeseries_file(file_path, geometry_file_input, mask_vmin, inps):
     """Load and process a timeseries file.
 
     Args:
@@ -436,13 +442,22 @@ def load_timeseries_file(file_path, geometry_file_input, inps):
     if hasattr(obj, 'datasetGroupNameDict') and obj.datasetGroupNameDict.get('bperp') == 'geometry':
         obj.datasetGroupNameDict['bperp'] = 'observation'
 
-    # Read mask (same for both file types)
-    if hasattr(obj, 'datasetGroupNameDict') and 'mask' in obj.datasetGroupNameDict:
-        mask = readfile.read(eos_file, datasetName='mask')[0]
-    elif os.path.exists(geometry_file):
-        mask = readfile.read(geometry_file, datasetName='mask')[0]
+    # Read mask or Temporal Coherence
+    mask = None
+    if mask_vmin or not (hasattr(obj, 'datasetGroupNameDict') and 'mask' in obj.datasetGroupNameDict):
+        if hasattr(obj, 'datasetGroupNameDict') and 'temporalCoherence' in obj.datasetGroupNameDict:
+            tc_data = obj.read('temporalCoherence')
+            mask_vmin = mask_vmin if mask_vmin else 0.65
+            mask = np.where(tc_data >= mask_vmin, True, False)
+        else:
+            raise ValueError(f"Temporal Coherence dataset not found in {eos_file} for masking.")
     else:
-        print(f"Mask dataset not found in {eos_file} or {geometry_file}, proceeding without mask.")
+        if hasattr(obj, 'datasetGroupNameDict') and 'mask' in obj.datasetGroupNameDict:
+            mask = readfile.read(eos_file, datasetName='mask')[0]
+        elif os.path.exists(geometry_file):
+            mask = readfile.read(geometry_file, datasetName='mask')[0]
+        else:
+            print(f"Mask dataset not found in {eos_file} or {geometry_file}, proceeding without mask.")
 
     # Try to read los angles from geometry file first, fallback to metadata calculation
     if os.path.exists(geometry_file):
@@ -1150,7 +1165,7 @@ def main(iargs=None, namespace=None):
 
     for idx, f in enumerate(inps.file):
         geometry_file_input = inps.geom_file[idx] if inps.geom_file and idx < len(inps.geom_file) else None
-        obj, los_inc_angle, los_az_angle, mask, project_base_dir, geometry_file = load_timeseries_file(f, geometry_file_input, inps)
+        obj, los_inc_angle, los_az_angle, mask, project_base_dir, geometry_file = load_timeseries_file(f, geometry_file_input, inps.mask_vmin[idx], inps)
 
         # Check step consistency from previous iteration
         if 'Y_STEP' in obj.metadata:
@@ -1166,7 +1181,7 @@ def main(iargs=None, namespace=None):
         slicedata = obj.data[0]
         stack = np.nanmean(obj.data, axis=0)
         mask2 = np.multiply(~np.isnan(stack), stack != 0.)
-        combined_mask = np.logical_and(mask > inps.mask_vmin, mask2)
+        combined_mask = np.logical_and(mask, mask2)
         masked_data = np.where(combined_mask, slicedata, np.nan)
         extracted_data = extract_window(masked_data, obj.metadata, inps.ref_lalo[0], inps.ref_lalo[1], inps.window_size)
 
