@@ -25,11 +25,9 @@ class PlotTemplate:
             ],
             "ascending": [
                 ["ascending.point.section" ],
-                ["timeseries" ],
             ],
             "descending": [
                 ["descending.point.section" ],
-                ["timeseries" ],
             ],
             "timeseries": [
                 ["ascending.point" ],
