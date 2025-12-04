@@ -4,6 +4,7 @@ import pygmt
 import numpy as np
 from datetime import datetime
 from mintpy.utils import readfile
+from itertools import zip_longest
 from mintpy.objects.coord import coordinate
 from mintpy.objects import timeseries, HDFEOS
 from plotdata.helper_functions import get_bounding_box, expand_bbox, set_default_section
@@ -313,8 +314,6 @@ class DataExtractor:
 
     def _make_seismicmap(self, file):
         dictionary = {}
-        if "seismicmap" in self.dataset and self.dataset["seismicmap"]:
-            return dictionary
 
         for key in self.dataset.keys():
             if any("geometry" in item for item in self.dataset[key]):
@@ -340,21 +339,13 @@ class DataExtractor:
         return lon , lat, elevation
 
     def _extract_geometry_data(self, file=None):
-        # TODO REVIEW FOR GEOMETRY FILE
         if file and True:
             atr = readfile.read_attribute(file)
             if atr['FILE_TYPE'] == 'geometry':
-                # TODO DITCHED THE GEOMETRY FILE BECAUSE SUCKS
                 elevation = readfile.read(file, datasetName='height')[0]
-                # latitude = readfile.read(file, datasetName='latitude')[0]
-                # longitude = readfile.read(file, datasetName='longitude')[0]
                 latitude, longitude = get_bounding_box(atr)
                 if not latitude or not longitude:
                     latitude, longitude = self.region[2:4], self.region[0:2]
-
-                # TODO actually not needed
-                # if atr['passDirection'] == 'DESCENDING' or 'SenD' in file:
-                #     elevation = elevation#np.flip(elevation)
 
                 if np.isnan(elevation).any() and False: # TODO Let nan be there for now
                     lon, lat, elevation = self._get_pygmt_dem(self.region)
@@ -429,10 +420,10 @@ class DataExtractor:
         if "seismicity" in self.dataset and self.dataset["seismicity"]:
             return dictionary
 
-        for key in self.dataset.keys():
-            if "earthquakes" in self.dataset[key]:
-                if self.dataset[key]['attributes']['region'] == self.region:
-                    return self.dataset[key]['earthquakes']
+        dictionary = self._extract_earthquakes_from_dataset()
+
+        if dictionary:
+            return dictionary
 
         website = self.website if hasattr(self, "website") else "usgs"
 
@@ -485,3 +476,45 @@ class DataExtractor:
             earthquakes["depth"].append(depth)
 
         return earthquakes
+
+
+    def _extract_earthquakes_from_dataset(self):
+        """
+        Search `dataset` for embedded 'earthquakes' covering `region`
+        region = [min_lon, max_lon, min_lat, max_lat]
+        Returns a dict with keys: date, lalo, magnitude, depth, moment (or {} if none).
+        """
+        out = {}
+        min_lon, max_lon, min_lat, max_lat = self.region
+
+        for key, entry in self.dataset.items():
+            attrs = entry.get('attributes')
+            if not attrs or 'earthquakes' not in entry:
+                continue
+
+            reg = attrs.get('region')
+            if not reg or len(reg) < 4:
+                continue
+            lon_reg = [float(reg[0]), float(reg[1])]
+            lat_reg = [float(reg[2]), float(reg[3])]
+
+            # skip if this dataset's region does not fully contain the requested region
+            if not (lon_reg[0] <= min_lon and lon_reg[1] >= max_lon and lat_reg[0] <= min_lat and lat_reg[1] >= max_lat):
+                continue
+
+            eq = entry['earthquakes']
+            for date, lalo, mag, depth, moment in zip_longest(eq.get('date', []),eq.get('lalo', []),eq.get('magnitude', []),eq.get('depth', []),eq.get('moment', []),fillvalue=None):
+                if date is None or lalo is None:
+                    continue
+                lat, lon = lalo
+                if min_lat <= lat <= max_lat and min_lon <= lon <= max_lon:
+                    out.setdefault("date", []).append(date)
+                    out.setdefault("lalo", []).append(lalo)
+                    out.setdefault("magnitude", []).append(mag)
+                    out.setdefault("depth", []).append(depth)
+                    if moment is not None:
+                        out.setdefault("moment", []).append(moment)
+
+            return out
+
+        return {}
