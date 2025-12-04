@@ -425,8 +425,14 @@ class DataExtractor:
     def _extract_earthquakes(self, file=None):
         """Extracts earthquake data based on the specified parameters."""
         dictionary = {}
+
         if "seismicity" in self.dataset and self.dataset["seismicity"]:
             return dictionary
+
+        for key in self.dataset.keys():
+            if "earthquakes" in self.dataset[key]:
+                if self.dataset[key]['attributes']['region'] == self.region:
+                    return self.dataset[key]['earthquakes']
 
         website = self.website if hasattr(self, "website") else "usgs"
 

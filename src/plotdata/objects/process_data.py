@@ -75,10 +75,9 @@ class ProcessData:
             metadata = readfile.read(file)[1] if os.path.exists(file) else None
 
             if not metadata or 'Y_STEP' not in metadata:
-                # Geocode velocity file
-                self._geocode_velocity_file(metadata, file, geometry)
-                # Geocode geometry file
-                self._geocode_velocity_file(metadata, geometry, geometry)
+                for f in [file, geometry]:
+                # Geocode velocity and geometry file
+                    self._geocode_velocity_file(metadata, f, geometry)
 
                 # Add 'geo_' to the front of the file name
                 geo_masked_files.append(os.path.join(os.path.dirname(file), f"geo_{os.path.basename(file)}"))

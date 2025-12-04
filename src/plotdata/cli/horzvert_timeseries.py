@@ -1194,6 +1194,7 @@ def main(iargs=None, namespace=None):
         timseries.append(obj)
 
     # Dry-run: delegate to fast pair-finding and exit
+    # TODO does this even run? @line 1153 you return if dry_run is set.
     if inps.dry_run:
         dates_meta = []
         project_base_dir = None
