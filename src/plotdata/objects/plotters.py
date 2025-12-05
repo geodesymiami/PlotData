@@ -505,7 +505,7 @@ class VectorsPlot:
         values = data[lat_indices, lon_indices]
 
         # TODO recheck
-        return np.nan_to_num(values)
+        return values
 
     def _draw_line(self, data, region, latitude, longitude):
         if False:
