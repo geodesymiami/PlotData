@@ -23,11 +23,13 @@ from concurrent.futures import ProcessPoolExecutor
 SCRATCHDIR = os.getenv('SCRATCHDIR')
 EXAMPLE = """
 Example usage:
-    horzvert_timeseries.py ChilesSenAT120/mintpy ChilesSenDT142/mintpy --ref-lalo 0.84969 -77.86430
-    horzvert_timeseries.py ChilesSenAT120/mintpy ChilesSenDT142/mintpy --ref-lalo 0.84969 -77.86430 --dry-run
-    horzvert_timeseries.py ChilesSenAT120/mintpy ChilesSenDT142/mintpy --ref-lalo 0.84969 -77.86430 --intervals 6
-    horzvert_timeseries.py hvGalapagosSenA106/mintpy hvGalapagosSenD128/mintpy --ref-lalo -0.81 -91.190
-    horzvert_timeseries.py hvGalapagosSenA106/miaplpy_SN_201803_201805/network_single_reference hvGalapagosSenD128/miaplpy_SN_201803_201806/network_single_reference --ref-lalo -0.81 -91.190
+    horzvert_timeseries.py ChilesSenD142/mintpy ChilesSenA120/mintpy --ref-lalo 0.84969 -77.86430
+    horzvert_timeseries.py ChilesSenD142/mintpy ChilesSenA120/mintpy--ref-lalo 0.84969 -77.86430 --dry-run
+    horzvert_timeseries.py ChilesSenD142/mintpy ChilesSenA120/mintpy--ref-lalo 0.84969 -77.86430 --intervals 6
+    horzvert_timeseries.py hvGalapagosSenD128/mintpy hvGalapagosSenA106/mintpy --ref-lalo -0.81 -91.190
+    horzvert_timeseries.py hvGalapagosSenD128/miaplpy_SN_201803_201806/network_single_reference hvGalapagosSenA106/miaplpy_SN_201803_201805/network_single_reference--ref-lalo -0.81 -91.190
+    horzvert_timeseries.py FernandinaSenD128/mintpy FernandinaSenA106/mintpy --ref-lalo -0.453 -91.390
+    horzvert_timeseries.py FernandinaSenD128/miaplpy/network_delaunay_4 FernandinaSenA106/miaplpy/network_delaunay_4--ref-lalo -0.453 -91.390
 """
 
 
