@@ -1346,13 +1346,15 @@ def main(iargs=None, namespace=None):
     mask_path = os.path.join(project_base_dir, 'maskTempCoh.h5')
 
     if inps.timeseries:
-        create_timeseries_output(vertical_timeseries, date_list, mask, delta_days, bperp, latitude, longitude, ts1.metadata, vertical_path.replace('.he5', '.h5'), 'timeseries')
+        # create_timeseries_output(vertical_timeseries, date_list, mask, delta_days, bperp, latitude, longitude, ts1.metadata, vertical_path.replace('.he5', '.h5'), 'timeseries')
+        # create_timeseries_output(horizontal_timeseries, date_list, mask, delta_days, bperp, latitude, longitude, ts1.metadata, horizontal_path.replace('.he5', '.h5'), 'timeseries')
+        create_timeseries_output(vertical_timeseries, date_list, mask, delta_days, bperp, latitude, longitude, ts1.metadata, os.path.join(project_base_dir, 'vert_timeseries.h5'), 'timeseries')
+        create_timeseries_output(horizontal_timeseries, date_list, mask, delta_days, bperp, latitude, longitude, ts1.metadata, os.path.join(project_base_dir, 'horz_timeseries.h5'), 'timeseries')
 
-        create_timeseries_output(horizontal_timeseries, date_list, mask, delta_days, bperp, latitude, longitude, ts1.metadata, horizontal_path.replace('.he5', '.h5'), 'timeseries')
-
-    for path in [vertical_path, horizontal_path]:
-        create_hdfeos_output(vertical_timeseries, date_list, mask, delta_days, bperp, latitude, longitude,
-                         ts1.metadata, path.replace('.h5', '.he5'), mask.shape[0], mask.shape[1])
+    create_hdfeos_output(vertical_timeseries, date_list, mask, delta_days, bperp, latitude, longitude,
+                     ts1.metadata, vertical_path.replace('.h5', '.he5'), mask.shape[0], mask.shape[1])
+    create_hdfeos_output(horizontal_timeseries, date_list, mask, delta_days, bperp, latitude, longitude,
+                     ts1.metadata, horizontal_path.replace('.h5', '.he5'), mask.shape[0], mask.shape[1])
 
     # Write mask file
     mask_meta = {
