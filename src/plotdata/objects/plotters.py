@@ -505,41 +505,79 @@ class VectorsPlot:
         values = data[lat_indices, lon_indices]
 
         # TODO recheck
-        return np.nan_to_num(values)
+        return values
 
     def _draw_line(self, data, region, latitude, longitude):
-        # Calculate the resolution in degrees
-        lat_res = (region[3] - region[2]) / (data.shape[0] - 1)
-        lon_res = (region[1] - region[0]) / (data.shape[1] - 1)
+        if False:
+            # Calculate the resolution in degrees
+            lat_res = (region[3] - region[2]) / (data.shape[0] - 1)
+            lon_res = (region[1] - region[0]) / (data.shape[1] - 1)
 
-        # Calculate the distance between start and end points
-        distance = np.sqrt((latitude[1] - latitude[0])**2 + (longitude[1] - longitude[0])**2)
+            # Calculate the distance between start and end points
+            distance = np.sqrt((latitude[1] - latitude[0])**2 + (longitude[1] - longitude[0])**2)
 
-        # Determine the number of points based on the distance
-        num_points = int(distance / min(lat_res, lon_res))
+            # Determine the number of points based on the distance
+            num_points = int(distance / min(lat_res, lon_res))
 
-        lon_points = np.linspace(longitude[0], longitude[1], num_points)
-        lat_points = np.linspace(latitude[0], latitude[1], num_points)
+            lon_points = np.linspace(longitude[0], longitude[1], num_points)
+            lat_points = np.linspace(latitude[0], latitude[1], num_points)
 
-        # Snap points to the nearest grid points
-        lon_indices = np.round((lon_points - region[0]) / lon_res).astype(int)
-        lat_indices = np.round((lat_points - region[2]) / lat_res).astype(int)
+            # Snap points to the nearest grid points
+            lon_indices = np.round((lon_points - region[0]) / lon_res).astype(int)
+            lat_indices = np.round((lat_points - region[2]) / lat_res).astype(int)
 
-        # Ensure indices are within bounds
-        lon_indices = np.clip(lon_indices, 0, data.shape[1] - 1)
-        lat_indices = np.clip(lat_indices, 0, data.shape[0] - 1)
+            # Ensure indices are within bounds
+            lon_indices = np.clip(lon_indices, 0, data.shape[1] - 1)
+            lat_indices = np.clip(lat_indices, 0, data.shape[0] - 1)
 
-        # TODO do i need it?
-        # Create a DataFrame to store the path data
-        self.path_df = pd.DataFrame({
-            'longitude': lon_points,
-            'latitude': lat_points,
-            'lon_index': lon_indices,
-            'lat_index': lat_indices,
-            'distance': np.linspace(0, 1, num_points)  # Normalized distance
-        })
+            # TODO do i need it?
+            # Create a DataFrame to store the path data
+            self.path_df = pd.DataFrame({
+                'longitude': lon_points,
+                'latitude': lat_points,
+                'lon_index': lon_indices,
+                'lat_index': lat_indices,
+                'distance': np.linspace(0, 1, num_points)  # Normalized distance
+            })
 
-        return lat_indices, lon_indices
+            return lat_indices, lon_indices
+        else:
+            ny, nx = data.shape
+
+            lon_min, lon_max = float(region[0]), float(region[1])
+            lat_min, lat_max = float(region[2]), float(region[3])
+
+            # avoid zero-division for degenerate regions
+            lon_span = lon_max - lon_min if (lon_max - lon_min) != 0 else 1.0
+            lat_span = lat_max - lat_min if (lat_max - lat_min) != 0 else 1.0
+
+            # number of sample points along the profile
+            distance_deg = math.hypot(latitude[1] - latitude[0], longitude[1] - longitude[0])
+            num_points = max(2, int(distance_deg / min(lat_span / max(1, ny - 1), lon_span / max(1, nx - 1))) + 1)
+
+            lon_points = np.linspace(longitude[0], longitude[1], num_points)
+            lat_points = np.linspace(latitude[0], latitude[1], num_points)
+
+            # fractional column index: 0..(nx-1) left->right
+            col_f = (lon_points - lon_min) / lon_span * (nx - 1)
+
+            # fractional row index: if row 0 == top (lat_max), map lat -> row via lat_max - lat
+            row_f = (lat_max - lat_points) / lat_span * (ny - 1)
+
+            # round/clip to integer array indices
+            lon_indices = np.clip(np.round(col_f).astype(int), 0, nx - 1)
+            lat_indices = np.clip(np.round(row_f).astype(int), 0, ny - 1)
+
+            # store path for debugging/plotting
+            self.path_df = pd.DataFrame({
+                'longitude': lon_points,
+                'latitude': lat_points,
+                'lon_index': lon_indices,
+                'lat_index': lat_indices,
+                'distance': np.linspace(0, 1, len(lon_points))
+            })
+
+            return lat_indices, lon_indices
 
     def _compute_vectors(self):
         """Computes velocity vectors and scaling factors."""
