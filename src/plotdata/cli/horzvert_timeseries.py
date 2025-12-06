@@ -580,53 +580,6 @@ def match_and_filter_dates(ts1, ts2, inps):
     print('-' * 50)
     print(f'New date list length: {len(ts1.dateList)}\n')
 
-    # Calculate date differences
-    # diff = [(datetime.strptime(x, "%Y%m%d").date() - datetime.strptime(y, "%Y%m%d").date()).days for x, y in zip(ts1.dateList, ts2.dateList)]
-
-    # TODO not needed
-    # Calculate threshold based on selected method
-    # if inps.thresh_method == 'min':
-    #     # Use minimum difference as threshold
-    #     dynamic_threshold = min(np.abs(np.array(diff)))
-    #     print('-' * 50)
-    #     print(f"Minimum threshold value: {dynamic_threshold}\n")
-    # elif inps.thresh_method == 'percentile':
-    #     # Find indexes where the absolute difference is less than 30 (initial filter)
-    #     valid_indexes = [i for i, dif in enumerate(diff) if abs(dif) < 30]
-
-    #     # Convert differences to absolute values
-    #     differences = [abs(diff[i]) for i in valid_indexes]
-
-    #     if differences:
-    #         data_skewness = skew(differences)
-
-    #         # Dynamically determine the percentile threshold
-    #         if data_skewness > 1:  # Highly skewed data
-    #             percentile_threshold = 90  # Use a stricter threshold
-    #         elif data_skewness < -1:  # Left-skewed data (unlikely for absolute differences)
-    #             percentile_threshold = 99
-    #         else:  # Symmetric or moderately skewed data
-    #             percentile_threshold = 95
-
-    #         dynamic_threshold = np.percentile(differences, percentile_threshold)
-    #         print('-' * 50)
-    #         print(f"Dynamic Threshold for date difference (value at {percentile_threshold}th percentile): {dynamic_threshold}\n")
-    #     else:
-    #         # Fallback to minimum if no valid differences found
-    #         dynamic_threshold = min(np.abs(np.array(diff)))
-    #         print('-' * 50)
-    #         print(f"No valid differences found, using minimum threshold: {dynamic_threshold}\n")
-
-    # Filter by threshold
-    # valid_indexes = [i for i, dif in enumerate(diff) if abs(dif) <= dynamic_threshold]
-    # print('-' * 50)
-    # print(f'New date list length after drop: {len(valid_indexes)}\n')
-
-    # Apply filtering
-    # ts1.data = ts1.data[valid_indexes, :]
-    # ts2.data = ts2.data[valid_indexes, :]
-    # bperp = ts1.bperp[valid_indexes]
-    # date_list = ts1.dateList[valid_indexes]
     bperp = ts1.bperp[index1]
     date_list = ts1.dateList
 
@@ -979,7 +932,7 @@ def compute_horzvert_timeseries(ts1, ts2, date_list, inps):
 
     mask = np.logical_and(mask[0], mask[1])
 
-    # Compute horizontal and vertical components
+    # Compute horizontal and vertical components (serial) (old code)
     # vertical_list = []
     # horizontal_list = []
     # for i in range(data.shape[1]):
@@ -990,7 +943,6 @@ def compute_horzvert_timeseries(ts1, ts2, date_list, inps):
     # vertical_timeseries = np.stack(vertical_list, axis=0)
     # horizontal_timeseries = np.stack(horizontal_list, axis=0)
 
-    # Compute horizontal and vertical components (parallel)
     # Compute horizontal and vertical components in parallel
     n_times = data.shape[1]
     ncores = detect_cores()
