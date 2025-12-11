@@ -62,6 +62,9 @@ def get_output_filename(metadata, template, direction=None):
     RELORB = "{:03d}".format(int(metadata['relative_orbit']))
     RELORB2 = "{:03d}".format(int(metadata['relative_orbit_second']))
 
+    method_str = metadata.get('post_processing_method', 'MintPy').lower()
+
+
     DATE1 = datetime.strptime(metadata['first_date'], '%Y-%m-%d').strftime('%Y%m%d')
     DATE2 = datetime.strptime(metadata['last_date'], '%Y-%m-%d').strftime('%Y%m%d')
 
@@ -71,9 +74,9 @@ def get_output_filename(metadata, template, direction=None):
         DATE2 = 'XXXXXXXX'
 
     if direction:
-        outName = f'{SAT}_{direction}_{RELORB}_{RELORB2}_{DATE1}_{DATE2}.he5'
+        outName = f'{SAT}_{direction}_{RELORB}_{RELORB2}_{method_str}_{DATE1}_{DATE2}.he5'
     else:
-        outName = f'{SAT}_{RELORB}_{RELORB2}_{DATE1}_{DATE2}.he5'
+        outName = f'{SAT}_{RELORB}_{RELORB2}_{method_str}_{DATE1}_{DATE2}.he5'
 
     fbase, fext = os.path.splitext(outName)
     polygon_str =  metadata.get('data_footprint')
