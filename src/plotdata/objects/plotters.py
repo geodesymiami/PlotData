@@ -154,6 +154,8 @@ class VelocityPlot:
 
         self._update_axis_limits()
 
+        self._plot_scale()
+
             #########################################################################################################################################
 
         if not self.no_colorbar:
@@ -162,6 +164,32 @@ class VelocityPlot:
 
             cbar.locator = ticker.MaxNLocator(3)
             cbar.update_ticks()
+
+
+    def _plot_scale(self):
+        lon1, lon2 = self.ax.get_xlim()
+        lat1, lat2 = self.ax.get_ylim()
+        lon_span = lon2 - lon1
+        lat_span = lat2 - lat1
+
+        dlon = lon_span / 4.0
+        mean_lat = (lat1 + lat2) / 2.0
+        km_per_deg = 111.32 * math.cos(math.radians(mean_lat))
+        dist_km = abs(dlon) * km_per_deg
+
+        # choose a location with a small margin (works if axes possibly inverted)
+        x0 = min(lon1, lon2) + 0.05 * abs(lon_span)
+        y0 = min(lat1, lat2) + 0.05 * abs(lat_span)
+
+        # draw bar and end ticks
+        self.ax.plot([x0, x0 + dlon], [y0, y0], color='k', lw=1)
+        tick_h = 0.005 * abs(lat_span)
+        self.ax.plot([x0, x0], [y0 - tick_h, y0 + tick_h], color='k', lw=2)
+        self.ax.plot([x0 + dlon, x0 + dlon], [y0 - tick_h, y0 + tick_h], color='k', lw=2)
+        # label centered under the bar
+        self.ax.text(x0 + dlon/2, y0 + 0.06 * abs(lat_span), f"{dist_km:.0f} km", ha='center', va='top', fontsize=8, path_effects=[withStroke(linewidth=1.5, foreground='white')],)
+
+
 
     def _plot_dem(self):
         print("-"*50)
