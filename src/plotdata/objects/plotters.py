@@ -205,10 +205,11 @@ class VelocityPlot:
 
         # Compute hillshade with real spacing
         ls = LightSource(azdeg=315, altdeg=45)
-        hillshade = ls.hillshade(self.z, vert_exag=1.5, dx=dlon, dy=dlat)
+        hillshade = ls.hillshade(self.z, vert_exag=0.5, dx=dlon, dy=dlat)
 
         # Use pcolormesh to plot hillshade using real coordinates
-        self.im = self.ax.pcolormesh(lon2d,lat2d,hillshade,cmap='gray',shading='auto',zorder=zorder,alpha=0.5,)
+        # self.im = self.ax.pcolormesh(lon2d,lat2d,hillshade,cmap='gray',shading='auto',zorder=zorder,alpha=0.5,)
+        self.im = self.ax.imshow(hillshade)
 
     def _plot_isolines(self):
         print("Adding isolines...\n")

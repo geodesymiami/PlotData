@@ -201,6 +201,7 @@ def create_mask_file(eos_file, out_folder, mask_trehshold=0.55):
     temporal_coherence = extract_temporalCoherence(eos_file, determine_coordinates(eos_file))
     mask_temporalCoherence = 'geo_maskTempCoh' if 'geo_' in temporal_coherence else 'maskTempCoh'
 
+    # Always rewrite mask
     cmd = f'{temporal_coherence} -m {mask_trehshold} -o {mask_temporalCoherence}.h5'
 
     print(f'Running --> generate_mask.py {cmd}\n')
@@ -579,7 +580,8 @@ def calculate_distance(lat_1, lon_1, lat_2, lon_2):
     Returns:
     float: The distance between the two points in kilometers.
     """
-    return (((lat_1 - lat_2)*111)**2 + ((lon_1 - lon_2)*111)**2)**0.5
+    km_per_deg = 111.32 * math.cos(math.radians((lat_1 + lat_2) / 2))
+    return (((lat_1 - lat_2)*111)**2 + ((lon_1 - lon_2)*km_per_deg)**2)**0.5
 
 
 def expand_bbox(bbox):
