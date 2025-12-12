@@ -233,7 +233,7 @@ def get_eos5_file(path, scratch=None):
         if len(files) == 0:
             raise Exception('USER ERROR: No HDF5EOS files found in ' + path)
 
-        eos_file = max(files, key=os.path.getctime)
+        eos_file = max(files, key=os.path.getmtime)
 
     print('HDF5EOS file used:', eos_file)
     return eos_file

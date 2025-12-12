@@ -23,9 +23,9 @@ from concurrent.futures import ProcessPoolExecutor
 SCRATCHDIR = os.getenv('SCRATCHDIR')
 EXAMPLE = """
 Example usage:
-    horzvert_timeseries.py ChilesSenD142/mintpy ChilesSenA120/mintpy --ref-lalo 0.84969 -77.86430
-    horzvert_timeseries.py ChilesSenD142/mintpy ChilesSenA120/mintpy --ref-lalo 0.84969 -77.86430 --dry-run
-    horzvert_timeseries.py ChilesSenD142/mintpy ChilesSenA120/mintpy --ref-lalo 0.84969 -77.86430 --intervals 6
+    horzvert_timeseries.py ChilesSenD142/mintpy ChilesSenA120/mintpy --ref-lalo 0.649 -77.878
+    horzvert_timeseries.py ChilesSenD142/mintpy ChilesSenA120/mintpy --ref-lalo 0.649 -77.878 --dry-run
+    horzvert_timeseries.py ChilesSenD142/mintpy ChilesSenA120/mintpy --ref-lalo 0.649 -77.878 --intervals 6
     horzvert_timeseries.py hvGalapagosSenD128/mintpy hvGalapagosSenA106/mintpy --ref-lalo -0.81 -91.190
     horzvert_timeseries.py hvGalapagosSenD128/miaplpy/network_single_reference hvGalapagosSenA106/network_single_reference --ref-lalo -0.81 -91.190
     horzvert_timeseries.py FernandinaSenD128/mintpy FernandinaSenA106/mintpy --ref-lalo -0.453 -91.390
@@ -1115,7 +1115,7 @@ def main(iargs=None, namespace=None):
     y_step = None
     x_step = None
 
-    timseries = []
+    timeseries = []
 
     for idx, f in enumerate(inps.file):
         geometry_file_input = inps.geom_file[idx] if inps.geom_file and idx < len(inps.geom_file) else None
@@ -1145,10 +1145,10 @@ def main(iargs=None, namespace=None):
         obj.los_az_angle = los_az_angle
         obj.mask = mask
 
-        timseries.append(obj)
+        timeseries.append(obj)
 
     # Process reference points
-    ts1, ts2 = process_reference_points(*timseries, inps)
+    ts1, ts2 = process_reference_points(*timeseries, inps)
     original_ts1_dates = list(ts1.dateList)
     original_ts2_dates = list(ts2.dateList)
 
@@ -1235,7 +1235,7 @@ def main(iargs=None, namespace=None):
         output_subdir = 'mintpy'
     elif post_processing_method.lower() == 'miaplpy':
         output_subdir = 'miaplpy'
-    
+
     # Build output paths
     if output_subdir:
         # Create subdirectory if needed
