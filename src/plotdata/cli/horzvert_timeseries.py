@@ -1228,8 +1228,24 @@ def main(iargs=None, namespace=None):
 
     # Create output files
 
-    vertical_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, direction='vert'))
-    horizontal_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, direction='horz'))
+    # Check for post_processing_method and determine subdirectory for *.he5 files
+    post_processing_method = ts1.metadata.get('post_processing_method', '').strip()
+    output_subdir = None
+    if post_processing_method.lower() == 'mintpy':
+        output_subdir = 'mintpy'
+    elif post_processing_method.lower() == 'miaplpy':
+        output_subdir = 'miaplpy'
+    
+    # Build output paths
+    if output_subdir:
+        # Create subdirectory if needed
+        output_dir = os.path.join(project_base_dir, output_subdir)
+        os.makedirs(output_dir, exist_ok=True)
+        vertical_path = os.path.join(output_dir, get_output_filename(ts1.metadata, None, direction='vert'))
+        horizontal_path = os.path.join(output_dir, get_output_filename(ts1.metadata, None, direction='horz'))
+    else:
+        vertical_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, direction='vert'))
+        horizontal_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, direction='horz'))
 
     mask_path = os.path.join(project_base_dir, 'maskTempCoh.h5')
 
