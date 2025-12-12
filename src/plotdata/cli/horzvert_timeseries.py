@@ -843,6 +843,9 @@ def create_hdfeos_output(ts_data, date_list, mask, delta_days, bperp, latitude, 
     hdfeos_metadata['PROJECT_NAME'] = os.path.basename(os.path.dirname(output_path))
     hdfeos_metadata['REF_DATE'] = str(date_list[0])
     hdfeos_metadata['diplacement_type'] = 'vertical' if 'vert' in output_path else 'horizontal'
+    hdfeos_metadata['processing_type'] = 'vertical timeseries' if 'vert' in output_path else 'horizontalntimeseries'
+    hdfeos_metadata['flight_direction'] = 'V' if 'vert' in output_path else 'H'
+    hdfeos_metadata['first_frame'] = ' '
 
     # Write using writefile.write
     writefile.write(hdfeos_dict, out_file=output_path, metadata=hdfeos_metadata)
