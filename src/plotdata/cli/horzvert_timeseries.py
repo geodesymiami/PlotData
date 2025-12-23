@@ -22,11 +22,13 @@ from concurrent.futures import ProcessPoolExecutor
 SCRATCHDIR = os.getenv('SCRATCHDIR')
 EXAMPLE = """
 Example usage:
-    horzvert_timeseries.py ChilesSenAT120/mintpy ChilesSenDT142/mintpy --ref-lalo 0.84969 -77.86430
-    horzvert_timeseries.py ChilesSenAT120/mintpy ChilesSenDT142/mintpy --ref-lalo 0.84969 -77.86430 --dry-run
-    horzvert_timeseries.py ChilesSenAT120/mintpy ChilesSenDT142/mintpy --ref-lalo 0.84969 -77.86430 --intervals 6
-    horzvert_timeseries.py hvGalapagosSenA106/mintpy hvGalapagosSenD128/mintpy --ref-lalo -0.81 -91.190
-    horzvert_timeseries.py hvGalapagosSenA106/miaplpy_SN_201803_201805/network_single_reference hvGalapagosSenD128/miaplpy_SN_201803_201806/network_single_reference --ref-lalo -0.81 -91.190
+    horzvert_timeseries.py ChilesSenD142/mintpy ChilesSenA120/mintpy --ref-lalo 0.649 -77.878
+    horzvert_timeseries.py ChilesSenD142/mintpy ChilesSenA120/mintpy --ref-lalo 0.649 -77.878 --dry-run
+    horzvert_timeseries.py ChilesSenD142/mintpy ChilesSenA120/mintpy --ref-lalo 0.649 -77.878 --intervals 6
+    horzvert_timeseries.py hvGalapagosSenD128/mintpy hvGalapagosSenA106/mintpy --ref-lalo -0.81 -91.190
+    horzvert_timeseries.py hvGalapagosSenD128/miaplpy/network_single_reference hvGalapagosSenA106/network_single_reference --ref-lalo -0.81 -91.190
+    horzvert_timeseries.py FernandinaSenD128/mintpy FernandinaSenA106/mintpy --ref-lalo -0.453 -91.390
+    horzvert_timeseries.py FernandinaSenD128/miaplpy/network_delaunay_4 FernandinaSenA106/miaplpy/network_delaunay_4 --ref-lalo -0.453 -91.390
 """
 
 
@@ -577,53 +579,6 @@ def match_and_filter_dates(ts1, ts2, inps):
     print('-' * 50)
     print(f'New date list length: {len(ts1.dateList)}\n')
 
-    # Calculate date differences
-    # diff = [(datetime.strptime(x, "%Y%m%d").date() - datetime.strptime(y, "%Y%m%d").date()).days for x, y in zip(ts1.dateList, ts2.dateList)]
-
-    # TODO not needed
-    # Calculate threshold based on selected method
-    # if inps.thresh_method == 'min':
-    #     # Use minimum difference as threshold
-    #     dynamic_threshold = min(np.abs(np.array(diff)))
-    #     print('-' * 50)
-    #     print(f"Minimum threshold value: {dynamic_threshold}\n")
-    # elif inps.thresh_method == 'percentile':
-    #     # Find indexes where the absolute difference is less than 30 (initial filter)
-    #     valid_indexes = [i for i, dif in enumerate(diff) if abs(dif) < 30]
-
-    #     # Convert differences to absolute values
-    #     differences = [abs(diff[i]) for i in valid_indexes]
-
-    #     if differences:
-    #         data_skewness = skew(differences)
-
-    #         # Dynamically determine the percentile threshold
-    #         if data_skewness > 1:  # Highly skewed data
-    #             percentile_threshold = 90  # Use a stricter threshold
-    #         elif data_skewness < -1:  # Left-skewed data (unlikely for absolute differences)
-    #             percentile_threshold = 99
-    #         else:  # Symmetric or moderately skewed data
-    #             percentile_threshold = 95
-
-    #         dynamic_threshold = np.percentile(differences, percentile_threshold)
-    #         print('-' * 50)
-    #         print(f"Dynamic Threshold for date difference (value at {percentile_threshold}th percentile): {dynamic_threshold}\n")
-    #     else:
-    #         # Fallback to minimum if no valid differences found
-    #         dynamic_threshold = min(np.abs(np.array(diff)))
-    #         print('-' * 50)
-    #         print(f"No valid differences found, using minimum threshold: {dynamic_threshold}\n")
-
-    # Filter by threshold
-    # valid_indexes = [i for i, dif in enumerate(diff) if abs(dif) <= dynamic_threshold]
-    # print('-' * 50)
-    # print(f'New date list length after drop: {len(valid_indexes)}\n')
-
-    # Apply filtering
-    # ts1.data = ts1.data[valid_indexes, :]
-    # ts2.data = ts2.data[valid_indexes, :]
-    # bperp = ts1.bperp[valid_indexes]
-    # date_list = ts1.dateList[valid_indexes]
     bperp = ts1.bperp[index1]
     date_list = ts1.dateList
 
@@ -887,6 +842,9 @@ def create_hdfeos_output(ts_data, date_list, mask, delta_days, bperp, latitude, 
     hdfeos_metadata['PROJECT_NAME'] = os.path.basename(os.path.dirname(output_path))
     hdfeos_metadata['REF_DATE'] = str(date_list[0])
     hdfeos_metadata['diplacement_type'] = 'vertical' if 'vert' in output_path else 'horizontal'
+    hdfeos_metadata['processing_type'] = 'vertical timeseries' if 'vert' in output_path else 'horizontalntimeseries'
+    hdfeos_metadata['flight_direction'] = 'V' if 'vert' in output_path else 'H'
+    hdfeos_metadata['first_frame'] = ' '
 
     # Write using writefile.write
     writefile.write(hdfeos_dict, out_file=output_path, metadata=hdfeos_metadata)
@@ -976,7 +934,7 @@ def compute_horzvert_timeseries(ts1, ts2, date_list, inps):
 
     mask = np.logical_and(mask[0], mask[1])
 
-    # Compute horizontal and vertical components
+    # Compute horizontal and vertical components (serial) (old code)
     # vertical_list = []
     # horizontal_list = []
     # for i in range(data.shape[1]):
@@ -987,7 +945,6 @@ def compute_horzvert_timeseries(ts1, ts2, date_list, inps):
     # vertical_timeseries = np.stack(vertical_list, axis=0)
     # horizontal_timeseries = np.stack(horizontal_list, axis=0)
 
-    # Compute horizontal and vertical components (parallel)
     # Compute horizontal and vertical components in parallel
     n_times = data.shape[1]
     ncores = detect_cores()
@@ -1160,7 +1117,7 @@ def main(iargs=None, namespace=None):
     y_step = None
     x_step = None
 
-    timseries = []
+    timeseries = []
 
     for idx, f in enumerate(inps.file):
         geometry_file_input = inps.geom_file[idx] if inps.geom_file and idx < len(inps.geom_file) else None
@@ -1190,74 +1147,10 @@ def main(iargs=None, namespace=None):
         obj.los_az_angle = los_az_angle
         obj.mask = mask
 
-        timseries.append(obj)
-
-    # Dry-run: delegate to fast pair-finding and exit
-    # TODO does this even run? @line 1153 you return if dry_run is set.
-    if inps.dry_run:
-        dates_meta = []
-        project_base_dir = None
-        for f in inps.file:
-            dates, meta, project_base_dir = load_dates(f, inps)
-            dates_meta.append((dates, meta))
-        (ts1_dates, meta1), (ts2_dates, meta2) = dates_meta
-        ts1_f, ts2_f, _, pairs, block_ranges, block_counts, block_pairs, block_map, shift_map = match_and_filter_pairs(ts1_dates, ts2_dates, meta1, meta2, inps)
-        max_shift = max((max(abs(r[0]), abs(r[1])) for r in block_ranges), default=0)
-        diff_msg = describe_shift(ts1_f, ts2_f, meta1, meta2, limit=max_shift)
-        symbols = list("*+-:!@#$%^&():\";'<>,.?/")
-        interval_lines = []
-        for idx, rng in enumerate(block_ranges):
-            rng_str = f"{rng[0]}..{rng[1]}"
-            count = block_counts.get(idx, 0)
-            interval_lines.append("")
-            interval_lines.append(f"Interval {idx+1} [{rng_str}]: {count} pairs")
-            for (da, db), bidx in block_map.items():
-                if bidx != idx:
-                    continue
-                d1 = to_date(da).strftime("%Y%m%d")
-                d2 = to_date(db).strftime("%Y%m%d")
-                s_val = shift_map.get((da, db), 0)
-                sign = "+" if s_val > 0 else ""
-                interval_lines.append(f"{symbols[idx % len(symbols)]}{d1}  {d2} ({sign}{s_val})")
-        symbol_map = {}
-        shift_display = {}
-        for (da, db), block_idx in block_map.items():
-            d1 = to_date(da).strftime("%Y%m%d")
-            d2 = to_date(db).strftime("%Y%m%d")
-            symbol_map[(d1, d2)] = symbols[block_idx % len(symbols)]
-            shift_display[(d1, d2)] = shift_map.get((da, db), 0)
-        # Summary with counts per signed shift (positive first, then zero, then negative).
-        def _sign_order(val):
-            if val > 0:
-                return (abs(val), 0)
-            if val == 0:
-                return (abs(val), 1)
-            return (abs(val), 2)
-
-        shift_counts = {}
-        shift_symbol = {}
-        for pair, shift_val in shift_display.items():
-            shift_counts[shift_val] = shift_counts.get(shift_val, 0) + 1
-            if shift_val not in shift_symbol:
-                shift_symbol[shift_val] = symbol_map[pair]
-        legend_lines = ["Summary:", f"{_track_label(meta1)}: {len(ts1_dates)} images, {_track_label(meta2)}: {len(ts2_dates)} images"]
-        total_pairs = 0
-        for shift_val in sorted(shift_counts.keys(), key=_sign_order):
-            sym = shift_symbol.get(shift_val, symbols[shift_val % len(symbols)] if shift_counts else symbols[0])
-            sign = "+" if shift_val > 0 else ""
-            count = shift_counts[shift_val]
-            total_pairs += count
-            pair_txt = "pair" if count == 1 else "pairs"
-            legend_lines.append(f"{sym} {sign}{shift_val} days  {count} {pair_txt}")
-        legend_lines.append(f"Total: {total_pairs} pairs")
-        print("Writing image_pairs.txt .....")
-        for line in _strip_marker_lines(legend_lines, symbols):
-            print(line)
-        write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, os.path.join(project_base_dir, "image_pairs.txt"), note=diff_msg, extra_lines=interval_lines, pair_symbols=symbol_map, pair_shifts=shift_display, legend_lines=legend_lines)
-        return
+        timeseries.append(obj)
 
     # Process reference points
-    ts1, ts2 = process_reference_points(*timseries, inps)
+    ts1, ts2 = process_reference_points(*timeseries, inps)
     original_ts1_dates = list(ts1.dateList)
     original_ts2_dates = list(ts2.dateList)
 
@@ -1337,19 +1230,37 @@ def main(iargs=None, namespace=None):
 
     # Create output files
 
-    vertical_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, direction='vert'))
-    horizontal_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, direction='horz'))
+    # Check for post_processing_method and determine subdirectory for *.he5 files
+    post_processing_method = ts1.metadata.get('post_processing_method', '').strip()
+    output_subdir = None
+    if post_processing_method.lower() == 'mintpy':
+        output_subdir = 'mintpy'
+    elif post_processing_method.lower() == 'miaplpy':
+        output_subdir = 'miaplpy'
+
+    # Build output paths
+    if output_subdir:
+        # Create subdirectory if needed
+        output_dir = os.path.join(project_base_dir, output_subdir)
+        os.makedirs(output_dir, exist_ok=True)
+        vertical_path = os.path.join(output_dir, get_output_filename(ts1.metadata, None, direction='vert'))
+        horizontal_path = os.path.join(output_dir, get_output_filename(ts1.metadata, None, direction='horz'))
+    else:
+        vertical_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, direction='vert'))
+        horizontal_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, direction='horz'))
 
     mask_path = os.path.join(project_base_dir, 'maskTempCoh.h5')
 
     if inps.timeseries:
-        create_timeseries_output(vertical_timeseries, date_list, mask, delta_days, bperp, latitude, longitude, ts1.metadata, vertical_path.replace('.he5', '.h5'), 'timeseries')
+        # create_timeseries_output(vertical_timeseries, date_list, mask, delta_days, bperp, latitude, longitude, ts1.metadata, vertical_path.replace('.he5', '.h5'), 'timeseries')
+        # create_timeseries_output(horizontal_timeseries, date_list, mask, delta_days, bperp, latitude, longitude, ts1.metadata, horizontal_path.replace('.he5', '.h5'), 'timeseries')
+        create_timeseries_output(vertical_timeseries, date_list, mask, delta_days, bperp, latitude, longitude, ts1.metadata, os.path.join(project_base_dir, 'vert_timeseries.h5'), 'timeseries')
+        create_timeseries_output(horizontal_timeseries, date_list, mask, delta_days, bperp, latitude, longitude, ts1.metadata, os.path.join(project_base_dir, 'horz_timeseries.h5'), 'timeseries')
 
-        create_timeseries_output(horizontal_timeseries, date_list, mask, delta_days, bperp, latitude, longitude, ts1.metadata, horizontal_path.replace('.he5', '.h5'), 'timeseries')
-
-    for path in [vertical_path, horizontal_path]:
-        create_hdfeos_output(vertical_timeseries, date_list, mask, delta_days, bperp, latitude, longitude,
-                         ts1.metadata, path.replace('.h5', '.he5'), mask.shape[0], mask.shape[1])
+    create_hdfeos_output(vertical_timeseries, date_list, mask, delta_days, bperp, latitude, longitude,
+                     ts1.metadata, vertical_path.replace('.h5', '.he5'), mask.shape[0], mask.shape[1])
+    create_hdfeos_output(horizontal_timeseries, date_list, mask, delta_days, bperp, latitude, longitude,
+                     ts1.metadata, horizontal_path.replace('.h5', '.he5'), mask.shape[0], mask.shape[1])
 
     # Write mask file
     mask_meta = {
