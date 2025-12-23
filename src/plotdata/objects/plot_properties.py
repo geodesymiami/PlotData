@@ -24,10 +24,10 @@ class PlotTemplate:
                 ["timeseries", "vectors", "seismicity.date"],
             ],
             "ascending": [
-                ["ascending.point.section" ],
+                ["ascending.point" ],
             ],
             "descending": [
-                ["descending.point.section" ],
+                ["descending.point" ],
             ],
             "timeseries": [
                 ["ascending.point" ],
@@ -35,9 +35,11 @@ class PlotTemplate:
                 ["timeseries" ],
             ],
             "test": [
-                ["vectors"],
-                ["horizontal.point.section",],
-                ["vertical.point.section",],
+                # ["descending.point" ],
+                # ["timeseries" ],
+                ["ascending"],
+                ["descending",],
+                ["seismicmap"],
                 # ["descending.point.section",],
                 # ["seismicity.date",],
                 # ["seismicity.distance",],
@@ -116,7 +118,9 @@ class PlotGrid:
                 ax.set_label(name)
 
                 # Set the title for the figure
-                fig.suptitle(f"{inps.project} {inps.start_date.date()}:{inps.end_date.date()}", fontsize=14, fontweight="bold")
+                start_d = inps.start_date if isinstance(inps.start_date, str) else inps.start_date.date()
+                end_d = inps.end_date if isinstance(inps.end_date, str) else inps.end_date.date()
+                fig.suptitle(f"{inps.project} {start_d}:{end_d}", fontsize=14, fontweight="bold")
 
                 # Apply custom layout settings to the axis
                 self._axes_properties(ax, inps)
@@ -139,7 +143,9 @@ class PlotGrid:
             constrained_layout=self.template.constrained_layout,
         )
 
-        fig.suptitle(f"{inps.project} {inps.start_date.date()}:{inps.end_date.date()}", fontsize=14, fontweight="bold")
+        start_d = inps.start_date if isinstance(inps.start_date, str) else inps.start_date.date()
+        end_d = inps.end_date if isinstance(inps.end_date, str) else inps.end_date.date()
+        fig.suptitle(f"{inps.project} {start_d}:{end_d}", fontsize=14, fontweight="bold")
 
         for ax in axs.values():
             # Apply custom layout settings to the axis
