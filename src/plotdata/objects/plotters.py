@@ -97,8 +97,8 @@ class VelocityPlot:
             x_center = (x_min + x_max) / 2
             y_center = (y_min + y_max) / 2
 
-            new_x_range = x_range * (1 - self.zoom)
-            new_y_range = y_range * (1 - self.zoom)
+            new_x_range = x_range / self.zoom
+            new_y_range = y_range / self.zoom
 
             new_x_min = x_center - new_x_range / 2
             new_x_max = x_center + new_x_range / 2
@@ -124,7 +124,7 @@ class VelocityPlot:
 
         if self.style == 'pixel':
             self.imdata = self.ax.imshow(self.data, cmap=self.cmap, extent=self.region, origin='upper', interpolation='none', zorder=zorder, vmin=self.vmin, vmax=self.vmax, rasterized=True)
-            self.ax.set_aspect('auto')
+            # self.ax.set_aspect('auto')
 
         elif self.style == 'scatter':
             # Assuming self.velocity is a 2D numpy array
@@ -144,11 +144,12 @@ class VelocityPlot:
             wavelength = 0.05546576
 
             # Calculate the interferogram
-            interferogram = (self.data) % (2 * np.pi)
+            interferogram = (self.data) % (12 * np.pi)
 
             # Plot the interferogram
             self.imdata = self.ax.imshow(interferogram, cmap=self.cmap, extent=self.region, origin='upper', interpolation='none', zorder=zorder, rasterized=True)
-            self.ax.set_aspect('auto')
+            # TODO is this important?
+            # self.ax.set_aspect('auto')
 
             #########################################################################################################################################
 
@@ -164,6 +165,8 @@ class VelocityPlot:
 
             cbar.locator = ticker.MaxNLocator(3)
             cbar.update_ticks()
+
+        self.imdata.set_alpha(0.7)
 
 
     def _plot_scale(self):
@@ -231,13 +234,19 @@ class VelocityPlot:
             lat2d = resize_to_match(lat2d, self.data, 'latitude')
             lon2d = resize_to_match(lon2d, self.data, 'longitude')
 
+
+        meters_per_deg_lat = 111320
+        meters_per_deg_lon = 111320 * np.cos(np.radians(np.nanmean(lat2d)))
+
+        dx = dlon * meters_per_deg_lon
+        dy = dlat * meters_per_deg_lat
+
         # Compute hillshade with real spacing
         ls = LightSource(azdeg=315, altdeg=45)
-        hillshade = ls.hillshade(self.z, vert_exag=0.5, dx=dlon, dy=dlat)
+        hillshade = ls.hillshade(self.z, vert_exag=0.5, dx=dx, dy=dy)
 
         # Use pcolormesh to plot hillshade using real coordinates
-        # self.im = self.ax.pcolormesh(lon2d,lat2d,hillshade,cmap='gray',shading='auto',zorder=zorder,alpha=0.5,)
-        self.im = self.ax.imshow(hillshade)
+        self.im = self.ax.pcolormesh(lon2d,lat2d,hillshade,cmap='gray',shading='auto',zorder=zorder,)
 
     def _plot_isolines(self):
         print("Adding isolines...\n")
@@ -272,7 +281,7 @@ class VelocityPlot:
         z = lines.values
 
         #Plot the isolines
-        cont = self.ax.contour(lon, lat, z, levels=self.contour, colors=self.color, linewidths=self.contour_linewidth, alpha=0.7, zorder=zorder)
+        cont = self.ax.contour(lon, lat, z, levels=self.contour, colors=self.color, linewidths=self.contour_linewidth, alpha=0.5, zorder=zorder)
 
         if self.inline:
             self.ax.clabel(cont, inline=self.inline, fontsize=8)
@@ -283,13 +292,12 @@ class VelocityPlot:
 
         zorder = self._get_next_zorder()
 
-        cmap = plt.cm.viridis
         vmin = min(self.earthquakes['magnitude'])  # Minimum magnitude
         vmax = max(self.earthquakes['magnitude'])  # Maximum magnitude
 
         for lalo, magnitude, date in zip(self.earthquakes['lalo'], self.earthquakes['magnitude'], self.earthquakes['date']):
             imdata = self.ax.scatter(
-                lalo[1], lalo[0], 
+                lalo[1], lalo[0],
                 s=10**(magnitude*0.5),  # Size based on magnitude
                 c=magnitude, #cmap(norm(magnitude)),  # Color based on magnitude
                 edgecolors='black',  # Edge color
@@ -299,11 +307,11 @@ class VelocityPlot:
                 marker='o',  # Circle marker
                 alpha=0.6,  # Transparency
                 label=f"{magnitude} {date}",
-                zorder=zorder
+                zorder=zorder,
             )
 
         if not self.no_colorbar and (not hasattr(self, 'data') or self.data is None):
-            cbar = self.ax.figure.colorbar(imdata, ax=self.ax, orientation='horizontal', aspect=13)
+            cbar = self.ax.figure.colorbar(imdata, ax=self.ax, orientation='horizontal', fraction=0.03, pad=0.05)
             cbar.set_label('Magnitude')
 
             cbar.set_ticks([cbar.vmin, (cbar.vmin + cbar.vmax) / 2, cbar.vmax])
@@ -387,6 +395,7 @@ class EarthquakePlot:
             self.plot_by_distance(ax)
         else:
             self.plot_by_date(ax)
+
 
     def plot_by_date(self, ax):
         # Plot EQs
@@ -521,13 +530,12 @@ class VectorsPlot:
                 latitude, longitude = get_bounding_box(self.geometry_attr)
                 self.region = [longitude[0], longitude[1], latitude[0], latitude[1]]
 
-        self.horizontal_section = self._process_sections(np.flipud(self.horz), self.region)
-        self.vertical_section = self._process_sections(np.flipud(self.vert), self.region)
+        self.horizontal_section = self._process_sections((self.horz), self.region)
+        self.vertical_section = self._process_sections((self.vert), self.region)
         self.topography_section = self._process_sections(self.geometry, self.geometry_attr["region"])
 
     def _process_sections(self, data, region):
         """Processes the sections for horizontal and vertical components."""
-
         lat_indices, lon_indices = self._draw_line(data, region, self.line[1], self.line[0])
 
         # Extract the values data along the snapped path
@@ -611,11 +619,10 @@ class VectorsPlot:
     def _compute_vectors(self):
         """Computes velocity vectors and scaling factors."""
         x, v, h, self.z = draw_vectors(self.topography_section, self.vertical_section, self.horizontal_section, self.line)
-
         fig = self.ax.get_figure()
         fig_width, fig_height = fig.get_size_inches()
-        max_elevation = max(self.z)
-        max_x = max(x)
+        max_elevation = np.nanmax(self.z)
+        max_x = np.nanmax(x)
 
         self.v_adj = 2 * max_elevation / max_x
         self.h_adj = 1 / self.v_adj
@@ -657,7 +664,7 @@ class VectorsPlot:
         # Mean velocity vector
         start_x = max(self.xrange) * 0.1
         start_y = (2 * max(self.z) * 0.8)
-        mean_velocity = np.sqrt(np.mean((self.vertical_section[self.vertical_section!=0]))**2 + np.mean((self.horizontal_section[self.horizontal_section!=0]))**2)
+        mean_velocity = np.sqrt(np.nanmean((self.vertical_section[self.vertical_section!=0]))**2 + np.nanmean((self.horizontal_section[self.horizontal_section!=0]))**2)
         rounded_mean_velocity = round(mean_velocity, 4) if mean_velocity else round(mean_velocity, 3)
 
         self.ax.quiver([start_x], [start_y], [mean_velocity], [0], color='#ff7366', scale_units='xy', width=(1 / 10**(2.5)))
