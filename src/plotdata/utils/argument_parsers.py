@@ -134,7 +134,7 @@ def add_plot_parameters_arguments(parser):
     plot_parameters.add_argument('--zoom',
                         type=float,
                         default=None,
-                        help='Zoom factor for the plot from 0.1 to 1.')
+                        help='Zoom factor for the plot.')
     return parser
 
 

@@ -7,7 +7,6 @@ import argparse
 import re
 import numpy as np
 import math
-from typing import Any
 from types import SimpleNamespace
 from datetime import datetime, timedelta
 from mintpy.objects.resample import resample

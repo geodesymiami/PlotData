@@ -204,6 +204,7 @@ def create_mask_file(eos_file, out_folder, mask_trehshold=0.55):
     temporal_coherence = extract_temporalCoherence(eos_file, determine_coordinates(eos_file))
     mask_temporalCoherence = 'geo_maskTempCoh' if 'geo_' in temporal_coherence else 'maskTempCoh'
 
+    # Always rewrite mask
     cmd = f'{temporal_coherence} -m {mask_trehshold} -o {mask_temporalCoherence}.h5'
 
     print(f'Running --> generate_mask.py {cmd}\n')
@@ -458,7 +459,7 @@ def find_longitude_degree(ref_lat, lat_step):
     return abs(round(float(lat_step) / math.cos(math.radians(float(ref_lat))), 5))
 
 
-def find_reference_points_from_subsets(subset1, subset2=None, window_size=3):
+def find_reference_points_from_subsets(subsets, window_size=3):
     """
     Finds the closest valid reference points in the selected window using subsets.
 
@@ -471,7 +472,8 @@ def find_reference_points_from_subsets(subset1, subset2=None, window_size=3):
         tuple: ref_lalo1 (list) and ref_lalo2 (list or None).
     """
     # Unpack the first subset
-    subdata1, sublat1, sublon1 = subset1
+    subdata1, sublat1, sublon1 = subsets[0]
+    subset2 = subsets[1] if len(subsets) > 1 else None
 
     # Handle the second subset if provided
     if subset2:
@@ -536,7 +538,7 @@ def select_reference_point(out_mskd_file, window_size, ref_lalo):
         for data in [readfile.read(velocity)]
     ]
 
-    ref_lalo1, ref_lalo2 = find_reference_points_from_subsets(extracted_data[0], extracted_data[1], window_size)
+    ref_lalo1, ref_lalo2 = find_reference_points_from_subsets(extracted_data, window_size)
 
     print('-' * 50)
     print(f"Reference point selected: {ref_lalo1[0]:.4f}, {ref_lalo1[1]:.4f}")
@@ -582,7 +584,8 @@ def calculate_distance(lat_1, lon_1, lat_2, lon_2):
     Returns:
     float: The distance between the two points in kilometers.
     """
-    return (((lat_1 - lat_2)*111)**2 + ((lon_1 - lon_2)*111)**2)**0.5
+    km_per_deg = 111.32 * math.cos(math.radians((lat_1 + lat_2) / 2))
+    return (((lat_1 - lat_2)*111)**2 + ((lon_1 - lon_2)*km_per_deg)**2)**0.5
 
 
 def expand_bbox(bbox):
@@ -680,7 +683,7 @@ def draw_vectors(elevation, vertical, horizontal, line):
     v1 = abs(v)
     h1 = abs(h)
 
-    m = max(v1) if max(v1) > max(h1) else max(h1)
+    m = np.nanmax(v1) if np.nanmax(v1) > np.nanmax(h1) else np.nanmax(h1)
 
     tv = (v1 - 0) / (m - 0)
     th = (h1 - 0) / (m - 0)

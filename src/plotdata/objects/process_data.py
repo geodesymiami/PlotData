@@ -113,11 +113,9 @@ class ProcessData:
     def _process_data(self, files):
         """Processes a single dataset and returns the masked velocity file."""
         eos_file = files['eos_file']
-        vel_file = files['vel_file']
         date_dir = os.path.join(os.path.dirname(files['out_vel_file']), f'{self.start_date}_{self.end_date}')
         os.makedirs(date_dir, exist_ok=True)
         out_vel_file = os.path.join(date_dir, os.path.basename(files['out_vel_file']))
-        project_base_dir = files['project_base_dir']
 
         create_geometry_file(eos_file, os.path.dirname(files['geometry_file']))
         mask = create_mask_file(eos_file, os.path.dirname(files['out_vel_file']), self.mask_vmin)
@@ -141,7 +139,7 @@ class ProcessData:
 
     def _convert_timeseries_to_velocity(self, eos_file, start_date, end_date, output_file):
         # TODO Overwrite option, this create conflicts if you use a new S1 file
-        if not os.path.exists(output_file) and True:
+        if not os.path.exists(output_file) or True:
             cmd = f'{eos_file} --start-date {start_date} --end-date {end_date} --output {output_file}'
             ts2v.main(cmd.split())
 
@@ -154,14 +152,17 @@ class ProcessData:
         outdir = os.path.dirname(file_fullpath)
         os.chdir(outdir)
         cmd = f"{file_fullpath} --lalo-step {lat_step} {lon_step} --outdir {outdir} -l {geometry}"
-        geocode.main(cmd.split())
+        # TODO Overwrite option
+        if not os.path.exists(outdir) or True:
+            os.makedirs(outdir, exist_ok=True)
+            geocode.main(cmd.split())
         os.chdir(self.root_dir)
 
     def _apply_mask(self, out_vel_file, temp_coh_file):
         out_mskd_file = out_vel_file.replace('.h5', '_msk.h5')
-
-        cmd = f'{out_vel_file} --mask {temp_coh_file} --mask-vmin {self.mask_vmin} --outfile {out_mskd_file}'
-        mask.main(cmd.split())
+        if not os.path.exists(out_mskd_file) or True:
+            cmd = f'{out_vel_file} --mask {temp_coh_file} --mask-vmin {self.mask_vmin} --outfile {out_mskd_file}'
+            mask.main(cmd.split())
         return out_mskd_file
 
     def _apply_reference_point(self, out_mskd_file, ref_lalo):
@@ -169,5 +170,7 @@ class ProcessData:
         reference_point.main(cmd.split())
 
     def _convert_to_horz_vert(self, asc_file, desc_file, horz_name, vert_name):
-        cmd = f'{asc_file} {desc_file} --output {horz_name} {vert_name}'
-        asc_desc2horz_vert.main(cmd.split())
+        # TODO Overwrite option
+        if not os.path.exists(horz_name) or not os.path.exists(vert_name) or True:
+            cmd = f'{asc_file} {desc_file} --output {horz_name} {vert_name}'
+            asc_desc2horz_vert.main(cmd.split())
