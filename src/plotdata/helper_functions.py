@@ -456,7 +456,7 @@ def find_longitude_degree(ref_lat, lat_step):
     return abs(round(float(lat_step) / math.cos(math.radians(float(ref_lat))), 5))
 
 
-def find_reference_points_from_subsets(subset1, subset2=None, window_size=3):
+def find_reference_points_from_subsets(subsets, window_size=3):
     """
     Finds the closest valid reference points in the selected window using subsets.
 
@@ -469,7 +469,8 @@ def find_reference_points_from_subsets(subset1, subset2=None, window_size=3):
         tuple: ref_lalo1 (list) and ref_lalo2 (list or None).
     """
     # Unpack the first subset
-    subdata1, sublat1, sublon1 = subset1
+    subdata1, sublat1, sublon1 = subsets[0]
+    subset2 = subsets[1] if len(subsets) > 1 else None
 
     # Handle the second subset if provided
     if subset2:
@@ -534,7 +535,7 @@ def select_reference_point(out_mskd_file, window_size, ref_lalo):
         for data in [readfile.read(velocity)]
     ]
 
-    ref_lalo1, ref_lalo2 = find_reference_points_from_subsets(extracted_data[0], extracted_data[1], window_size)
+    ref_lalo1, ref_lalo2 = find_reference_points_from_subsets(extracted_data, window_size)
 
     print('-' * 50)
     print(f"Reference point selected: {ref_lalo1[0]:.4f}, {ref_lalo1[1]:.4f}")
@@ -679,7 +680,7 @@ def draw_vectors(elevation, vertical, horizontal, line):
     v1 = abs(v)
     h1 = abs(h)
 
-    m = max(v1) if max(v1) > max(h1) else max(h1)
+    m = np.nanmax(v1) if np.nanmax(v1) > np.nanmax(h1) else np.nanmax(h1)
 
     tv = (v1 - 0) / (m - 0)
     th = (h1 - 0) / (m - 0)
