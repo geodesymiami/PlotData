@@ -281,39 +281,52 @@ def populate_dates(inps):
 
 
 def configure_logging(processors):
-    """Configure logging for the application.
-
-    - Quiet noisy third-party loggers.
-    - Configure the root logger to write to the first processor's log file.
-    - Log the invoking command, but only record the script name (basename),
-      not the full path.
-
-    Parameters
-    ----------
-    processors : list
-        List of ProcessData instances; the first element is used to determine
-        the output directory for the log file.
     """
-    noisy = ('ipykernel', 'ipykernel.comm', 'jupyter_client', 'zmq', 'tornado', 'asyncio', 'matplotlib')
-    for name in noisy:
-        logging.getLogger(name).setLevel(logging.WARNING)
+    Configure logging so that ONLY the invoked command is logged.
+    """
 
-    # Ensure processors exists and has directory attribute
-    log_dir = None
+    # Determine log directory
     if processors and hasattr(processors[0], 'directory'):
         log_dir = processors[0].directory
     else:
         log_dir = os.getcwd()
 
-    # Configure logging to write to a log file
-    logging.basicConfig(filename=os.path.join(log_dir, 'log'), level=logging.INFO,
-                        format='%(asctime)s - %(message)s', datefmt='%Y-%m-%d')
+    log_file = os.path.join(log_dir, "log")
 
-    # Log the command-line command but only the script basename (not full path)
-    script_name = os.path.basename(sys.argv[0]) if len(sys.argv) > 0 else ''
-    rest = ' '.join(sys.argv[1:]) if len(sys.argv) > 1 else ''
-    cmd_command = f"{script_name} {rest}".strip()
-    logging.info(cmd_command)
+    # Create a dedicated logger
+    logger = logging.getLogger("plot_data")
+    logger.setLevel(logging.INFO)
+    logger.propagate = False  # ⬅️ critical: stop root propagation
+
+    # Avoid adding handlers multiple times
+    if not logger.handlers:
+        handler = logging.FileHandler(log_file)
+        formatter = logging.Formatter(
+            fmt="%(asctime)s - %(message)s",
+            datefmt="%Y-%m-%d"
+        )
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+
+    # Silence noisy libraries completely
+    for name in (
+        "matplotlib",
+        "ipykernel",
+        "ipykernel.comm",
+        "jupyter_client",
+        "zmq",
+        "tornado",
+        "asyncio",
+    ):
+        logging.getLogger(name).setLevel(logging.CRITICAL)
+        logging.getLogger(name).propagate = False
+
+    # Log ONLY the invoked command
+    script = os.path.basename(sys.argv[0])
+    args = " ".join(sys.argv[1:])
+    logger.info(f"{script} {args}".strip())
+
+    return logger
 
 ######################### MAIN #############################
 
