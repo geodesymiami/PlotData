@@ -7,6 +7,7 @@ import argparse
 import re
 import numpy as np
 import math
+from typing import Any
 from types import SimpleNamespace
 from datetime import datetime, timedelta
 from mintpy.objects.resample import resample
@@ -841,8 +842,8 @@ def create_hdfeos_output(ts_data, date_list, mask, delta_days, bperp, latitude, 
     hdfeos_metadata['PROCESSOR'] = 'mintpy'
     hdfeos_metadata['PROJECT_NAME'] = os.path.basename(os.path.dirname(output_path))
     hdfeos_metadata['REF_DATE'] = str(date_list[0])
-    hdfeos_metadata['diplacement_type'] = 'vertical' if 'vert' in output_path else 'horizontal'
-    hdfeos_metadata['processing_type'] = 'vertical timeseries' if 'vert' in output_path else 'horizontalntimeseries'
+    hdfeos_metadata['displacement_type'] = 'vertical' if 'vert' in output_path else 'horizontal'
+    hdfeos_metadata['processing_type'] = 'vertical timeseries' if 'vert' in output_path else 'horizontal timeseries'
     hdfeos_metadata['flight_direction'] = 'V' if 'vert' in output_path else 'H'
     hdfeos_metadata['first_frame'] = ' '
 
