@@ -862,7 +862,7 @@ def process_reference_points(ts1, ts2, inps):
         inps: Parsed command line arguments
     """
     # Find reference points from the subsets
-    refs_lalo = find_reference_points_from_subsets(ts1.window, ts2.window, inps.window_size)
+    refs_lalo = find_reference_points_from_subsets([ts1.window, ts2.window], inps.window_size)
 
     # List of timeseries objects and their corresponding reference coordinates
     timeseries_list = [(ts1, refs_lalo[0]), (ts2, refs_lalo[1])]
