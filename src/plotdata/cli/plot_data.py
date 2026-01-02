@@ -361,19 +361,23 @@ def main(iargs=None):
         ########
     }
 
+    inps = populate_dates(inps)
+
     figures = {}
     processors = []
 
-    inps = populate_dates(inps)
-
+    # Process and plot for each period
     for start_date, end_date in zip(inps.start_date, inps.end_date):
         process = ProcessData(inps, template.layout, start_date, end_date)
         processors.append(process)
         process.process()
 
+        template.update_layout(plotter_map, process)
+        process.layout = template.layout
+
         datafethched = DataExtractor(plotter_map, process)
 
-        # 4. Use PlotRenderer to populate the axes
+        # Use PlotRenderer to populate the axes
         renderer = PlotRenderer(datafethched, template)
         fig = renderer.render()
 

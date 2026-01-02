@@ -47,6 +47,24 @@ class PlotTemplate:
         }
         return layouts[name]
 
+    def update_layout(self, map, inps):
+        fixed_layout = []
+        for row in self.layout:
+            new_row = []
+            for plot_type in row:
+                key = plot_type.split('.')[0]
+                attrs = map.get(key, {}).get('attributes', [])
+                if key in ['timeseries', 'seismicity', 'seismicmap']:
+                    if any(getattr(inps, atr, None) is not None for atr in attrs):
+                        new_row.append(plot_type)
+                else:
+                    # other plots still require all attributes
+                    if all(getattr(inps, atr, None) is not None for atr in attrs):
+                        new_row.append(plot_type)
+            if new_row:
+                fixed_layout.append(new_row)
+        self.layout = fixed_layout
+
 
 class PlotRenderer:
     def __init__(self, inps, template: PlotTemplate):
