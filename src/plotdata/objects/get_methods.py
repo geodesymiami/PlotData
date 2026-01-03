@@ -240,6 +240,11 @@ class DataExtractor:
             coord = coordinate(atr, lookup_file=geometry.replace("geo_",""))
         else:
             coord = coordinate(atr, lookup_file=geometry)
+
+        if not hasattr(self, 'lalo') or not self.lalo:
+            self.lalo = ((float(atr['Y_FIRST']) + float(atr['Y_FIRST']) + (int(atr['LENGTH']) - 1) * float(atr['Y_STEP'])) / 2,
+                         (float(atr['X_FIRST']) + float(atr['X_FIRST']) + (int(atr['WIDTH']) - 1) * float(atr['X_STEP'])) / 2)
+
         lalo = coord.geo2radar(lat=self.lalo[0], lon=self.lalo[1])
 
         # Reference data to a specific point if provided
@@ -271,7 +276,9 @@ class DataExtractor:
 
         if (direction and self.dataset.get("vectors") and self.dataset["vectors"].get(direction)):
             vector_data = self.dataset["vectors"][direction]
-            return {**vector_data, "geometry": self._extract_geometry_data(file)}
+            if 'geometry' not in vector_data:
+                return {**vector_data, "geometry": self._extract_geometry_data(file)}
+            return vector_data
 
         velocity = readfile.read(file)[0]
         atr = readfile.read_attribute(file)
@@ -376,7 +383,7 @@ class DataExtractor:
                 return dictionary
             else:
                 latitude, longitude = get_bounding_box(atr)
-                self.region = [max(longitude), max(longitude), min(latitude), max(latitude)]
+                self.region = [min(longitude), max(longitude), min(latitude), max(latitude)]
 
         atr = {}
 

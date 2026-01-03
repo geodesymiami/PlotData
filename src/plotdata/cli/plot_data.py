@@ -8,7 +8,7 @@ import os
 import re
 import sys
 
-# !!! The asgeo import breaks when called by readfile.py unless I do the following !!!
+# !!! The osgeo import breaks when called by readfile.py unless I do the following !!!
 from osgeo import gdal, osr
 
 import logging
@@ -296,7 +296,7 @@ def configure_logging(processors):
     # Create a dedicated logger
     logger = logging.getLogger("plot_data")
     logger.setLevel(logging.INFO)
-    logger.propagate = False  # ⬅️ critical: stop root propagation
+    logger.propagate = False
 
     # Avoid adding handlers multiple times
     if not logger.handlers:
@@ -333,11 +333,11 @@ def configure_logging(processors):
 def main(iargs=None):
     inps = create_parser()
 
+    import matplotlib.pyplot as plt
     from plotdata.objects.process_data import ProcessData
+    from plotdata.objects.get_methods import DataExtractor
     from plotdata.objects.plot_properties import PlotTemplate, PlotRenderer
     from plotdata.objects.plotters import VelocityPlot, VectorsPlot, TimeseriesPlot, EarthquakePlot
-    from plotdata.objects.get_methods import DataExtractor
-    import matplotlib.pyplot as plt
 
     ###### TEST ######
     # inps.template = "test"  # Use a test template for demonstration
@@ -350,12 +350,12 @@ def main(iargs=None):
     # The plotter_map defines the mapping of plot types to their respective classes and required attributes
     # Attributes refer to the type of input file to get from the ProcessData object
     plotter_map = {
-        "ascending": {"class": VelocityPlot, "attributes": ["ascending"]},
+        "vectors":    {"class": VectorsPlot, "attributes": ["horizontal", "vertical"]},
+        "vertical":   {"class": VelocityPlot, "attributes": ["vertical"]},
+        "ascending":  {"class": VelocityPlot, "attributes": ["ascending"]},
         "descending": {"class": VelocityPlot, "attributes": ["descending"]},
         "horizontal": {"class": VelocityPlot, "attributes": ["horizontal"]},
-        "vertical": {"class": VelocityPlot, "attributes": ["vertical"]},
         "timeseries": {"class": TimeseriesPlot, "attributes": ["eos_file_ascending", "eos_file_descending"]},
-        "vectors": {"class": VectorsPlot, "attributes": ["horizontal", "vertical"]},
         "seismicmap": {"class": VelocityPlot, "attributes": ["ascending_geometry", "descending_geometry"]},
         "seismicity": {"class": EarthquakePlot, "attributes": ["ascending", "descending"]},
         ########
