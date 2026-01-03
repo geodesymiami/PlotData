@@ -110,6 +110,7 @@ class ProcessData:
         if not self.file_info:
             self.velocity_file = [None]
 
+
     def _process_data(self, files):
         """Processes a single dataset and returns the masked velocity file."""
         eos_file = files['eos_file']
