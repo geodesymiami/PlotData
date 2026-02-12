@@ -14,33 +14,53 @@ class PlotTemplate:
     def _get_layout(self, name):
         layouts = {
             "default": [
-                ["ascending.point.section", "horizontal.point.section", ],
-                ["descending.point.section", "vertical.point.section", ],
+                ["velocity_ascending.point.section", "horizontal.point.section", ],
+                ["velocity_descending.point.section", "vertical.point.section", ],
                 ["timeseries", "vectors", ],
             ],
             "default_with_seismicity": [
-                ["ascending.point.section", "horizontal.point.section", "seismicmap"],
-                ["descending.point.section", "vertical.point.section", "seismicity.distance"],
+                ["velocity_ascending.point.section", "horizontal.point.section", "seismicmap"],
+                ["velocity_descending.point.section", "vertical.point.section", "seismicity.distance"],
                 ["timeseries", "vectors", "seismicity.date"],
             ],
             "ascending": [
-                ["ascending.point" ],
+                ["velocity_ascending.point" ],
             ],
             "descending": [
-                ["descending.point" ],
+                ["velocity_descending.point" ],
+            ],
+            "velocity": [
+                ["velocity_ascending" ],
+                ["velocity_descending" ],
             ],
             "timeseries": [
-                ["ascending.point" ],
-                ["descending.point" ],
+                ["velocity_ascending.point" ],
+                ["velocity_descending.point" ],
                 ["timeseries" ],
             ],
+            "vectors": [
+                ["velocity_ascending.section" ],
+                ["velocity_descending.section" ],
+                ["vectors" ],
+            ],
+            "model": [
+                ["profile_ascending", "profile_descending"],
+                ["velocity_ascending.section", "velocity_descending.section"],
+                ["model_ascending.section", "model_descending.section"],
+            ],
+            "model_descending": [
+                ["profile_descending"],
+                ["velocity_descending.section"],
+                ["model_descending.section"],
+            ],
             "test": [
-                # ["descending.point" ],
-                ["timeseries" ],
-                # ["ascending"],
-                # ["descending",],
+                # ["velocity_descending", "velocity_ascending"],
+                # ["horizontal", "vertical"]
+                ["velocity_descending.point.section", "horizontal.point.section"],
+                ["velocity_ascending.point.section", "vertical.point.section"],
+                ["profile_descending", "vectors"],
+                # ["timeseries"],
                 # ["seismicmap"],
-                # ["descending.point.section",],
                 # ["seismicity.date",],
                 # ["seismicity.distance",],
             ]
@@ -151,8 +171,8 @@ class PlotGrid:
     def _create_axes(self, inps):
         width = {
             1: 6,
-            2: 10,
-            3: 20,
+            2: 14,
+            3: 24,
         }
         num_columns = int(max(len(row) for row in self.template.layout))
         fig, axs = plt.subplot_mosaic(
