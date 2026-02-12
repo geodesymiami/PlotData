@@ -39,9 +39,18 @@ def create_parser():
     parser = argparse.ArgumentParser(description=synopsis, epilog=epilog, formatter_class=argparse.RawTextHelpFormatter)
 
     parser.add_argument('data_dir', nargs='*', help='Directory(s) with InSAR data.\n')
+    # TODO unused
     parser.add_argument('--dem', dest='dem_file', default=None, help='external DEM file (Default: geo/geo_geometryRadar.h5)')
     parser.add_argument('--lines', dest='line_file', default=None, help='fault file (Default: None, but plotdata/data/hawaii_lines_new.mat for Hawaii)')
+    # TODO group in model args
+    parser.add_argument('--model', type=str, choices=['mogi', 'penny', 'spheroid', 'moment', 'okada'], nargs='+', help='Source model(s) to include.')
+    parser.add_argument('--no-sources', action='store_true', default=False, help='Do not read source parameters from model file.')
+    parser.add_argument('--fullres', action='store_true', default=False, help='Plot at full resolution model (default: %(default)s).')
+    parser.add_argument('--norm', action='store_true', default=False, help='Normalize profiles (default: %(default)s).')
+    parser.add_argument('--denoise', type=int, help='Denoise data profile (default: %(default)s).')
+
     parser.add_argument('--mask-thresh', dest='mask_vmin', type=float, default=0.55, help='coherence threshold for masking (default: %(default)s).')
+    parser.add_argument('--mask', nargs='*', dest='mask', type=str, help='Path to mask.')
     parser.add_argument('--unit', dest='unit', default="cm/yr", help='InSAR units (Default: cm)')
     # parser.add_argument("--noreference", dest="show_reference_point",  action='store_false', default=True, help="hide reference point (default: False)" )
     parser.add_argument("--section", dest="line", type=str, default=None, help="Section coordinates for deformation vectors, LAT,LON:LAT,LON")
@@ -337,7 +346,7 @@ def main(iargs=None):
     from plotdata.objects.process_data import ProcessData
     from plotdata.objects.get_methods import DataExtractor
     from plotdata.objects.plot_properties import PlotTemplate, PlotRenderer
-    from plotdata.objects.plotters import VelocityPlot, VectorsPlot, TimeseriesPlot, EarthquakePlot
+    from plotdata.objects.plotters import VelocityPlot, VectorsPlot, TimeseriesPlot, EarthquakePlot, ProfilePlot
 
     ###### TEST ######
     # inps.template = "test"  # Use a test template for demonstration
@@ -350,10 +359,14 @@ def main(iargs=None):
     # The plotter_map defines the mapping of plot types to their respective classes and required attributes
     # Attributes refer to the type of input file to get from the ProcessData object
     plotter_map = {
-        "vectors":    {"class": VectorsPlot, "attributes": ["horizontal", "vertical"]},
-        "vertical":   {"class": VelocityPlot, "attributes": ["vertical"]},
-        "ascending":  {"class": VelocityPlot, "attributes": ["ascending"]},
-        "descending": {"class": VelocityPlot, "attributes": ["descending"]},
+        "model_ascending": {"class": VelocityPlot, "attributes": ["ascending_model"]}, # TODO
+        "model_descending": {"class": VelocityPlot, "attributes": ["descending_model"]}, # TODO
+        "profile_ascending": {"class": ProfilePlot, "attributes": ["ascending_model", "ascending"]},
+        "profile_descending": {"class": ProfilePlot, "attributes": ["descending_model", "descending"]},
+        "vectors": {"class": VectorsPlot, "attributes": ["horizontal", "vertical"]},
+        "vertical": {"class": VelocityPlot, "attributes": ["vertical"]},
+        "velocity_ascending":  {"class": VelocityPlot, "attributes": ["ascending"]},
+        "velocity_descending": {"class": VelocityPlot, "attributes": ["descending"]},
         "horizontal": {"class": VelocityPlot, "attributes": ["horizontal"]},
         "timeseries": {"class": TimeseriesPlot, "attributes": ["eos_file_ascending", "eos_file_descending"]},
         "seismicmap": {"class": VelocityPlot, "attributes": ["ascending_geometry", "descending_geometry"]},
