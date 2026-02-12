@@ -14,8 +14,6 @@ Usage examples:
 Dependencies:
   pip install geopandas rasterio numpy shapely
 """
-from __future__ import annotations
-
 import argparse
 import sys
 import os
@@ -24,23 +22,11 @@ import tempfile
 from typing import Optional
 from mintpy.utils import readfile, writefile
 from scipy.interpolate import RegularGridInterpolator
-
-
 import numpy as np
-
-try:
-    import geopandas as gpd
-except Exception:
-    print('geopandas is required: pip install geopandas', file=sys.stderr)
-    raise
-
-try:
-    import rasterio
-    from rasterio.features import rasterize
-    from rasterio.transform import from_origin
-except Exception:
-    print('rasterio is required: pip install rasterio', file=sys.stderr)
-    raise
+import geopandas as gpd
+import rasterio
+from rasterio.features import rasterize
+from rasterio.transform import from_origin
 
 
 EXAMPLE = "kmz_to_mask.py --input /Users/giacomo/onedrive/scratch/Chiles/Chiles_mask.kmz --output /Users/giacomo/onedrive/scratch/Chiles/SenAT120/Chiles_mask.h5 --geom /Users/giacomo/onedrive/scratch/Chiles/SenAT120/geo_geometryRadar.h5 --mask /Users/giacomo/onedrive/scratch/Chiles/SenAT120/geo_maskTempCoh.h5"
