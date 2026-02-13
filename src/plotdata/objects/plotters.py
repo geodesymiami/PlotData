@@ -14,6 +14,8 @@ from matplotlib.transforms import Affine2D
 from matplotlib.patheffects import withStroke
 from plotdata.volcano_functions import get_volcanoes_data
 from plotdata.helper_functions import draw_vectors, calculate_distance, get_bounding_box, parse_polygon, resize_to_match
+from plotdata.objects.plot_utilities import ScalePlotter, DEMPlotter, AxisLimitsManager
+from plotdata.objects.deformation_sources import SourcePlotter
 
 
 def set_default_section(line, region):
@@ -32,11 +34,14 @@ def plot_point(ax, lat, lon, marker='o', color='black', size=5, alpha=1, zorder=
 
 class VelocityPlot:
     """Handles the plotting of velocity maps."""
+    
     def __init__(self, dataset, inps):
+        # Copy all attributes from inps to self
         for attr in dir(inps):
             if not attr.startswith('__') and not callable(getattr(inps, attr)):
                 setattr(self, attr, getattr(inps, attr))
 
+        # Extract dataset components
         if 'data' in dataset:
             self.data = dataset["data"]
             self.attributes = dataset["attributes"]
@@ -48,7 +53,7 @@ class VelocityPlot:
         elif 'geometry' in dataset:
             self.attributes = dataset["geometry"]["attributes"]
 
-
+        # Set region from attributes or use default
         if "region" in self.attributes:
             self.region = self.attributes["region"]
         elif hasattr(self, 'region'):
@@ -57,66 +62,31 @@ class VelocityPlot:
             latitude, longitude = get_bounding_box(self.attributes)
             self.region = [longitude[0], longitude[1], latitude[0], latitude[1]]
 
+        # Extract geometry data if available and DEM is not disabled
         if not self.no_dem:
             for key in dataset:
                 if "geometry" in key: 
                     self.geometry = dataset[key]['data']
                     self.attributes['longitude'] = dataset[key]['attributes']['longitude']
                     self.attributes['latitude'] = dataset[key]['attributes']['latitude']
-
                     break
                 else:
                     self.geometry = None
 
+        # Extract earthquakes if available
         if "earthquakes" in dataset:
             self.earthquakes = dataset["earthquakes"]
 
+        # Initialize helper objects
+        self.scale_plotter = ScalePlotter()
+        self.dem_plotter = DEMPlotter()
+        self.axis_manager = AxisLimitsManager()
+        
         self.zorder = 0
 
     def _update_axis_limits(self, x_min=None, x_max=None, y_min=None, y_max=None):
-        if hasattr(self, 'subset') and self.subset:
-            try:
-                # Split the string into two parts
-                coords1, coords2 = self.subset.split(':')
-
-                # Split each part into lat and lon
-                lat1, lon1 = map(float, coords1.split(','))
-                lat2, lon2 = map(float, coords2.split(','))
-
-                # Assign to x_min, x_max, y_min, y_max
-                x_min, x_max = sorted([lon1, lon2])  # Longitude corresponds to x-axis
-                y_min, y_max = sorted([lat1, lat2])  # Latitude corresponds to y-axis
-
-            except ValueError:
-                raise ValueError(f"Invalid subset format: {self.subset}. Expected format is 'lat,lon:lat2,lon2'.")
-
-            self.ax.set_xlim(x_min, x_max)
-            self.ax.set_ylim(y_min, y_max)
-
-        elif self.zoom:
-            # Get current axis limits
-            x_min, x_max = self.ax.get_xlim()
-            y_min, y_max = self.ax.get_ylim()
-
-            # Calculate the range
-            x_range = x_max - x_min
-            y_range = y_max - y_min
-
-            # Calculate the new limits
-            x_center = (x_min + x_max) / 2
-            y_center = (y_min + y_max) / 2
-
-            new_x_range = x_range / self.zoom
-            new_y_range = y_range / self.zoom
-
-            new_x_min = x_center - new_x_range / 2
-            new_x_max = x_center + new_x_range / 2
-            new_y_min = y_center - new_y_range / 2
-            new_y_max = y_center + new_y_range / 2
-
-            # Set the new axis limits
-            self.ax.set_xlim(new_x_min, new_x_max)
-            self.ax.set_ylim(new_y_min, new_y_max)
+        """Update axis limits using the AxisLimitsManager."""
+        self.axis_manager.update_limits(self.ax, self.subset, self.zoom)
 
     def _get_next_zorder(self):
         z = self.zorder
@@ -124,20 +94,8 @@ class VelocityPlot:
         return z
 
     def _plot_source(self, sources):
-        if sources:
-            source_type = {
-                "mogi": {"class": Mogi, "attributes": ["xcen", "ycen"]},
-                "spheroid": {"class": Spheroid, "attributes": ["xcen", "ycen", "s_axis_max", "ratio", "strike", "dip"]},
-                "penny": {"class": Penny,  "attributes": ["xcen", "ycen", "radius"]},
-                "okada": {"class": Okada,  "attributes": ["ytlc", "xtlc", "length", "width", "strike", "dip"]},
-            }
-            for s in sources:
-                s_keys = set(sources[s].keys())
-
-                for key, value in source_type.items():
-                    if set(value["attributes"]) == s_keys:
-                        model = value["class"]
-                        model(self.ax, **sources[s])
+        """Plot deformation sources using SourcePlotter."""
+        SourcePlotter.plot_sources(self.ax, sources)
 
     def _plot_synthetic(self, data):
         zorder = self._get_next_zorder()
@@ -221,85 +179,24 @@ class VelocityPlot:
 
 
     def _plot_scale(self):
+        """Plot scale bar using ScalePlotter."""
         zorder = self._get_next_zorder()
-
-        lon1, lon2 = self.ax.get_xlim()
-        lat1, lat2 = self.ax.get_ylim()
-        lon_span = lon2 - lon1
-        lat_span = lat2 - lat1
-
-        dlon = lon_span / 4.0
-        mean_lat = (lat1 + lat2) / 2.0
-        km_per_deg = 111.32 * math.cos(math.radians(mean_lat))
-        dist_km = abs(dlon) * km_per_deg
-
-        # choose a location with a small margin (works if axes possibly inverted)
-        x0 = min(lon1, lon2) + 0.05 * abs(lon_span)
-        y0 = min(lat1, lat2) + 0.05 * abs(lat_span)
-
-        # draw bar and end ticks
-        self.ax.plot([x0, x0 + dlon], [y0, y0], color='k', lw=1)
-        tick_h = 0.005 * abs(lat_span)
-        self.ax.plot([x0, x0], [y0 - tick_h, y0 + tick_h], color='k', lw=2)
-        self.ax.plot([x0 + dlon, x0 + dlon], [y0 - tick_h, y0 + tick_h], color='k', lw=2)
-        # label centered under the bar
-        self.ax.text(x0 + dlon/2, y0 + 0.06 * abs(lat_span), f"{dist_km:.0f} km", ha='center', va='top', fontsize=8, path_effects=[withStroke(linewidth=1.5, foreground='white')], zorder=zorder)
+        self.scale_plotter.plot_scale(self.ax, zorder)
 
 
 
     def _plot_dem(self):
-        print("-"*50)
-        print("Plotting DEM data...\n")
-
+        """Plot DEM data using DEMPlotter."""
         zorder = self._get_next_zorder()
-
-        if not isinstance(self.geometry, np.ndarray):
-            self.z = self.geometry.astype(float)
-        else:
-            self.z = self.geometry
-
-        lat = self.attributes['latitude']
-        lon = self.attributes['longitude']
-
-        if lon.ndim > 1:
-            dlon = float(self.attributes['X_STEP'])
-            dlat = float(self.attributes['Y_STEP'])
-
-            if hasattr(self, 'lat1d') and hasattr(self, 'lon1d'):
-                lon1d = self.lon1d
-                lat1d = self.lat1d
-            else:
-                lon_min = min(self.region[0:2])
-                lat_max = max(self.region[2:4])
-                ny, nx = self.z.shape
-
-                lon1d = lon_min + np.arange(nx) * dlon
-                lat1d = lat_max + np.arange(ny) * dlat
-
-            lon2d, lat2d = np.meshgrid(lon1d, lat1d)
-        else:
-            dlon = lon[1] - lon[0]
-            dlat = lat[1] - lat[0]
-            lon2d, lat2d = np.meshgrid(lon, lat)
- 
-        if hasattr(self, 'data') and self.data is not None:
-            self.z = resize_to_match(self.z, self.data, 'DEM')
-            lat2d = resize_to_match(lat2d, self.data, 'latitude')
-            lon2d = resize_to_match(lon2d, self.data, 'longitude')
-
-
-        meters_per_deg_lat = 111320
-        meters_per_deg_lon = 111320 * np.cos(np.radians(np.nanmean(lat2d)))
-
-        dx = dlon * meters_per_deg_lon
-        dy = dlat * meters_per_deg_lat
-
-        # Compute hillshade with real spacing
-        ls = LightSource(azdeg=315, altdeg=45)
-        hillshade = ls.hillshade(self.z, vert_exag=0.7, dx=dx, dy=dy)
-
-        # Use pcolormesh to plot hillshade using real coordinates
-        self.im = self.ax.pcolormesh(lon2d,lat2d,hillshade,cmap='gray',shading='auto',zorder=zorder,)
+        data = self.data if hasattr(self, 'data') and self.data is not None else None
+        self.dem_plotter.plot_dem(
+            self.ax, 
+            self.geometry, 
+            self.attributes, 
+            self.region, 
+            data=data,
+            zorder=zorder
+        )
 
     def _plot_isolines(self):
         print("Adding isolines...\n")
@@ -859,122 +756,6 @@ class VectorsPlot:
         self.ax.set_xlabel("Distance (km)")
 
 
-class Mogi():
-    def __init__(self, ax, xcen, ycen):
-        self.x = xcen
-        self.y = ycen
-        self._plot_source(ax)
-
-    def _plot_source(self, ax):
-        ax.scatter(self.x, self.y, s=15, color="black", linewidth=2, marker="x")
-
-
-class Spheroid():
-    def __init__(self, ax, xcen, ycen, s_axis_max, ratio, strike, dip):
-        self.x = xcen
-        self.y = ycen
-        self.s_axis = s_axis_max
-        self.ratio = ratio
-        self.strike = strike
-        self.dip = dip
-        self._plot_source(ax)
-
-    def _plot_source(self, ax):
-        # Calculate semi-minor axis
-        s_minor = self.s_axis * self.ratio
-
-        # Convert angles to radians
-        strike_rad = np.radians(self.strike - 90)
-        dip_rad = np.radians(self.dip)
-
-        # Adjust the semi-major axis length for the dip projection
-        s_axis_projected = self.s_axis * np.sin(dip_rad)
-
-        # Calculate endpoints of the major axis (with dip projection)
-        dx_major = s_axis_projected * np.cos(strike_rad)
-        dy_major = s_axis_projected * np.sin(strike_rad)
-        x_major = [self.x - dx_major, self.x + dx_major]
-        y_major = [self.y - dy_major, self.y + dy_major]
-
-        # Calculate endpoints of the minor axis (without dip projection)
-        dx_minor = s_minor * np.sin(strike_rad)
-        dy_minor = s_minor * -np.cos(strike_rad)
-        x_minor = [self.x - dx_minor, self.x + dx_minor]
-        y_minor = [self.y - dy_minor, self.y + dy_minor]
-
-        ax.plot(x_major, y_major, 'r-', label='Major Axis')  # Major axis in red
-        ax.plot(x_minor, y_minor, 'b-', label='Minor Axis')  # Minor axis in blue
-
-
-class Penny():
-    def __init__(self, ax, xcen, ycen, radius):
-        self.x = xcen
-        self.y = ycen
-        self.radius = radius
-        self._plot_source(ax)
-
-    def _plot_source(self, ax):
-        circle = plt.Circle((self.x, self.y), self.radius, edgecolor='black', color="#7cc0ff", fill=True, alpha=0.7, label='Penny')
-        ax.add_patch(circle)
-
-
-class Okada:
-    def __init__(self, ax, xtlc, ytlc, length, width, strike, dip):
-        self.xtlc = xtlc
-        self.ytlc = ytlc
-        self.length = length
-        self.width = width
-        self.strike = strike
-        self.dip = dip
-        self._plot_source(ax)
-
-    def _plot_source(self, ax):
-        dip_radians = np.radians(self.dip)
-        projected_width = self.width * np.cos(dip_radians)
-        height = abs(projected_width)
-
-        local_rect = Rectangle((0.0, -height),
-                               self.length, height,
-                            #    facecolor='black',
-                               edgecolor='black',
-                               lw=1,
-                               alpha=0.2)
-        # rotate around local origin (top-left) and translate to (xtlc, ytlc)
-        t = Affine2D().rotate_deg(90 - self.strike).translate(self.xtlc, self.ytlc)
-        local_rect.set_transform(t + ax.transData)
-        ax.add_patch(local_rect)
-
-        # add a single spike/triangle along the length that points in the down-dip direction
-        # local coordinates: top edge is at y=0, down-dip is negative y
-        try:
-            from matplotlib.patches import Polygon
-            # main triangle size
-            base_half_main = max(0.04 * self.length, 0.01 * self.length)
-
-            tri_color = 'black'
-            tri_edge = 'black'
-            tri_alpha = 0.3
-
-            # add several smaller triangles along the fault length with same color/alpha
-            n_extra = 6
-            extra_positions = np.linspace(0.1, 0.9, n_extra)
-            base_half_small = base_half_main * 0.5
-            tip_offset_small = 0.6
-            for pos in extra_positions:
-                # skip center position to avoid overlapping the main triangle
-                if abs(pos - 0.5) < 1e-6:
-                    continue
-                left = (pos * self.length - base_half_small, 0.0)
-                right = (pos * self.length + base_half_small, 0.0)
-                tip = (pos * self.length, -height * tip_offset_small)
-                tri_small = Polygon([left, right, tip], closed=True,
-                                    facecolor=tri_color, edgecolor=tri_edge, linewidth=0.6,
-                                    zorder=29, alpha=tri_alpha)
-                tri_small.set_transform(t + ax.transData)
-                ax.add_patch(tri_small)
-        except Exception:
-            # non-fatal: continue without spikes if something goes wrong
-            pass
 
 
 def point_on_globe(latitude, longitude, names=None, size='0.7', fsize=10):

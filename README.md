@@ -1,5 +1,16 @@
 [![CircleCI](https://dl.circleci.com/status-badge/img/gh/geodesymiami/PlotData/tree/main.svg?style=shield)](https://dl.circleci.com/status-badge/redirect/gh/geodesymiami/PlotData/tree/main)
 # PlotData
+
+## Recent Improvements
+
+This codebase has been refactored to better follow SOLID design principles, improving:
+- **Maintainability** - Clear responsibilities and dependencies
+- **Testability** - Components can be tested in isolation
+- **Extensibility** - Easy to add new features without modifying existing code
+- **Type Safety** - Type hints for better IDE support and error prevention
+
+See [SOLID_IMPROVEMENTS.md](SOLID_IMPROVEMENTS.md) for detailed documentation.
+
 ## TODOs
 - [ ] Change examples
 - [ ] Create notebook tutorial
