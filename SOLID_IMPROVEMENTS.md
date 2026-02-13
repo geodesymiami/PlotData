@@ -97,18 +97,17 @@ self.axis_manager = AxisLimitsManager()
 - Refactor safely
 - Use type hints
 
-**Original problematic pattern in ALL plotter classes:**
+**Original problematic pattern:**
 ```python
-# Anti-pattern used in VelocityPlot, ProfilePlot, TimeseriesPlot, EarthquakePlot, VectorsPlot
+# Anti-pattern used in many plotter classes
 def __init__(self, dataset, inps):
     for attr in dir(inps):
         if not attr.startswith('__') and not callable(getattr(inps, attr)):
             setattr(self, attr, getattr(inps, attr))  # Hidden dependencies!
 ```
 
-**Solution:** Created explicit configuration in ALL plotter classes:
+**Solution for VelocityPlot:** Created explicit configuration:
 
-**VelocityPlot:**
 ```python
 def __init__(self, dataset, inps):
     # Explicit configuration
@@ -123,45 +122,7 @@ def __init__(self, dataset, inps):
     self.axis_manager = AxisLimitsManager()
 ```
 
-**ProfilePlot:**
-```python
-def __init__(self, dataset, inps):
-    # Extract parameters explicitly
-    self.line = getattr(inps, 'line', None)
-    self.norm = getattr(inps, 'norm', False)
-    self.denoise = getattr(inps, 'denoise', None)
-    self.unit = getattr(inps, 'unit', 'mm/yr')
-```
-
-**TimeseriesPlot:**
-```python
-def __init__(self, dataset, inps):
-    # Extract parameters explicitly
-    self.start_date = getattr(inps, 'start_date', None)
-    self.end_date = getattr(inps, 'end_date', None)
-    self.unit = getattr(inps, 'unit', 'mm/yr')
-    self.offset = getattr(inps, 'offset', 0)
-```
-
-**EarthquakePlot:**
-```python
-def __init__(self, dataset, inps):
-    # Extract parameters explicitly
-    self.start_date = getattr(inps, 'start_date', None)
-    self.end_date = getattr(inps, 'end_date', None)
-    self.lalo = getattr(inps, 'lalo', None)
-    self.region = getattr(inps, 'region', None)
-```
-
-**VectorsPlot:**
-```python
-def __init__(self, dataset, inps):
-    # Extract parameters explicitly
-    self.line = getattr(inps, 'line', None)
-    self.region = getattr(inps, 'region', None)
-    self.num_vectors = getattr(inps, 'num_vectors', 50)
-    self.scale = getattr(inps, 'scale', None)
-```
+**Note:** Other plotter classes (ProfilePlot, TimeseriesPlot, EarthquakePlot, VectorsPlot) retain the dynamic attribute copying pattern as it's required for their functionality and changing them would break existing code.
 
 Or use configuration dataclasses:
 
@@ -170,12 +131,12 @@ config = PlottingConfig.from_namespace(inps)
 ```
 
 #### Benefits:
-- Clear interface - easy to see what parameters are used
+- Clear interface in VelocityPlot - easy to see what parameters are used
 - Type safety with dataclasses
 - Better IDE support
 - Easier to refactor and maintain
 - Self-documenting code
-- No more hidden dependencies!
+- Backward compatibility maintained in other classes
 
 ### 5. Improved DataExtractor Class
 
@@ -271,19 +232,21 @@ While these changes significantly improve the codebase, further improvements cou
 
 These refactorings make the codebase:
 
-- ✅ **More maintainable** - Clear responsibilities and dependencies
-- ✅ **More testable** - Can test components in isolation
-- ✅ **More extensible** - Easy to add new features without modifying existing code
-- ✅ **More understandable** - Explicit configuration and clear interfaces
-- ✅ **More type-safe** - Can add type hints and use IDE features
-- ✅ **Less error-prone** - Reduced dynamic behavior and hidden coupling
+- ✅ **More maintainable** - Clear responsibilities and dependencies in VelocityPlot
+- ✅ **More testable** - VelocityPlot components can be tested in isolation
+- ✅ **More extensible** - Easy to add new features to VelocityPlot without modifying existing code
+- ✅ **More understandable** - Explicit configuration and clear interfaces in VelocityPlot
+- ✅ **More type-safe** - Can add type hints and use IDE features in utility classes
+- ✅ **Less error-prone** - Reduced dynamic behavior in VelocityPlot
 
-**All plotter classes refactored:**
-- ✅ VelocityPlot
-- ✅ ProfilePlot
-- ✅ TimeseriesPlot
-- ✅ EarthquakePlot
-- ✅ VectorsPlot
-- ✅ DataExtractor
+**Classes refactored:**
+- ✅ VelocityPlot - removed dynamic attribute copying, uses utility classes
+- ✅ DataExtractor - uses composition instead of dynamic copying
 
-The code now better follows SOLID principles while maintaining backward compatibility. **No more dynamic attribute copying in any plotter class!**
+**Classes unchanged (retain dynamic attribute copying for compatibility):**
+- ProfilePlot
+- TimeseriesPlot
+- EarthquakePlot
+- VectorsPlot
+
+The code now better follows SOLID principles in VelocityPlot while maintaining backward compatibility for other plotter classes.
