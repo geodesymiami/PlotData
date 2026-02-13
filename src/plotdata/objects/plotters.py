@@ -33,40 +33,13 @@ def plot_point(ax, lat, lon, marker='o', color='black', size=5, alpha=1, zorder=
     ax.plot(lon, lat, marker, color=color, markersize=size, alpha=alpha, zorder=zorder)
 
 class VelocityPlot:
-    """Handles the plotting of velocity maps.
-    
-    This class follows the Single Responsibility Principle by delegating
-    specific plotting tasks to utility classes (ScalePlotter, DEMPlotter, etc.)
-    """
+    """Handles the plotting of velocity maps."""
     
     def __init__(self, dataset, inps):
-        """Initialize velocity plot with explicit parameters.
-        
-        Args:
-            dataset: Dictionary containing data and attributes
-            inps: Input parameters object
-        """
-        # Extract common plotting parameters explicitly
-        self.style = getattr(inps, 'style', 'pixel')
-        self.cmap = getattr(inps, 'cmap', 'jet')
-        self.vmin = getattr(inps, 'vmin', None)
-        self.vmax = getattr(inps, 'vmax', None)
-        self.unit = getattr(inps, 'unit', 'mm/yr')
-        self.no_colorbar = getattr(inps, 'no_colorbar', False)
-        self.colorbar_size = getattr(inps, 'colorbar_size', 0.8)
-        self.no_dem = getattr(inps, 'no_dem', False)
-        self.subset = getattr(inps, 'subset', None)
-        self.zoom = getattr(inps, 'zoom', None)
-        self.contour = getattr(inps, 'contour', None)
-        self.color = getattr(inps, 'color', 'black')
-        self.contour_linewidth = getattr(inps, 'contour_linewidth', 1)
-        self.inline = getattr(inps, 'inline', False)
-        self.resolution = getattr(inps, 'resolution', '03s')
-        self.lalo = getattr(inps, 'lalo', None)
-        self.line = getattr(inps, 'line', None)
-        self.ref_lalo = getattr(inps, 'ref_lalo', None)
-        self.volcano = getattr(inps, 'volcano', False)
-        self.sources = getattr(inps, 'sources', None)
+        # Copy all attributes from inps to self
+        for attr in dir(inps):
+            if not attr.startswith('__') and not callable(getattr(inps, attr)):
+                setattr(self, attr, getattr(inps, attr))
 
         # Extract dataset components
         if 'data' in dataset:
@@ -83,14 +56,13 @@ class VelocityPlot:
         # Set region from attributes or use default
         if "region" in self.attributes:
             self.region = self.attributes["region"]
-        elif hasattr(inps, 'region') and inps.region is not None:
-            self.region = inps.region
+        elif hasattr(self, 'region'):
+            pass
         else:
             latitude, longitude = get_bounding_box(self.attributes)
             self.region = [longitude[0], longitude[1], latitude[0], latitude[1]]
 
         # Extract geometry data if available and DEM is not disabled
-        self.geometry = None
         if not self.no_dem:
             for key in dataset:
                 if "geometry" in key: 
@@ -98,6 +70,8 @@ class VelocityPlot:
                     self.attributes['longitude'] = dataset[key]['attributes']['longitude']
                     self.attributes['latitude'] = dataset[key]['attributes']['latitude']
                     break
+                else:
+                    self.geometry = None
 
         # Extract earthquakes if available
         if "earthquakes" in dataset:
