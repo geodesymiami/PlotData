@@ -355,9 +355,13 @@ class VelocityPlot:
 
 class EarthquakePlot:
     def __init__(self, dataset, inps):
-        for attr in dir(inps):
-            if not attr.startswith('__') and not callable(getattr(inps, attr)):
-                setattr(self, attr, getattr(inps, attr))
+        # Extract parameters explicitly
+        self.start_date = getattr(inps, 'start_date', None)
+        self.end_date = getattr(inps, 'end_date', None)
+        self.lalo = getattr(inps, 'lalo', None)
+        self.coordinates = getattr(inps, 'coordinates', None)
+        self.region = getattr(inps, 'region', None)
+        
         self.earthquakes = dataset
 
     def plot(self, ax):
@@ -425,9 +429,13 @@ class EarthquakePlot:
 
 class TimeseriesPlot:
     def __init__(self, dataset, inps):
-        for attr in dir(inps):
-            if not attr.startswith('__') and not callable(getattr(inps, attr)):
-                setattr(self, attr, getattr(inps, attr))
+        # Extract parameters explicitly
+        self.start_date = getattr(inps, 'start_date', None)
+        self.end_date = getattr(inps, 'end_date', None)
+        self.unit = getattr(inps, 'unit', 'mm/yr')
+        self.offset = getattr(inps, 'offset', 0)
+        self.add_event = getattr(inps, 'add_event', None)
+        self.event_magnitude = getattr(inps, 'event_magnitude', None)
 
         self.start_date = self.start_date[0] if isinstance(self.start_date, list) else self.start_date
         self.end_date = self.end_date[0] if isinstance(self.end_date, list) else self.end_date
@@ -481,28 +489,29 @@ class TimeseriesPlot:
 class ProfilePlot:
     """Handles the plotting of deformation profiles for both model and observed data."""
     def __init__(self, dataset, inps):
-        for attr in dir(inps):
-            if not attr.startswith('__') and not callable(getattr(inps, attr)):
-                setattr(self, attr, getattr(inps, attr))
-
+        # Extract parameters explicitly
+        self.line = getattr(inps, 'line', None)
+        self.norm = getattr(inps, 'norm', False)
+        self.denoise = getattr(inps, 'denoise', None)
+        self.unit = getattr(inps, 'unit', 'mm/yr')
+        
         self.data = dataset["data"]
         self.synth = resize_to_match(dataset["synth"], dataset["data"], 'Profile Data')
         self.geometry = dataset.get("geometry").get("data") if "geometry" in dataset else None
         self.attributes = dataset.get("geometry").get("attributes") if "geometry" in dataset else None
-        self.region = self.attributes.get('region')
-
-        resize_to_match(dataset["synth"], dataset["data"], 'Profile Data')
+        self.geometry_attr = self.attributes  # Alias for compatibility
+        self.region = self.attributes.get('region') if self.attributes else None
 
         # Double check if the line is set
         if not self.line or type(self.line) == float:
             self.line = set_default_section(self.line, self.region)
 
         if not self.region:
-            if "scene_footprint" in self.geometry_attr:
+            if self.geometry_attr and "scene_footprint" in self.geometry_attr:
                 self.region = parse_polygon(self.geometry_attr["scene_footprint"])
-            elif "region" in self.geometry_attr:
+            elif self.geometry_attr and "region" in self.geometry_attr:
                 self.region = self.geometry_attr["region"]
-            else:
+            elif self.geometry_attr:
                 latitude, longitude = get_bounding_box(self.geometry_attr)
                 self.region = [longitude[0], longitude[1], latitude[0], latitude[1]]
 
@@ -592,10 +601,13 @@ class ProfilePlot:
 class VectorsPlot:
     """Handles the plotting of velocity maps, elevation profiles, and vector fields."""
     def __init__(self, dataset, inps):
-        for attr in dir(inps):
-            if not attr.startswith('__') and not callable(getattr(inps, attr)):
-                setattr(self, attr, getattr(inps, attr))
-
+        # Extract parameters explicitly
+        self.line = getattr(inps, 'line', None)
+        self.region = getattr(inps, 'region', None)
+        self.num_vectors = getattr(inps, 'num_vectors', 50)
+        self.scale = getattr(inps, 'scale', None)
+        self.unit = getattr(inps, 'unit', 'mm/yr')
+        
         # TODO have to add attributes to https://github.com/insarlab/MintPy/blob/main/src/mintpy/asc_desc2horz_vert.py#L261
         # for f in files:
         #     attr = readfile.read_attribute(f)
