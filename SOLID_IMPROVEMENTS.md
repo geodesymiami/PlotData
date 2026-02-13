@@ -97,14 +97,70 @@ self.axis_manager = AxisLimitsManager()
 - Refactor safely
 - Use type hints
 
-**Solution:** Created explicit configuration classes:
-
+**Original problematic pattern in ALL plotter classes:**
 ```python
-# NEW: Explicit configuration
-self.style = getattr(inps, 'style', 'pixel')
-self.cmap = getattr(inps, 'cmap', 'jet')
-self.vmin = getattr(inps, 'vmin', None)
-# ... explicit attributes with defaults
+# Anti-pattern used in VelocityPlot, ProfilePlot, TimeseriesPlot, EarthquakePlot, VectorsPlot
+def __init__(self, dataset, inps):
+    for attr in dir(inps):
+        if not attr.startswith('__') and not callable(getattr(inps, attr)):
+            setattr(self, attr, getattr(inps, attr))  # Hidden dependencies!
+```
+
+**Solution:** Created explicit configuration in ALL plotter classes:
+
+**VelocityPlot:**
+```python
+def __init__(self, dataset, inps):
+    # Explicit configuration
+    self.style = getattr(inps, 'style', 'pixel')
+    self.cmap = getattr(inps, 'cmap', 'jet')
+    self.vmin = getattr(inps, 'vmin', None)
+    # ... explicit attributes with defaults
+    
+    # Use composition
+    self.scale_plotter = ScalePlotter()
+    self.dem_plotter = DEMPlotter()
+    self.axis_manager = AxisLimitsManager()
+```
+
+**ProfilePlot:**
+```python
+def __init__(self, dataset, inps):
+    # Extract parameters explicitly
+    self.line = getattr(inps, 'line', None)
+    self.norm = getattr(inps, 'norm', False)
+    self.denoise = getattr(inps, 'denoise', None)
+    self.unit = getattr(inps, 'unit', 'mm/yr')
+```
+
+**TimeseriesPlot:**
+```python
+def __init__(self, dataset, inps):
+    # Extract parameters explicitly
+    self.start_date = getattr(inps, 'start_date', None)
+    self.end_date = getattr(inps, 'end_date', None)
+    self.unit = getattr(inps, 'unit', 'mm/yr')
+    self.offset = getattr(inps, 'offset', 0)
+```
+
+**EarthquakePlot:**
+```python
+def __init__(self, dataset, inps):
+    # Extract parameters explicitly
+    self.start_date = getattr(inps, 'start_date', None)
+    self.end_date = getattr(inps, 'end_date', None)
+    self.lalo = getattr(inps, 'lalo', None)
+    self.region = getattr(inps, 'region', None)
+```
+
+**VectorsPlot:**
+```python
+def __init__(self, dataset, inps):
+    # Extract parameters explicitly
+    self.line = getattr(inps, 'line', None)
+    self.region = getattr(inps, 'region', None)
+    self.num_vectors = getattr(inps, 'num_vectors', 50)
+    self.scale = getattr(inps, 'scale', None)
 ```
 
 Or use configuration dataclasses:
@@ -119,6 +175,7 @@ config = PlottingConfig.from_namespace(inps)
 - Better IDE support
 - Easier to refactor and maintain
 - Self-documenting code
+- No more hidden dependencies!
 
 ### 5. Improved DataExtractor Class
 
@@ -221,4 +278,12 @@ These refactorings make the codebase:
 - ✅ **More type-safe** - Can add type hints and use IDE features
 - ✅ **Less error-prone** - Reduced dynamic behavior and hidden coupling
 
-The code now better follows SOLID principles while maintaining backward compatibility.
+**All plotter classes refactored:**
+- ✅ VelocityPlot
+- ✅ ProfilePlot
+- ✅ TimeseriesPlot
+- ✅ EarthquakePlot
+- ✅ VectorsPlot
+- ✅ DataExtractor
+
+The code now better follows SOLID principles while maintaining backward compatibility. **No more dynamic attribute copying in any plotter class!**
