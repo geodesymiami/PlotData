@@ -83,7 +83,7 @@ class VelocityPlot:
         # Set region from attributes or use default
         if "region" in self.attributes:
             self.region = self.attributes["region"]
-        elif hasattr(inps, 'region') and inps.region:
+        elif hasattr(inps, 'region') and inps.region is not None:
             self.region = inps.region
         else:
             latitude, longitude = get_bounding_box(self.attributes)

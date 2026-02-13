@@ -126,9 +126,15 @@ class DataExtractor:
         
         This allows gradual migration while maintaining compatibility.
         """
-        if name in ('process', 'plotter_map', 'dataset', 'dispatch_map'):
+        # Don't delegate if the attribute exists on this object
+        if name.startswith('_'):
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
-        return getattr(self.process, name)
+        
+        # Delegate to process object
+        try:
+            return getattr(self.process, name)
+        except AttributeError:
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
     def _define_unit_measure(self):
         if not hasattr(self, 'unit') or not self.unit:

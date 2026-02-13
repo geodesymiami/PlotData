@@ -121,13 +121,13 @@ class DEMPlotter:
         ls = LightSource(azdeg=315, altdeg=45)
         hillshade = ls.hillshade(z, vert_exag=0.7, dx=dx, dy=dy)
 
-        # Plot hillshade
-        ax.imshow(
+        # Use pcolormesh to plot hillshade using real coordinates
+        ax.pcolormesh(
+            lon2d,
+            lat2d,
             hillshade,
             cmap='gray',
-            extent=region,
-            origin='upper',
-            alpha=0.5,
+            shading='auto',
             zorder=zorder,
             rasterized=True
         )

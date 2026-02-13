@@ -244,7 +244,7 @@ class SourcePlotter:
         },
         "okada": {
             "class": Okada,  
-            "attributes": ["ytlc", "xtlc", "length", "width", "strike", "dip"]
+            "attributes": ["xtlc", "ytlc", "length", "width", "strike", "dip"]
         },
     }
     
