@@ -22,6 +22,35 @@ from mintpy.utils import utils, writefile
 from mintpy.save_hdfeos5 import polygon_corners_string
 
 
+def detect_direction_from_name(fname, asc_tokens=None, desc_tokens=None, default=None):
+    """
+    Robustly decide 'ascending' / 'descending' from a filename/string.
+    - tokenizes on non-alnum characters and matches whole tokens first.
+    - falls back to substring search for compatibility.
+    """
+    s = str(fname).lower()
+    tokens = set(re.findall(r'[a-z0-9]+', s))
+
+    asc_tokens = {t.lower() for t in (asc_tokens or ['sena', 'cska', 'asc'])}
+    desc_tokens = {t.lower() for t in (desc_tokens or ['send', 'cskd', 'desc'])}
+
+    # match whole tokens
+    if tokens & asc_tokens:
+        return 'ascending'
+    if tokens & desc_tokens:
+        return 'descending'
+
+    # fallback substring match (keeps backward compatibility)
+    for t in asc_tokens:
+        if t in s:
+            return 'ascending'
+    for t in desc_tokens:
+        if t in s:
+            return 'descending'
+
+    return default
+
+
 def read_best_values(file):
     df = pd.read_csv(file)
     row = df.iloc[0]  # best-fit row
@@ -331,7 +360,7 @@ def get_file_names(path):
     eos_file = get_eos5_file(path, scratch)
 
     metadata = readfile.read_attribute(eos_file)
-    velocity_file = 'geo/geo_velocity.h5'
+    velocity_file = 'geo_velocity.h5'
     geometryRadar_file = 'geo_geometryRadar.h5'
     maskTempCoh_file = 'geo_maskTempCoh.h5.h5'
 
@@ -341,7 +370,7 @@ def get_file_names(path):
         geometryRadar_file = geometryRadar_file.split(os.sep)[-1].replace('geo_', '')
         maskTempCoh_file = maskTempCoh_file.split(os.sep)[-1].replace('geo_', '')
 
-    keywords = ['SenD','SenA','SenDT', 'SenAT', 'CskAT', 'CskDT']
+    keywords = ['SenD','SenA', 'CskA', 'CskD']
     elements = path.split(os.sep)
     project_dir = None
     for element in elements:

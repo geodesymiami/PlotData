@@ -10,7 +10,7 @@ from itertools import zip_longest
 from scipy.interpolate import griddata
 from mintpy.objects.coord import coordinate
 from mintpy.objects import timeseries, HDFEOS
-from plotdata.helper_functions import resize_to_match, get_bounding_box, expand_bbox, set_default_section, utm_to_latlon, latlon_to_utm_zone
+from plotdata.helper_functions import resize_to_match, get_bounding_box, expand_bbox, set_default_section, utm_to_latlon, latlon_to_utm_zone, detect_direction_from_name, detect_direction_from_name
 
 # ------------------- API Classes ------------------- #
 
@@ -266,8 +266,9 @@ class DataExtractor:
             grid_x, grid_y = np.meshgrid(x, y)
             synth = griddata((dictionary['east'], dictionary['north']), dictionary['synth'], (grid_x, grid_y), method="linear")
 
+            mask = None
             for m in self.file_info:
-                if readfile.read_attribute(self.file_info[m]['mask_file']).get('ORBIT_DIRECTION', '').lower() == direction:
+                if detect_direction_from_name(self.file_info[m]['mask_file']) == direction or readfile.read_attribute(self.file_info[m]['mask_file']).get('ORBIT_DIRECTION', '').lower() == direction:
                     mask = self.file_info[m]['mask_file']
                     break
 
@@ -335,7 +336,7 @@ class DataExtractor:
             print('Input data is complex, calculating amplitude.')
             data = np.abs(data)
 
-        geometry = self.ascending_geometry if 'SenA' in file else self.descending_geometry
+        geometry = self.ascending_geometry if detect_direction_from_name(file)=='ascending' else self.descending_geometry
 
         # Convert geocoordinates to radar
         # TODO Fix stupid mintpy behaviour
@@ -363,7 +364,7 @@ class DataExtractor:
         if 'passDirection' in atr:
             direction = atr['passDirection'].lower()
         else:
-            direction = 'ascending' if 'SenA' in file else 'descending'
+            direction = detect_direction_from_name(file)
 
         dictionary = {
             direction:{
@@ -384,6 +385,9 @@ class DataExtractor:
             return vector_data
 
         direction = readfile.read_attribute(file).get('ORBIT_DIRECTION', '').lower() or direction
+
+        if not direction:
+            direction = detect_direction_from_name(file)
 
         # if any(f"velocity_{direction}" in element for row in self.layout for element in row):
         if any(f"{direction}" in element for row in self.layout for element in row):
@@ -409,9 +413,9 @@ class DataExtractor:
                     geometry["geometry"] = self._extract_geometry_data(self.descending_geometry)
                     # geometry["geometry"]["data"] = geometry["geometry"]["data"]
             else:
-                if 'SenA' in file:
+                if direction == 'ascending':
                     geometry["geometry"] = self._extract_geometry_data(self.ascending_geometry)
-                elif 'SenD' in file:
+                elif direction == 'descending':
                     geometry["geometry"] = self._extract_geometry_data(self.descending_geometry)
                     geometry["geometry"]["data"] = geometry["geometry"]["data"]
 

@@ -53,6 +53,11 @@ class PlotTemplate:
                 ["velocity_descending.section"],
                 ["model_descending.section"],
             ],
+            "model_ascending": [
+                ["profile_ascending"],
+                ["velocity_ascending.section"],
+                ["model_ascending.section"],
+            ],
             "test": [
                 # ["velocity_descending", "velocity_ascending"],
                 # ["horizontal", "vertical"]

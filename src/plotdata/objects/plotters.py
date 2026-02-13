@@ -661,8 +661,15 @@ class ProfilePlot:
 
         self.ax.legend(fontsize='xx-small')
 
-        if self.attributes['ORBIT_DIRECTION']:
-            self.ax.annotate(self.attributes['ORBIT_DIRECTION'].upper(),xy=(0.02, 0.98),xycoords='axes fraction',fontsize=7,ha='left',va='top',color='white',bbox=dict(facecolor='black', edgecolor='none', alpha=0.6, boxstyle='round,pad=0.3'))
+        if 'ascending' in self.ax.get_label():
+            self.label = "ASCENDING"
+        elif 'descending' in self.ax.get_label():
+            self.label = "DESCENDING"
+        elif self.attributes.get('ORBIT_DIRECTION'):
+            self.label = self.attributes['ORBIT_DIRECTION'].upper()
+
+        if self.label:
+            self.ax.annotate(self.label,xy=(0.02, 0.98),xycoords='axes fraction',fontsize=7,ha='left',va='top',color='white',bbox=dict(facecolor='black', edgecolor='none', alpha=0.6, boxstyle='round,pad=0.3'))
 
 ####################################################################################
 

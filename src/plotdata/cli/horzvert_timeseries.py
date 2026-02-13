@@ -243,42 +243,83 @@ def match_dates(a, b, schedule):
     a_vals = np.array([to_date(x) for x in a])
     b_vals = np.array([to_date(x) for x in b])
 
-    b_index = {d: idx for idx, d in enumerate(b_vals)}
+    if False:
+        b_index = {d: idx for idx, d in enumerate(b_vals)}
 
-    matched_a = set()
-    matched_b = set()
-    all_pairs = []
-    block_counts = {}
-    block_pairs = {}
-    block_map = {}
-    shift_map = {}
-    for shift_num, block_idx in schedule:
-        added = 0
-        shifted = a_vals + timedelta(days=shift_num)
-        for i, shifted_date in enumerate(shifted):
-            if shifted_date not in b_index:
-                continue
-            da = a_vals[i]
-            db = b_vals[b_index[shifted_date]]
-            if da in matched_a or db in matched_b:
-                continue
-            matched_a.add(da)
-            matched_b.add(db)
-            all_pairs.append((da, db))
-            block_map[(da, db)] = block_idx
-            shift_map[(da, db)] = shift_num
-            added += 1
-            if shift_num != 0:
-                block_counts[block_idx] = block_counts.get(block_idx, 0) + 1
-                block_pairs.setdefault(block_idx, []).append(
-                    f"{to_date(da).strftime('%Y%m%d')}->{to_date(db).strftime('%Y%m%d')} ({'+' if shift_num>0 else ''}{shift_num})"
-                )
-        shift_str = f"+{shift_num}" if shift_num > 0 else str(shift_num)
-        print(f"shift={shift_str} pairs found={added}")
+        matched_a = set()
+        matched_b = set()
+        all_pairs = []
+        block_counts = {}
+        block_pairs = {}
+        block_map = {}
+        shift_map = {}
+        for shift_num, block_idx in schedule:
+            added = 0
+            shifted = a_vals + timedelta(days=shift_num)
+            for i, shifted_date in enumerate(shifted):
+                if shifted_date not in b_index:
+                    continue
+                da = a_vals[i]
+                db = b_vals[b_index[shifted_date]]
+                if da in matched_a or db in matched_b:
+                    continue
+                matched_a.add(da)
+                matched_b.add(db)
+                all_pairs.append((da, db))
+                block_map[(da, db)] = block_idx
+                shift_map[(da, db)] = shift_num
+                added += 1
+                if shift_num != 0:
+                    block_counts[block_idx] = block_counts.get(block_idx, 0) + 1
+                    block_pairs.setdefault(block_idx, []).append(
+                        f"{to_date(da).strftime('%Y%m%d')}->{to_date(db).strftime('%Y%m%d')} ({'+' if shift_num>0 else ''}{shift_num})"
+                    )
+            shift_str = f"+{shift_num}" if shift_num > 0 else str(shift_num)
+            print(f"shift={shift_str} pairs found={added}")
 
-    if not all_pairs:
-        return np.empty((0, 2), dtype=object), block_counts, block_pairs, block_map, shift_map
-    return np.array(all_pairs, dtype=object), block_counts, block_pairs, block_map, shift_map
+        if not all_pairs:
+            return np.empty((0, 2), dtype=object), block_counts, block_pairs, block_map, shift_map
+        return np.array(all_pairs, dtype=object), block_counts, block_pairs, block_map, shift_map
+
+    # TODO this shold be the optimal organizing algo to use (test before)
+    else:
+        a = np.array(a_vals, dtype="datetime64[D]")
+        b = np.array(b_vals, dtype="datetime64[D]")
+
+        diff = np.abs((a[:, None] - b[None, :]).astype("timedelta64[D]").astype(int))
+
+        pairs = []
+        used_a = set()
+        used_b = set()
+
+        while True:
+            found = False
+
+            nearest_b_for_a = np.argmin(diff, axis=1)
+            nearest_a_for_b = np.argmin(diff, axis=0)
+
+            for i in range(len(a)):
+                if i in used_a:
+                    continue
+
+                j = nearest_b_for_a[i]
+
+                if j in used_b:
+                    continue
+
+                if nearest_a_for_b[j] == i:
+                    pairs.append((i, j))
+                    used_a.add(i)
+                    used_b.add(j)
+                    # diff[i, :] = np.inf
+                    # diff[:, j] = np.inf
+                    found = True
+
+            if not found:
+                break
+
+        # [(a[i], b[j]) for i, j in pairs]
+        return pairs
 
 
 def limit_dates(date_list, inps):
@@ -310,7 +351,7 @@ def limit_dates(date_list, inps):
 
 def load_dates(file_path, inps):
     work_dir = prepend_scratchdir_if_needed(file_path)
-    eos_file, _, _, project_base_dir, _, _ = get_file_names(work_dir)
+    eos_file, _, _, _, project_base_dir, _, _ = get_file_names(work_dir)
     attr = readfile.read_attribute(eos_file)
 
     file_type = attr.get('FILE_TYPE')
@@ -393,7 +434,7 @@ def load_timeseries_file(file_path, geometry_file_input, mask_vmin, inps):
         tuple: (timeseries_object, los_inc_angle, los_az_angle, mask, metadata, project_base_dir, geometry_file)
     """
     work_dir = prepend_scratchdir_if_needed(file_path)
-    eos_file, _, geometry_file, project_base_dir, _, _ = get_file_names(work_dir)
+    eos_file, _, geometry_file, _, project_base_dir, _, _ = get_file_names(work_dir)
 
     metadata = readfile.read_attribute(eos_file)
 
