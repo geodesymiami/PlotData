@@ -83,11 +83,25 @@ class AnotherWebsiteDataFetcher(DataFetcher):
 # ------------------- Data Extraction Class ------------------- #
 
 class DataExtractor:
+    """Extracts and processes data for plotting.
+    
+    Uses composition to access processing results instead of dynamic attribute copying,
+    following better OOP practices and the Single Responsibility Principle.
+    """
+    
     def __init__(self, plotter_map, process) -> None:
-        for attr in dir(process):
-            if not attr.startswith('__') and not callable(getattr(process, attr)):
-                setattr(self, attr, getattr(process, attr))
+        """Initialize data extractor.
+        
+        Args:
+            plotter_map: Mapping of plot types to their configuration
+            process: ProcessData instance containing processed data
+        """
+        # Store reference to process data instead of copying all attributes
+        self.process = process
         self.plotter_map = plotter_map
+        
+        # Initialize dataset dictionary
+        self.dataset = {}
 
         self.dispatch_map = {
             "velocity_ascending": self._extract_velocity_data,
@@ -106,6 +120,15 @@ class DataExtractor:
 
         self._fetch_data()
         self._define_unit_measure()
+    
+    def __getattr__(self, name):
+        """Delegate attribute access to process object for backward compatibility.
+        
+        This allows gradual migration while maintaining compatibility.
+        """
+        if name in ('process', 'plotter_map', 'dataset', 'dispatch_map'):
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+        return getattr(self.process, name)
 
     def _define_unit_measure(self):
         if not hasattr(self, 'unit') or not self.unit:
