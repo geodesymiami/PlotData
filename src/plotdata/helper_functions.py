@@ -471,45 +471,65 @@ def find_reference_points_from_subsets(subsets, window_size=3):
     Returns:
         tuple: ref_lalo1 (list) and ref_lalo2 (list or None).
     """
+    # #region agent log
+    import json; _jd=lambda o: o.item() if hasattr(o,'item') else (float(o) if isinstance(o,(np.floating,np.integer)) else str(o)); _log=lambda m,d: open('/home/exouser/code/minsar/.cursor/debug.log','a').write(json.dumps({**d,'message':m,'timestamp':__import__('time').time()*1000,'sessionId':'debug-session'},default=_jd)+'\n')
+    # #endregion
     # Unpack the first subset
     subdata1, sublat1, sublon1 = subsets[0]
     subset2 = subsets[1] if len(subsets) > 1 else None
+    if subset2:
+        subdata2, sublat2, sublon2 = subset2
+    # #region agent log
+    sh1 = np.asarray(subdata1).shape; nvalid1 = int(np.sum(subdata1)); _log('subset_shapes', {'hypothesisId':'H3','location':'helper_functions.py:find_reference_points_from_subsets','data':{'subdata1_shape':list(sh1),'nvalid1':nvalid1,'has_subset2':subset2 is not None,'subdata2_shape':list(np.asarray(subdata2).shape) if subset2 else None,'nvalid2':int(np.sum(subdata2)) if subset2 else None}})
+    # #endregion
 
     # Handle the second subset if provided
     if subset2:
-        subdata2, sublat2, sublon2 = subset2
-        paired = list(zip(subdata1, subdata2))
+        sublat2_arr = np.asarray(sublat2)
+        sublon2_arr = np.asarray(sublon2)
+        # Find overlap in lat/lon space (asc/desc have different grids; indexing by row pairs non-corresponding ground)
+        valid_candidates = []
+        for r in range(subdata1.shape[0]):
+            for c in range(subdata1.shape[1]):
+                if not subdata1[r, c]:
+                    continue
+                lat = sublat1[r] if r < len(sublat1) else sublat1[-1]
+                lon = sublon1[c] if c < len(sublon1) else sublon1[-1]
+                row2 = int(np.argmin(np.abs(sublat2_arr - lat)))
+                col2 = int(np.argmin(np.abs(sublon2_arr - lon)))
+                if row2 < subdata2.shape[0] and col2 < subdata2.shape[1] and subdata2[row2, col2]:
+                    dist = np.sqrt((r - window_size) ** 2 + (c - window_size) ** 2)
+                    valid_candidates.append((dist, lat, lon))
+        # #region agent log
+        _log('validity_counts', {'hypothesisId':'H2','location':'helper_functions.py:find_reference_points_from_subsets','data':{'valid_candidates_latlon':len(valid_candidates),'nvalid1':int(np.sum(subdata1)),'nvalid2':int(np.sum(subdata2))}})
+        # #endregion
+        if not valid_candidates:
+            raise ValueError("No valid reference points found in the selected window.")
+        valid_candidates.sort(key=lambda x: x[0])
+        _, best_lat, best_lon = valid_candidates[0]
+        ref_lalo1 = [best_lat, best_lon]
+        ref_lalo2 = [best_lat, best_lon]  # same ground point; each track converts to its own pixels
     else:
         paired = [(i, None) for i in subdata1]
-
-    valid_indices = []
-
-    # Find valid indices where data is available
-    for ind, (i, j) in enumerate(paired):
-        if subset2 and np.logical_and(i, j).any():
-            valid_indices.append((ind, np.where(np.logical_and(i, j))))
-        elif not subset2 and np.any(i):
-            valid_indices.append((ind, np.where(i)))
-
-    if not valid_indices:
-        raise ValueError("No valid reference points found in the selected window.")
-
-    # Initialize shortest distance tracker
-    shortest_distance = window_size * 2 + 1
-    ref_lalo1 = None
-
-    # Find the closest valid data point to the center of the window
-    for ind, indices in valid_indices:
-        distances = np.sqrt((ind - window_size) ** 2 + (indices[0] - window_size) ** 2)
-        min_distance_index = np.argmin(distances)
-        min_distance = distances[min_distance_index]
-
-        if min_distance < shortest_distance:
-            shortest_distance = min_distance
-            ref_lalo1 = [sublat1[ind], sublon1[indices[0][min_distance_index]]]
-
-    # Calculate ref_lalo2 if there are two subsets
-    ref_lalo2 = ([ref_lalo1[0] + (sublat1[0] - sublat2[0]), ref_lalo1[1] + (sublon1[0] - sublon2[0])] if subset2 else None)
+        valid_indices = []
+        for ind, (i, _) in enumerate(paired):
+            if np.any(i):
+                valid_indices.append((ind, np.where(i)))
+        # #region agent log
+        _log('validity_counts', {'hypothesisId':'H2','location':'helper_functions.py:find_reference_points_from_subsets','data':{'valid_indices_len':len(valid_indices)}})
+        # #endregion
+        if not valid_indices:
+            raise ValueError("No valid reference points found in the selected window.")
+        shortest_distance = window_size * 2 + 1
+        ref_lalo1 = None
+        for ind, indices in valid_indices:
+            distances = np.sqrt((ind - window_size) ** 2 + (indices[0] - window_size) ** 2)
+            min_distance_index = np.argmin(distances)
+            min_distance = distances[min_distance_index]
+            if min_distance < shortest_distance:
+                shortest_distance = min_distance
+                ref_lalo1 = [sublat1[ind], sublon1[indices[0][min_distance_index]]]
+        ref_lalo2 = None
 
     return ref_lalo1, ref_lalo2
 

@@ -1124,12 +1124,20 @@ def main(iargs=None, namespace=None):
         geometry_file_input = inps.geom_file[idx] if inps.geom_file and idx < len(inps.geom_file) else None
         obj, los_inc_angle, los_az_angle, mask, project_base_dir, geometry_file = load_timeseries_file(f, geometry_file_input, inps.mask_vmin[idx], inps)
 
-        # Check step consistency from previous iteration
+        # Check step consistency from previous iteration (compare as floats to avoid
+        # string vs float or representation mismatches from HDF5 attributes)
         if 'Y_STEP' in obj.metadata:
             if y_step is not None and x_step is not None:
-                if (y_step != obj.metadata['Y_STEP']) or (x_step != obj.metadata['X_STEP']):
+                curr_y = float(obj.metadata['Y_STEP'])
+                curr_x = float(obj.metadata['X_STEP'])
+                prev_y = float(y_step)
+                prev_x = float(x_step)
+                if prev_y != curr_y or prev_x != curr_x:
                     print('-' * 50)
-                    raise ValueError('Files have different steps size for Geocoding')
+                    raise ValueError(
+                        f'Files have different step sizes for geocoding: '
+                        f'file1 Y_STEP={prev_y} X_STEP={prev_x} vs file2 Y_STEP={curr_y} X_STEP={curr_x}'
+                    )
 
         # Geocode if needed
         obj, los_inc_angle, los_az_angle, mask, y_step, x_step = geocode_timeseries(obj, los_inc_angle, los_az_angle, mask, geometry_file, inps)
@@ -1140,6 +1148,9 @@ def main(iargs=None, namespace=None):
         mask2 = np.multiply(~np.isnan(stack), stack != 0.)
         combined_mask = np.logical_and(mask, mask2)
         masked_data = np.where(combined_mask, slicedata, np.nan)
+        # #region agent log
+        import json; _jd=lambda o: o.item() if hasattr(o,'item') else float(o) if isinstance(o,(np.floating,np.integer)) else str(o); _log=lambda m,d: open('/home/exouser/code/minsar/.cursor/debug.log','a').write(json.dumps({**d,'message':m,'timestamp':__import__('time').time()*1000,'sessionId':'debug-session'},default=_jd)+'\n'); _log('pre_extract', {'hypothesisId':'H4','location':'horzvert_timeseries.py:load_loop','data':{'file_idx':idx,'ref_lalo':list(inps.ref_lalo),'mask_sum':int(np.sum(mask)),'mask2_sum':int(np.sum(mask2)),'combined_mask_sum':int(np.sum(combined_mask)),'masked_valid':int(np.sum(~np.isnan(masked_data))),'Y_FIRST':obj.metadata.get('Y_FIRST'),'X_FIRST':obj.metadata.get('X_FIRST')}})
+        # #endregion
         extracted_data = extract_window(masked_data, obj.metadata, inps.ref_lalo[0], inps.ref_lalo[1], inps.window_size)
 
         # window[obj.metadata['FILE_PATH']] = {'obj': obj, 'data': extracted_data}
