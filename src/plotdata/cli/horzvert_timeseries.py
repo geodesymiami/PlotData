@@ -1148,9 +1148,6 @@ def main(iargs=None, namespace=None):
         mask2 = np.multiply(~np.isnan(stack), stack != 0.)
         combined_mask = np.logical_and(mask, mask2)
         masked_data = np.where(combined_mask, slicedata, np.nan)
-        # #region agent log
-        import json; _jd=lambda o: o.item() if hasattr(o,'item') else float(o) if isinstance(o,(np.floating,np.integer)) else str(o); _log=lambda m,d: open('/home/exouser/code/minsar/.cursor/debug.log','a').write(json.dumps({**d,'message':m,'timestamp':__import__('time').time()*1000,'sessionId':'debug-session'},default=_jd)+'\n'); _log('pre_extract', {'hypothesisId':'H4','location':'horzvert_timeseries.py:load_loop','data':{'file_idx':idx,'ref_lalo':list(inps.ref_lalo),'mask_sum':int(np.sum(mask)),'mask2_sum':int(np.sum(mask2)),'combined_mask_sum':int(np.sum(combined_mask)),'masked_valid':int(np.sum(~np.isnan(masked_data))),'Y_FIRST':obj.metadata.get('Y_FIRST'),'X_FIRST':obj.metadata.get('X_FIRST')}})
-        # #endregion
         extracted_data = extract_window(masked_data, obj.metadata, inps.ref_lalo[0], inps.ref_lalo[1], inps.window_size)
 
         # window[obj.metadata['FILE_PATH']] = {'obj': obj, 'data': extracted_data}
