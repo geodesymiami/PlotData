@@ -471,17 +471,11 @@ def find_reference_points_from_subsets(subsets, window_size=3):
     Returns:
         tuple: ref_lalo1 (list) and ref_lalo2 (list or None).
     """
-    # #region agent log
-    import json; _jd=lambda o: o.item() if hasattr(o,'item') else (float(o) if isinstance(o,(np.floating,np.integer)) else str(o)); _log=lambda m,d: open('/home/exouser/code/minsar/.cursor/debug.log','a').write(json.dumps({**d,'message':m,'timestamp':__import__('time').time()*1000,'sessionId':'debug-session'},default=_jd)+'\n')
-    # #endregion
     # Unpack the first subset
     subdata1, sublat1, sublon1 = subsets[0]
     subset2 = subsets[1] if len(subsets) > 1 else None
     if subset2:
         subdata2, sublat2, sublon2 = subset2
-    # #region agent log
-    sh1 = np.asarray(subdata1).shape; nvalid1 = int(np.sum(subdata1)); _log('subset_shapes', {'hypothesisId':'H3','location':'helper_functions.py:find_reference_points_from_subsets','data':{'subdata1_shape':list(sh1),'nvalid1':nvalid1,'has_subset2':subset2 is not None,'subdata2_shape':list(np.asarray(subdata2).shape) if subset2 else None,'nvalid2':int(np.sum(subdata2)) if subset2 else None}})
-    # #endregion
 
     # Handle the second subset if provided
     if subset2:
@@ -500,9 +494,6 @@ def find_reference_points_from_subsets(subsets, window_size=3):
                 if row2 < subdata2.shape[0] and col2 < subdata2.shape[1] and subdata2[row2, col2]:
                     dist = np.sqrt((r - window_size) ** 2 + (c - window_size) ** 2)
                     valid_candidates.append((dist, lat, lon))
-        # #region agent log
-        _log('validity_counts', {'hypothesisId':'H2','location':'helper_functions.py:find_reference_points_from_subsets','data':{'valid_candidates_latlon':len(valid_candidates),'nvalid1':int(np.sum(subdata1)),'nvalid2':int(np.sum(subdata2))}})
-        # #endregion
         if not valid_candidates:
             raise ValueError("No valid reference points found in the selected window.")
         valid_candidates.sort(key=lambda x: x[0])
@@ -515,9 +506,6 @@ def find_reference_points_from_subsets(subsets, window_size=3):
         for ind, (i, _) in enumerate(paired):
             if np.any(i):
                 valid_indices.append((ind, np.where(i)))
-        # #region agent log
-        _log('validity_counts', {'hypothesisId':'H2','location':'helper_functions.py:find_reference_points_from_subsets','data':{'valid_indices_len':len(valid_indices)}})
-        # #endregion
         if not valid_indices:
             raise ValueError("No valid reference points found in the selected window.")
         shortest_distance = window_size * 2 + 1
