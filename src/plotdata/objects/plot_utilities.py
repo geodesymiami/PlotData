@@ -6,6 +6,8 @@ following the Single Responsibility Principle.
 
 import math
 import numpy as np
+from typing import Optional, List, Dict, Any
+from matplotlib.axes import Axes
 from matplotlib.patheffects import withStroke
 from matplotlib.colors import LightSource
 from plotdata.helper_functions import resize_to_match
@@ -14,7 +16,7 @@ from plotdata.helper_functions import resize_to_match
 class ScalePlotter:
     """Handles plotting of scale bars on maps."""
     
-    def plot_scale(self, ax, zorder):
+    def plot_scale(self, ax: Axes, zorder: int) -> None:
         """Plot a scale bar on the given axes.
         
         Args:
@@ -57,7 +59,15 @@ class ScalePlotter:
 class DEMPlotter:
     """Handles plotting of Digital Elevation Model (DEM) data."""
     
-    def plot_dem(self, ax, geometry, attributes, region, data=None, zorder=0):
+    def plot_dem(
+        self, 
+        ax: Axes, 
+        geometry: np.ndarray, 
+        attributes: Dict[str, Any], 
+        region: List[float], 
+        data: Optional[np.ndarray] = None, 
+        zorder: int = 0
+    ) -> None:
         """Plot DEM/hillshade data.
         
         Args:
@@ -126,7 +136,12 @@ class DEMPlotter:
 class AxisLimitsManager:
     """Manages axis limits and zoom functionality."""
     
-    def update_limits(self, ax, subset=None, zoom=None):
+    def update_limits(
+        self, 
+        ax: Axes, 
+        subset: Optional[str] = None, 
+        zoom: Optional[float] = None
+    ) -> None:
         """Update axis limits based on subset or zoom settings.
         
         Args:

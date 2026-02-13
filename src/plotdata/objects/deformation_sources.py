@@ -7,6 +7,8 @@ Each class is responsible for plotting its own representation on a map.
 
 import numpy as np
 import matplotlib.pyplot as plt
+from typing import Dict, Any, Optional
+from matplotlib.axes import Axes
 from matplotlib.patches import Rectangle, Polygon
 from matplotlib.transforms import Affine2D
 
@@ -14,7 +16,7 @@ from matplotlib.transforms import Affine2D
 class Mogi:
     """Mogi point source model representation."""
     
-    def __init__(self, ax, xcen, ycen):
+    def __init__(self, ax: Axes, xcen: float, ycen: float) -> None:
         """Initialize and plot Mogi source.
         
         Args:
@@ -26,7 +28,7 @@ class Mogi:
         self.y = ycen
         self._plot_source(ax)
 
-    def _plot_source(self, ax):
+    def _plot_source(self, ax: Axes) -> None:
         """Plot the Mogi source as a point marker."""
         ax.scatter(self.x, self.y, s=15, color="black", linewidth=2, marker="x")
 
@@ -34,7 +36,16 @@ class Mogi:
 class Spheroid:
     """Spheroid deformation source model."""
     
-    def __init__(self, ax, xcen, ycen, s_axis_max, ratio, strike, dip):
+    def __init__(
+        self, 
+        ax: Axes, 
+        xcen: float, 
+        ycen: float, 
+        s_axis_max: float, 
+        ratio: float, 
+        strike: float, 
+        dip: float
+    ) -> None:
         """Initialize and plot Spheroid source.
         
         Args:
@@ -54,7 +65,7 @@ class Spheroid:
         self.dip = dip
         self._plot_source(ax)
 
-    def _plot_source(self, ax):
+    def _plot_source(self, ax: Axes) -> None:
         """Plot the spheroid with major and minor axes."""
         # Calculate semi-minor axis
         s_minor = self.s_axis * self.ratio
@@ -85,7 +96,7 @@ class Spheroid:
 class Penny:
     """Penny-shaped crack deformation source model."""
     
-    def __init__(self, ax, xcen, ycen, radius):
+    def __init__(self, ax: Axes, xcen: float, ycen: float, radius: float) -> None:
         """Initialize and plot Penny source.
         
         Args:
@@ -99,7 +110,7 @@ class Penny:
         self.radius = radius
         self._plot_source(ax)
 
-    def _plot_source(self, ax):
+    def _plot_source(self, ax: Axes) -> None:
         """Plot the penny-shaped crack as a circle."""
         circle = plt.Circle(
             (self.x, self.y), 
@@ -116,7 +127,16 @@ class Penny:
 class Okada:
     """Okada rectangular dislocation fault model."""
     
-    def __init__(self, ax, xtlc, ytlc, length, width, strike, dip):
+    def __init__(
+        self, 
+        ax: Axes, 
+        xtlc: float, 
+        ytlc: float, 
+        length: float, 
+        width: float, 
+        strike: float, 
+        dip: float
+    ) -> None:
         """Initialize and plot Okada fault.
         
         Args:
@@ -136,7 +156,7 @@ class Okada:
         self.dip = dip
         self._plot_source(ax)
 
-    def _plot_source(self, ax):
+    def _plot_source(self, ax: Axes) -> None:
         """Plot the Okada fault as a rectangle with dip indicators."""
         dip_radians = np.radians(self.dip)
         projected_width = self.width * np.cos(dip_radians)
@@ -160,7 +180,7 @@ class Okada:
         # Add triangles along the fault to indicate dip direction
         self._add_dip_indicators(ax, t, height)
 
-    def _add_dip_indicators(self, ax, transform, height):
+    def _add_dip_indicators(self, ax: Axes, transform: Affine2D, height: float) -> None:
         """Add small triangles to indicate dip direction.
         
         Args:
@@ -209,7 +229,7 @@ class SourcePlotter:
     """Factory-like class for plotting deformation sources."""
     
     # Mapping of source types to their classes and required attributes
-    SOURCE_TYPES = {
+    SOURCE_TYPES: Dict[str, Dict[str, Any]] = {
         "mogi": {
             "class": Mogi, 
             "attributes": ["xcen", "ycen"]
@@ -229,7 +249,7 @@ class SourcePlotter:
     }
     
     @classmethod
-    def plot_sources(cls, ax, sources):
+    def plot_sources(cls, ax: Axes, sources: Optional[Dict[str, Dict[str, float]]]) -> None:
         """Plot deformation sources on the given axes.
         
         Args:
