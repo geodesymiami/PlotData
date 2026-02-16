@@ -315,13 +315,18 @@ class VelocityPlot:
             self.ax.annotate(self.label,xy=(0.02, 0.98),xycoords='axes fraction',fontsize=7,ha='left',va='top',color='white',bbox=dict(facecolor='black', edgecolor='none', alpha=0.6, boxstyle='round,pad=0.3'))
 
         if self.volcano:
-            min_lon, max_lon, min_lat, max_lat = self.region
+            min_lon, max_lon = self.ax.get_xlim()
+            min_lat, max_lat = self.ax.get_ylim()
+            
+            # Calculate dynamic offset based on coordinate range
+            lon_offset = (max_lon - min_lon) * 0.01
+            
             volcanoName, volcanoId, volcanoCoordinates = get_volcanoes_data(bbox=[min_lon, min_lat, max_lon, max_lat])
             for name, id, coord in zip(volcanoName, volcanoId, volcanoCoordinates):
                 lon, lat = coord
                 print(f'Plotting volcano: {name}, id: {id}, coordinates: {lat}, {lon}')
                 plot_point(self.ax, [lat], [lon], marker='^', color='#383838db', size=7, alpha=0.3, zorder=self._get_next_zorder())
-                self.ax.text(lon, lat, name, fontsize=6, color='black', zorder=self._get_next_zorder())
+                self.ax.text(lon + lon_offset, lat, name, fontsize=6, color='black', zorder=self._get_next_zorder())
 
         self.ax.set_aspect('equal', adjustable='datalim')
 
