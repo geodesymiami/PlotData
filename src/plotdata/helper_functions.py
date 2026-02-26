@@ -981,3 +981,56 @@ def detect_cores():
         n = multiprocessing.cpu_count()       # Local machine (macOS/Linux workstation)
 
     return max(1, round(n * 0.8))
+
+
+def parse_global_cmt(soup):
+    """
+    Extract events from Global CMT HTML soup.
+
+    Returns list of dicts.
+    """
+
+    events = []
+
+    # Find all event IDs
+    for tag in soup.find_all("b"):
+
+        event_id = tag.text.strip()
+
+        # Skip non-event <b> tags
+        if not re.match(r"\d{12}[A-Z]", event_id):
+            continue
+
+        # The event info is in the next <pre>
+        pre = tag.find_next("pre")
+        if not pre:
+            continue
+
+        text = pre.get_text()
+
+        # --- Extract location ---
+        lat = float(re.search(r"Lat=\s*([-\d\.]+)", text).group(1))
+        lon = float(re.search(r"Lon=\s*([-\d\.]+)", text).group(1))
+        depth = float(re.search(r"Depth=\s*([-\d\.]+)", text).group(1))
+
+        # --- Extract first fault plane (standard choice) ---
+        fp = re.search(
+            r"Fault plane:\s*strike=(\d+)\s*dip=(\d+)\s*slip=([-\d]+)",
+            text
+        )
+
+        strike = float(fp.group(1))
+        dip = float(fp.group(2))
+        rake = float(fp.group(3))
+
+        events.append({
+            "id": event_id,
+            "lat": lat,
+            "lon": lon,
+            "depth": depth,
+            "strike": strike,
+            "dip": dip,
+            "rake": rake,
+        })
+
+    return events
