@@ -145,7 +145,12 @@ def add_plot_parameters_arguments(parser):
                         choices=["colorbar", "mean_vector"],
                         default="mean_vector",
                         help="Legend style for velocity representation"
-                    )
+                    ),
+    parser.add_argument("--vertical-exaggeration",
+                        dest='vertical_exag',
+                        type=float,
+                        default=1,
+                        help="Vertical exaggeration factor for vector plot (default: %(default)s).")
     return parser
 
 
@@ -311,6 +316,13 @@ def add_seismicity_arguments(parser):
                             nargs='*',
                             type=float,
                             help='Minimum magnitude for the earthquake events in the timeeries'
+                            )
+    seismicity.add_argument('--focal',
+                            metavar='MAGNITUDE',
+                            nargs='?',
+                            type=float,
+                            default=None,
+                            help='Add focal mechanisms to the plot with magnitude above specified value (default: %(default)s).'
                             )
 
     return parser

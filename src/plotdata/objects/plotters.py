@@ -7,11 +7,10 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.ticker as ticker
-from scipy.signal import savgol_filter, medfilt
-from matplotlib.patches import Rectangle
 from matplotlib.colors import LightSource
 from matplotlib.transforms import Affine2D
 from matplotlib.patheffects import withStroke
+from matplotlib.patches import Rectangle, Circle, Polygon
 from plotdata.volcano_functions import get_volcanoes_data
 from plotdata.helper_functions import draw_vectors, calculate_distance, get_bounding_box, parse_polygon, resize_to_match
 
@@ -70,6 +69,9 @@ class VelocityPlot:
 
         if "earthquakes" in dataset:
             self.earthquakes = dataset["earthquakes"]
+
+        if "focal_mechanism" in dataset:
+            self.focal_mechanism = dataset["focal_mechanism"]
 
         self.zorder = 0
 
@@ -242,8 +244,19 @@ class VelocityPlot:
         tick_h = 0.005 * abs(lat_span)
         self.ax.plot([x0, x0], [y0 - tick_h, y0 + tick_h], color='k', lw=2)
         self.ax.plot([x0 + dlon, x0 + dlon], [y0 - tick_h, y0 + tick_h], color='k', lw=2)
+
+        if dist_km >= 1:
+            label = f"{dist_km:.0f} km"
+        else:
+            dist_m = dist_km * 1000
+            if dist_m >= 1:
+                label = f"{dist_m:.0f} m"
+            else:
+                dist_cm = dist_m * 100
+                label = f"{dist_cm:.0f} cm"
+
         # label centered under the bar
-        self.ax.text(x0 + dlon/2, y0 + 0.06 * abs(lat_span), f"{dist_km:.0f} km", ha='center', va='top', fontsize=8, path_effects=[withStroke(linewidth=1.5, foreground='white')], zorder=zorder)
+        self.ax.text(x0 + dlon/2, y0 + 0.06 * abs(lat_span), label, ha='center', va='top', fontsize=8, path_effects=[withStroke(linewidth=1.5, foreground='white')], zorder=zorder)
 
 
 
@@ -417,14 +430,39 @@ class VelocityPlot:
         if self.label:
             self.ax.annotate(self.label,xy=(0.02, 0.98),xycoords='axes fraction',fontsize=7,ha='left',va='top',color='white',bbox=dict(facecolor='black', edgecolor='none', alpha=0.6, boxstyle='round,pad=0.3'))
 
+        min_lon, max_lon = self.ax.get_xlim()
+        min_lat, max_lat = self.ax.get_ylim()
+
         if self.volcano:
-            min_lon, max_lon, min_lat, max_lat = self.region
             volcanoName, volcanoId, volcanoCoordinates = get_volcanoes_data(bbox=[min_lon, min_lat, max_lon, max_lat])
+            # volcanoName, volcanoId, volcanoCoordinates = ['Chiles', 'Cerro Negro'], [None, None], [[-77.938, 0.817], [-77.9654, 0.8247]]
             for name, id, coord in zip(volcanoName, volcanoId, volcanoCoordinates):
                 lon, lat = coord
                 print(f'Plotting volcano: {name}, id: {id}, coordinates: {lat}, {lon}')
-                plot_point(self.ax, [lat], [lon], marker='^', color='#383838db', size=7, alpha=0.3, zorder=self._get_next_zorder())
-                self.ax.text(lon, lat, name, fontsize=6, color='black', zorder=self._get_next_zorder())
+                plot_point(self.ax, [lat], [lon], marker='^', color='#900C3F', size=7, alpha=0.6, zorder=self._get_next_zorder())
+
+                dlon = (max_lon - min_lon) * 0.01
+                self.ax.text(lon+dlon, lat, name, fontsize=12, color='black', zorder=self._get_next_zorder())
+
+        if hasattr(self, 'focal_mechanism') and len(self.focal_mechanism) > 0:
+            lon_span = abs(max_lon - min_lon)
+            lat_span = abs(max_lat - min_lat)
+            map_span = min(lon_span, lat_span)  # degrees
+
+            for f in self.focal_mechanism:
+                # Magnitude key fallback
+                mag = f.get("magnitude", f.get("mag", 5.0))
+
+                # Normalize magnitude in [0, 1] for M3..M7.5
+                mag_n = np.clip((mag - 3.0) / (7.5 - 3.0), 0.0, 1.0)
+
+                # Radius = 0.4% .. 1.6% of map span (keeps beachballs small)
+                radius = map_span * (0.04 + 0.012 * mag_n)
+
+                # Resolution = 40 .. 140 points
+                resolution = int(4 + 100 * mag_n)
+
+                plot_beachball(self.ax,strike=f["strike"],dip=f["dip"],rake=f["rake"],xy=(f["lon"], f["lat"]),radius=radius,resolution=resolution,zorder=self._get_next_zorder(),)
 
         self.ax.set_aspect('equal', adjustable='datalim')
 
@@ -523,7 +561,7 @@ class TimeseriesPlot:
 
         dates, ts= dataset['dates'], dataset['data']
 
-        ax_ts.scatter(dates, ts + self.offset, color=color, marker='o', label=label, alpha=0.5, s=7)
+        ax_ts.scatter(dates, ts + self.offset, color=color, marker='o', label=label, alpha=0.5, s=17)
 
         self.offset = 0
 
@@ -628,8 +666,13 @@ class ProfilePlot:
             'model': dict(c='#5190cb', lw=2.5, ls='-', label='Model'),
             'data': dict(c='#ff7366', marker='o', ls='--', ms=3, label='Data', alpha=0.6),
             'smooth': dict(c='#79419e', lw=1, ls='-', label='Smoothed Data'),
+            'residual': dict(c='gray', ls='-.', marker=',', label='Residual', alpha=0.5),
         }.get(key, {})
-        self.ax.plot(dataset[key], **style)
+
+        y = np.asarray(dataset[key]).ravel()
+        x = np.linspace(0, calculate_distance(self.line[1][0], self.line[0][0], self.line[1][1], self.line[0][1]), y.size)
+
+        ax.plot(x, y, **style)
 
     def plot(self, ax):
         """Creates and configures the profile plot."""
@@ -637,6 +680,7 @@ class ProfilePlot:
 
         profile_synth = self._process_sections(self.synth, self.region)
         profile_data = self._process_sections(self.data, self.region)
+        profile_residual = profile_data - profile_synth
         # profile_topo = self._process_sections(self.geometry, self.region) if self.geometry is not None else None
 
         self.ax.set_ylabel(f'{self.unit}')
@@ -649,6 +693,7 @@ class ProfilePlot:
         self.profiles = {
             "model": profile_synth,
             "data": profile_data,
+            "residual": profile_residual,
         }
 
         if self.denoise:
@@ -661,8 +706,17 @@ class ProfilePlot:
 
         self.ax.legend(fontsize='xx-small')
 
-        if self.attributes['ORBIT_DIRECTION']:
-            self.ax.annotate(self.attributes['ORBIT_DIRECTION'].upper(),xy=(0.02, 0.98),xycoords='axes fraction',fontsize=7,ha='left',va='top',color='white',bbox=dict(facecolor='black', edgecolor='none', alpha=0.6, boxstyle='round,pad=0.3'))
+        if 'ascending' in self.ax.get_label():
+            self.label = "ASCENDING"
+        elif 'descending' in self.ax.get_label():
+            self.label = "DESCENDING"
+        elif self.attributes.get('ORBIT_DIRECTION'):
+            self.label = self.attributes['ORBIT_DIRECTION'].upper()
+
+        self.ax.set_xlabel(f'Distance (km)')
+
+        if self.label:
+            self.ax.annotate(self.label,xy=(0.02, 0.98),xycoords='axes fraction',fontsize=7,ha='left',va='top',color='white',bbox=dict(facecolor='black', edgecolor='none', alpha=0.6, boxstyle='round,pad=0.3'))
 
 ####################################################################################
 
@@ -782,16 +836,16 @@ class VectorsPlot:
     def _compute_vectors(self):
         """Computes velocity vectors and scaling factors."""
         x, v, h, self.z = draw_vectors(self.topography_section, self.vertical_section, self.horizontal_section, self.line)
-        fig = self.ax.get_figure()
-        fig_width, fig_height = fig.get_size_inches()
-        max_elevation = np.nanmax(self.z)
-        max_x = np.nanmax(x)
+        # fig = self.ax.get_figure()
+        # fig_width, fig_height = fig.get_size_inches()
+        # max_elevation = np.nanmax(self.z)
+        # max_x = np.nanmax(x)
 
-        self.v_adj = 2 * max_elevation / max_x
-        self.h_adj = 1 / self.v_adj
+        # self.v_adj = 2 * max_elevation / max_x
+        # self.h_adj = 1 / self.v_adj
 
-        self.rescale_h = self.h_adj / fig_width
-        self.rescale_v = self.v_adj / fig_height
+        # self.rescale_h = self.h_adj / fig_width
+        # self.rescale_v = self.v_adj / fig_height
 
         # Resample vectors
         for i in range(len(h)):
@@ -817,7 +871,8 @@ class VectorsPlot:
 
         # Plot elevation profile
         self.ax.plot(self.xrange, self.z, color='#a8a8a8', alpha=0.5)
-        self.ax.set_ylim([0, 2 * max(self.z)])
+        ylim = [np.nanmin(self.z) - 1/self.vertical_exag*(np.nanmax(self.z)-np.nanmin(self.z)), np.nanmax(self.z) + 1/self.vertical_exag*(np.nanmax(self.z)-np.nanmin(self.z))]
+        self.ax.set_ylim(ylim)
         self.ax.set_xlim([min(self.xrange), max(self.xrange)])
 
         # Plot velocity vectors
@@ -826,12 +881,12 @@ class VectorsPlot:
             # Mean velocity vector
             self.imdata = self.ax.quiver(self.filtered_x, self.filtered_elevation, self.filtered_h, self.filtered_v, color='#ff7366', width=(1 / 10**(2.5)))
             start_x = max(self.xrange) * 0.1
-            start_y = (2 * max(self.z) * 0.8)
-            mean_velocity = np.sqrt(np.nanmean((self.vertical_section[self.vertical_section!=0]))**2 + np.nanmean((self.horizontal_section[self.horizontal_section!=0]))**2)
-            rounded_mean_velocity = round(mean_velocity, 4) if mean_velocity else round(mean_velocity, 3)
+            start_y = (max(ylim) * 0.95)
+            mean_velocity = np.nanmean(np.sqrt(((self.filtered_v[self.filtered_v!=0]))**2 + ((self.filtered_h[self.filtered_h!=0]))**2))
 
-            self.ax.quiver([start_x], [start_y], [mean_velocity], [0], color='#ff7366', scale_units='xy', width=(1 / 10**(2.5)))
-            self.ax.text(start_x, start_y * 1.03, f"{rounded_mean_velocity:.2f} {self.unit}", color='black', ha='left', fontsize=8)
+            vel_indicator = f"{mean_velocity:.1f} {self.unit}" if mean_velocity >= 0.1 else f"{mean_velocity:.2f} {self.unit}"
+            self.ax.quiver([start_x], [start_y], [mean_velocity], [0], color='#ff7366', scale_units='xy', scale=1, width=(1 / 10**(2.5)))
+            self.ax.text(start_x, start_y * 1.01, vel_indicator, color='black', ha='left', fontsize=8)
 
         elif self.vector_legend == 'colorbar':
             from mpl_toolkits.axes_grid1.inset_locator import inset_axes
@@ -840,7 +895,7 @@ class VectorsPlot:
 
             cb = self.ax.figure.colorbar(self.imdata, cax=cax, orientation="horizontal")
 
-            mag = np.sqrt(((self.vertical_section[self.vertical_section!=0]))**2 + ((self.horizontal_section[self.horizontal_section!=0]))**2)
+            mag = np.sqrt(((self.filtered_v[self.filtered_v!=0]))**2 + ((self.filtered_h[self.filtered_h!=0]))**2)
             vmin, vmax = np.nanmin(mag), np.nanmax(mag)
             # Get current normalized limits (usually 0–1)
             nmin, nmax = cax.get_xlim()
@@ -933,49 +988,60 @@ class Okada:
         projected_width = self.width * np.cos(dip_radians)
         height = abs(projected_width)
 
-        local_rect = Rectangle((0.0, -height),
-                               self.length, height,
-                            #    facecolor='black',
-                               edgecolor='black',
-                               lw=1,
-                               alpha=0.2)
-        # rotate around local origin (top-left) and translate to (xtlc, ytlc)
+        # Transform
         t = Affine2D().rotate_deg(90 - self.strike).translate(self.xtlc, self.ytlc)
-        local_rect.set_transform(t + ax.transData)
-        ax.add_patch(local_rect)
 
-        # add a single spike/triangle along the length that points in the down-dip direction
-        # local coordinates: top edge is at y=0, down-dip is negative y
-        try:
-            from matplotlib.patches import Polygon
-            # main triangle size
-            base_half_main = max(0.04 * self.length, 0.01 * self.length)
+        # Rectangle on top
+        rect = Rectangle(
+            (0.0, -height),
+            self.length,
+            height,
+            fill=False,
+            linestyle="--",
+            edgecolor="black",
+            linewidth=1.4,
+            zorder=30
+        )
+        rect.set_transform(t + ax.transData)
+        ax.add_patch(rect)
 
-            tri_color = 'black'
-            tri_edge = 'black'
-            tri_alpha = 0.3
+        # Line behind rectangle
+        ax.plot(
+            [0, self.length],
+            [0, 0],
+            color="black",
+            linewidth=2,
+            transform=t + ax.transData,
+            zorder=28
+        )
 
-            # add several smaller triangles along the fault length with same color/alpha
-            n_extra = 6
-            extra_positions = np.linspace(0.1, 0.9, n_extra)
-            base_half_small = base_half_main * 0.5
-            tip_offset_small = 0.6
-            for pos in extra_positions:
-                # skip center position to avoid overlapping the main triangle
-                if abs(pos - 0.5) < 1e-6:
-                    continue
-                left = (pos * self.length - base_half_small, 0.0)
-                right = (pos * self.length + base_half_small, 0.0)
-                tip = (pos * self.length, -height * tip_offset_small)
-                tri_small = Polygon([left, right, tip], closed=True,
-                                    facecolor=tri_color, edgecolor=tri_edge, linewidth=0.6,
-                                    zorder=29, alpha=tri_alpha)
-                tri_small.set_transform(t + ax.transData)
-                ax.add_patch(tri_small)
-        except Exception:
-            # non-fatal: continue without spikes if something goes wrong
-            pass
+        # Arrow size scales with fault length (slightly longer triangles)
+        arrow_len = max(self.length * 0.12, self.length * 0.04)
+        arrow_width = arrow_len * 0.7
 
+        # Adaptive spacing (prevents overlap)
+        min_spacing = arrow_len * 2.5
+        n_arrows = max(1, int(self.length / min_spacing))
+        positions = np.linspace(0.15, 0.85, n_arrows)
+
+        for pos in positions:
+            x = pos * self.length
+
+            # Triangle vertices (pointing DOWN = slip direction)
+            tip = (x, -arrow_len)
+            base_left = (x - arrow_width / 2, -arrow_len * 0.15)
+            base_right = (x + arrow_width / 2, -arrow_len * 0.15)
+
+            # Triangle behind rectangle (but above line)
+            triangle = Polygon(
+                [tip, base_left, base_right],
+                closed=True,
+                facecolor="black",
+                edgecolor="black",
+                zorder=29
+            )
+            triangle.set_transform(t + ax.transData)
+            ax.add_patch(triangle)
 
 def point_on_globe(latitude, longitude, names=None, size='0.7', fsize=10):
     fig = pygmt.Figure()
@@ -1017,9 +1083,72 @@ def point_on_globe(latitude, longitude, names=None, size='0.7', fsize=10):
     return fig
 
 
-if __name__ == '__main__':
-    # Example usage
-    file = "/Users/giacomo/onedrive/scratch/Chiles-CerroNegroSenAT120/mintpy/S1_IW2_120_1184_1185_20170112_XXXXXXXX.he5"
-    # file = "/Users/giacomo/onedrive/scratch/AgungBaturSenAT156/mintpy/S1_IW12_156_1154_1155_20170121_XXXXXXXX.he5"
-    ref_point = [0.8389,-77.902]
-    TimeseriesPlot(file, lalo=[0.8, -77.95], ref_lalo=ref_point)
+def plot_beachball(ax, strike, dip, rake, xy=(0, 0), radius=0.01, facecolor="k", edgecolor="k", resolution=200, zorder=10):
+    """
+    Pure matplotlib focal mechanism beachball.
+
+    Parameters
+    ----------
+    ax : matplotlib axis
+    strike, dip, rake : degrees
+    xy : center (x, y)
+    radius : size in data units
+    """
+
+    strike = np.radians(strike)
+    dip = np.radians(dip)
+    rake = np.radians(rake)
+
+    # Fault normal vector
+    n = np.array([
+        -np.sin(dip) * np.sin(strike),
+        np.sin(dip) * np.cos(strike),
+        -np.cos(dip)
+    ])
+
+    # Slip vector
+    s = np.array([
+        np.cos(rake) * np.cos(strike) + np.sin(rake) * np.cos(dip) * np.sin(strike),
+        np.cos(rake) * np.sin(strike) - np.sin(rake) * np.cos(dip) * np.cos(strike),
+        -np.sin(rake) * np.sin(dip)
+    ])
+
+    # Circle boundary
+    circle = Circle(xy, radius, edgecolor=edgecolor, facecolor="white", lw=1.5, zorder=zorder)
+    ax.add_patch(circle)
+
+    # Sample sphere directions
+    theta = np.linspace(0, 2*np.pi, resolution)
+    phi = np.linspace(0, np.pi/2, resolution)
+
+    X, Y = [], []
+
+    for t in theta:
+        for p in phi:
+            # Direction vector
+            v = np.array([
+                np.sin(p) * np.cos(t),
+                np.sin(p) * np.sin(t),
+                np.cos(p)
+            ])
+
+            # Polarity sign
+            sign = np.dot(v, s) * np.dot(v, n)
+
+            if sign > 0:  # compressional quadrant
+                x = xy[0] + radius * np.sin(p) * np.cos(t)
+                y = xy[1] + radius * np.sin(p) * np.sin(t)
+                X.append(x)
+                Y.append(y)
+
+    ax.scatter(X, Y, s=0.01, color=facecolor, zorder=zorder)
+
+    return circle
+
+
+# if __name__ == '__main__':
+#     # Example usage
+#     file = "/Users/giacomo/onedrive/scratch/Chiles-CerroNegroSenAT120/mintpy/S1_IW2_120_1184_1185_20170112_XXXXXXXX.he5"
+#     # file = "/Users/giacomo/onedrive/scratch/AgungBaturSenAT156/mintpy/S1_IW12_156_1154_1155_20170121_XXXXXXXX.he5"
+#     ref_point = [0.8389,-77.902]
+#     TimeseriesPlot(file, lalo=[0.8, -77.95], ref_lalo=ref_point)

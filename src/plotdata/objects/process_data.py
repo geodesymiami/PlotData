@@ -25,6 +25,8 @@ class ProcessData:
         self.descending = None
         self.ascending_geometry = None
         self.descending_geometry = None
+        self.ascending_mask = None
+        self.descending_mask = None
         self.horizontal = None
         self.vertical = None
         self.velocity_file = None
@@ -67,12 +69,12 @@ class ProcessData:
             out_mskd_file, mask = self._process_data(files)
             self.file_info[dir]['mask_file'] = mask
 
-            if ('SenA' or 'CskA') in out_mskd_file:
+            if 'SenA' in out_mskd_file or 'CskA' in out_mskd_file:
                 self.ascending = out_mskd_file
                 self.eos_file_ascending = files['eos_file']
                 self.ascending_geometry = files['geometry_file']
                 self.ascending_mask = files['mask_file']
-            elif ('SenD' or 'CskD') in out_mskd_file:
+            elif 'SenD' in out_mskd_file or 'CskD' in out_mskd_file:
                 self.descending = out_mskd_file
                 self.eos_file_descending = files['eos_file']
                 self.descending_geometry = files['geometry_file']
@@ -256,13 +258,15 @@ class ProcessData:
         if 'descending' in model_dict:
             self.descending_model = {'descending': model_dict['descending']}
 
-        for f in os.listdir(os.path.dirname(self.ascending)):
-            if 'downsampled' in f:
-                self.ascending_downsampled = os.path.join(os.path.dirname(self.ascending), f)
+        if self.ascending:
+            for f in os.listdir(os.path.dirname(self.ascending)):
+                if 'downsampled' in f:
+                    self.ascending_downsampled = os.path.join(os.path.dirname(self.ascending), f)
 
-        for f in os.listdir(os.path.dirname(self.descending)):
-            if 'downsampled' in f:
-                self.descending_downsampled = os.path.join(os.path.dirname(self.descending), f)
+        if self.descending:
+            for f in os.listdir(os.path.dirname(self.descending)):
+                if 'downsampled' in f:
+                    self.descending_downsampled = os.path.join(os.path.dirname(self.descending), f)
 
     def _process_data(self, files):
         """Processes a single dataset and returns the masked velocity file."""
