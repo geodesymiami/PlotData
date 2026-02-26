@@ -7,11 +7,10 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.ticker as ticker
-from scipy.signal import savgol_filter, medfilt
-from matplotlib.patches import Rectangle
 from matplotlib.colors import LightSource
 from matplotlib.transforms import Affine2D
 from matplotlib.patheffects import withStroke
+from matplotlib.patches import Rectangle, Circle, Polygon
 from plotdata.volcano_functions import get_volcanoes_data
 from plotdata.helper_functions import draw_vectors, calculate_distance, get_bounding_box, parse_polygon, resize_to_match
 
@@ -562,7 +561,7 @@ class TimeseriesPlot:
 
         dates, ts= dataset['dates'], dataset['data']
 
-        ax_ts.scatter(dates, ts + self.offset, color=color, marker='o', label=label, alpha=0.5, s=7)
+        ax_ts.scatter(dates, ts + self.offset, color=color, marker='o', label=label, alpha=0.5, s=17)
 
         self.offset = 0
 
@@ -667,8 +666,13 @@ class ProfilePlot:
             'model': dict(c='#5190cb', lw=2.5, ls='-', label='Model'),
             'data': dict(c='#ff7366', marker='o', ls='--', ms=3, label='Data', alpha=0.6),
             'smooth': dict(c='#79419e', lw=1, ls='-', label='Smoothed Data'),
+            'residual': dict(c='gray', ls='-.', marker=',', label='Residual', alpha=0.5),
         }.get(key, {})
-        self.ax.plot(dataset[key], **style)
+
+        y = np.asarray(dataset[key]).ravel()
+        x = np.linspace(0, calculate_distance(self.line[1][0], self.line[0][0], self.line[1][1], self.line[0][1]), y.size)
+
+        ax.plot(x, y, **style)
 
     def plot(self, ax):
         """Creates and configures the profile plot."""
@@ -676,6 +680,7 @@ class ProfilePlot:
 
         profile_synth = self._process_sections(self.synth, self.region)
         profile_data = self._process_sections(self.data, self.region)
+        profile_residual = profile_data - profile_synth
         # profile_topo = self._process_sections(self.geometry, self.region) if self.geometry is not None else None
 
         self.ax.set_ylabel(f'{self.unit}')
@@ -688,6 +693,7 @@ class ProfilePlot:
         self.profiles = {
             "model": profile_synth,
             "data": profile_data,
+            "residual": profile_residual,
         }
 
         if self.denoise:
@@ -706,6 +712,8 @@ class ProfilePlot:
             self.label = "DESCENDING"
         elif self.attributes.get('ORBIT_DIRECTION'):
             self.label = self.attributes['ORBIT_DIRECTION'].upper()
+
+        self.ax.set_xlabel(f'Distance (km)')
 
         if self.label:
             self.ax.annotate(self.label,xy=(0.02, 0.98),xycoords='axes fraction',fontsize=7,ha='left',va='top',color='white',bbox=dict(facecolor='black', edgecolor='none', alpha=0.6, boxstyle='round,pad=0.3'))
@@ -828,16 +836,16 @@ class VectorsPlot:
     def _compute_vectors(self):
         """Computes velocity vectors and scaling factors."""
         x, v, h, self.z = draw_vectors(self.topography_section, self.vertical_section, self.horizontal_section, self.line)
-        fig = self.ax.get_figure()
-        fig_width, fig_height = fig.get_size_inches()
-        max_elevation = np.nanmax(self.z)
-        max_x = np.nanmax(x)
+        # fig = self.ax.get_figure()
+        # fig_width, fig_height = fig.get_size_inches()
+        # max_elevation = np.nanmax(self.z)
+        # max_x = np.nanmax(x)
 
-        self.v_adj = 2 * max_elevation / max_x
-        self.h_adj = 1 / self.v_adj
+        # self.v_adj = 2 * max_elevation / max_x
+        # self.h_adj = 1 / self.v_adj
 
-        self.rescale_h = self.h_adj / fig_width
-        self.rescale_v = self.v_adj / fig_height
+        # self.rescale_h = self.h_adj / fig_width
+        # self.rescale_v = self.v_adj / fig_height
 
         # Resample vectors
         for i in range(len(h)):
@@ -863,7 +871,8 @@ class VectorsPlot:
 
         # Plot elevation profile
         self.ax.plot(self.xrange, self.z, color='#a8a8a8', alpha=0.5)
-        self.ax.set_ylim([0, 2 * max(self.z)])
+        ylim = [np.nanmin(self.z) - 1/self.vertical_exag*(np.nanmax(self.z)-np.nanmin(self.z)), np.nanmax(self.z) + 1/self.vertical_exag*(np.nanmax(self.z)-np.nanmin(self.z))]
+        self.ax.set_ylim(ylim)
         self.ax.set_xlim([min(self.xrange), max(self.xrange)])
 
         # Plot velocity vectors
@@ -872,12 +881,12 @@ class VectorsPlot:
             # Mean velocity vector
             self.imdata = self.ax.quiver(self.filtered_x, self.filtered_elevation, self.filtered_h, self.filtered_v, color='#ff7366', width=(1 / 10**(2.5)))
             start_x = max(self.xrange) * 0.1
-            start_y = (2 * max(self.z) * 0.8)
-            mean_velocity = np.sqrt(np.nanmean((self.vertical_section[self.vertical_section!=0]))**2 + np.nanmean((self.horizontal_section[self.horizontal_section!=0]))**2)
-            rounded_mean_velocity = round(mean_velocity, 4) if mean_velocity else round(mean_velocity, 3)
+            start_y = (max(ylim) * 0.95)
+            mean_velocity = np.nanmean(np.sqrt(((self.filtered_v[self.filtered_v!=0]))**2 + ((self.filtered_h[self.filtered_h!=0]))**2))
 
-            self.ax.quiver([start_x], [start_y], [mean_velocity], [0], color='#ff7366', scale_units='xy', width=(1 / 10**(2.5)))
-            self.ax.text(start_x, start_y * 1.03, f"{rounded_mean_velocity:.2f} {self.unit}", color='black', ha='left', fontsize=8)
+            vel_indicator = f"{mean_velocity:.1f} {self.unit}" if mean_velocity >= 0.1 else f"{mean_velocity:.2f} {self.unit}"
+            self.ax.quiver([start_x], [start_y], [mean_velocity], [0], color='#ff7366', scale_units='xy', scale=1, width=(1 / 10**(2.5)))
+            self.ax.text(start_x, start_y * 1.01, vel_indicator, color='black', ha='left', fontsize=8)
 
         elif self.vector_legend == 'colorbar':
             from mpl_toolkits.axes_grid1.inset_locator import inset_axes
@@ -886,7 +895,7 @@ class VectorsPlot:
 
             cb = self.ax.figure.colorbar(self.imdata, cax=cax, orientation="horizontal")
 
-            mag = np.sqrt(((self.vertical_section[self.vertical_section!=0]))**2 + ((self.horizontal_section[self.horizontal_section!=0]))**2)
+            mag = np.sqrt(((self.filtered_v[self.filtered_v!=0]))**2 + ((self.filtered_h[self.filtered_h!=0]))**2)
             vmin, vmax = np.nanmin(mag), np.nanmax(mag)
             # Get current normalized limits (usually 0–1)
             nmin, nmax = cax.get_xlim()
