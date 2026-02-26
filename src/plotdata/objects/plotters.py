@@ -71,6 +71,9 @@ class VelocityPlot:
         if "earthquakes" in dataset:
             self.earthquakes = dataset["earthquakes"]
 
+        if "focal_mechanism" in dataset:
+            self.focal_mechanism = dataset["focal_mechanism"]
+
         self.zorder = 0
 
     def _update_axis_limits(self, x_min=None, x_max=None, y_min=None, y_max=None):
@@ -428,14 +431,39 @@ class VelocityPlot:
         if self.label:
             self.ax.annotate(self.label,xy=(0.02, 0.98),xycoords='axes fraction',fontsize=7,ha='left',va='top',color='white',bbox=dict(facecolor='black', edgecolor='none', alpha=0.6, boxstyle='round,pad=0.3'))
 
+        min_lon, max_lon = self.ax.get_xlim()
+        min_lat, max_lat = self.ax.get_ylim()
+
         if self.volcano:
-            min_lon, max_lon, min_lat, max_lat = self.region
             volcanoName, volcanoId, volcanoCoordinates = get_volcanoes_data(bbox=[min_lon, min_lat, max_lon, max_lat])
+            # volcanoName, volcanoId, volcanoCoordinates = ['Chiles', 'Cerro Negro'], [None, None], [[-77.938, 0.817], [-77.9654, 0.8247]]
             for name, id, coord in zip(volcanoName, volcanoId, volcanoCoordinates):
                 lon, lat = coord
                 print(f'Plotting volcano: {name}, id: {id}, coordinates: {lat}, {lon}')
-                plot_point(self.ax, [lat], [lon], marker='^', color='#383838db', size=7, alpha=0.3, zorder=self._get_next_zorder())
-                self.ax.text(lon, lat, name, fontsize=6, color='black', zorder=self._get_next_zorder())
+                plot_point(self.ax, [lat], [lon], marker='^', color='#900C3F', size=7, alpha=0.6, zorder=self._get_next_zorder())
+
+                dlon = (max_lon - min_lon) * 0.01
+                self.ax.text(lon+dlon, lat, name, fontsize=12, color='black', zorder=self._get_next_zorder())
+
+        if hasattr(self, 'focal_mechanism') and len(self.focal_mechanism) > 0:
+            lon_span = abs(max_lon - min_lon)
+            lat_span = abs(max_lat - min_lat)
+            map_span = min(lon_span, lat_span)  # degrees
+
+            for f in self.focal_mechanism:
+                # Magnitude key fallback
+                mag = f.get("magnitude", f.get("mag", 5.0))
+
+                # Normalize magnitude in [0, 1] for M3..M7.5
+                mag_n = np.clip((mag - 3.0) / (7.5 - 3.0), 0.0, 1.0)
+
+                # Radius = 0.4% .. 1.6% of map span (keeps beachballs small)
+                radius = map_span * (0.04 + 0.012 * mag_n)
+
+                # Resolution = 40 .. 140 points
+                resolution = int(4 + 100 * mag_n)
+
+                plot_beachball(self.ax,strike=f["strike"],dip=f["dip"],rake=f["rake"],xy=(f["lon"], f["lat"]),radius=radius,resolution=resolution,zorder=self._get_next_zorder(),)
 
         self.ax.set_aspect('equal', adjustable='datalim')
 
@@ -1035,9 +1063,72 @@ def point_on_globe(latitude, longitude, names=None, size='0.7', fsize=10):
     return fig
 
 
-if __name__ == '__main__':
-    # Example usage
-    file = "/Users/giacomo/onedrive/scratch/Chiles-CerroNegroSenAT120/mintpy/S1_IW2_120_1184_1185_20170112_XXXXXXXX.he5"
-    # file = "/Users/giacomo/onedrive/scratch/AgungBaturSenAT156/mintpy/S1_IW12_156_1154_1155_20170121_XXXXXXXX.he5"
-    ref_point = [0.8389,-77.902]
-    TimeseriesPlot(file, lalo=[0.8, -77.95], ref_lalo=ref_point)
+def plot_beachball(ax, strike, dip, rake, xy=(0, 0), radius=0.01, facecolor="k", edgecolor="k", resolution=200, zorder=10):
+    """
+    Pure matplotlib focal mechanism beachball.
+
+    Parameters
+    ----------
+    ax : matplotlib axis
+    strike, dip, rake : degrees
+    xy : center (x, y)
+    radius : size in data units
+    """
+
+    strike = np.radians(strike)
+    dip = np.radians(dip)
+    rake = np.radians(rake)
+
+    # Fault normal vector
+    n = np.array([
+        -np.sin(dip) * np.sin(strike),
+        np.sin(dip) * np.cos(strike),
+        -np.cos(dip)
+    ])
+
+    # Slip vector
+    s = np.array([
+        np.cos(rake) * np.cos(strike) + np.sin(rake) * np.cos(dip) * np.sin(strike),
+        np.cos(rake) * np.sin(strike) - np.sin(rake) * np.cos(dip) * np.cos(strike),
+        -np.sin(rake) * np.sin(dip)
+    ])
+
+    # Circle boundary
+    circle = Circle(xy, radius, edgecolor=edgecolor, facecolor="white", lw=1.5, zorder=zorder)
+    ax.add_patch(circle)
+
+    # Sample sphere directions
+    theta = np.linspace(0, 2*np.pi, resolution)
+    phi = np.linspace(0, np.pi/2, resolution)
+
+    X, Y = [], []
+
+    for t in theta:
+        for p in phi:
+            # Direction vector
+            v = np.array([
+                np.sin(p) * np.cos(t),
+                np.sin(p) * np.sin(t),
+                np.cos(p)
+            ])
+
+            # Polarity sign
+            sign = np.dot(v, s) * np.dot(v, n)
+
+            if sign > 0:  # compressional quadrant
+                x = xy[0] + radius * np.sin(p) * np.cos(t)
+                y = xy[1] + radius * np.sin(p) * np.sin(t)
+                X.append(x)
+                Y.append(y)
+
+    ax.scatter(X, Y, s=0.01, color=facecolor, zorder=zorder)
+
+    return circle
+
+
+# if __name__ == '__main__':
+#     # Example usage
+#     file = "/Users/giacomo/onedrive/scratch/Chiles-CerroNegroSenAT120/mintpy/S1_IW2_120_1184_1185_20170112_XXXXXXXX.he5"
+#     # file = "/Users/giacomo/onedrive/scratch/AgungBaturSenAT156/mintpy/S1_IW12_156_1154_1155_20170121_XXXXXXXX.he5"
+#     ref_point = [0.8389,-77.902]
+#     TimeseriesPlot(file, lalo=[0.8, -77.95], ref_lalo=ref_point)
