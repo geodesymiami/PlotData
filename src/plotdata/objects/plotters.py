@@ -979,49 +979,60 @@ class Okada:
         projected_width = self.width * np.cos(dip_radians)
         height = abs(projected_width)
 
-        local_rect = Rectangle((0.0, -height),
-                               self.length, height,
-                            #    facecolor='black',
-                               edgecolor='black',
-                               lw=1,
-                               alpha=0.2)
-        # rotate around local origin (top-left) and translate to (xtlc, ytlc)
+        # Transform
         t = Affine2D().rotate_deg(90 - self.strike).translate(self.xtlc, self.ytlc)
-        local_rect.set_transform(t + ax.transData)
-        ax.add_patch(local_rect)
 
-        # add a single spike/triangle along the length that points in the down-dip direction
-        # local coordinates: top edge is at y=0, down-dip is negative y
-        try:
-            from matplotlib.patches import Polygon
-            # main triangle size
-            base_half_main = max(0.04 * self.length, 0.01 * self.length)
+        # Rectangle on top
+        rect = Rectangle(
+            (0.0, -height),
+            self.length,
+            height,
+            fill=False,
+            linestyle="--",
+            edgecolor="black",
+            linewidth=1.4,
+            zorder=30
+        )
+        rect.set_transform(t + ax.transData)
+        ax.add_patch(rect)
 
-            tri_color = 'black'
-            tri_edge = 'black'
-            tri_alpha = 0.3
+        # Line behind rectangle
+        ax.plot(
+            [0, self.length],
+            [0, 0],
+            color="black",
+            linewidth=2,
+            transform=t + ax.transData,
+            zorder=28
+        )
 
-            # add several smaller triangles along the fault length with same color/alpha
-            n_extra = 6
-            extra_positions = np.linspace(0.1, 0.9, n_extra)
-            base_half_small = base_half_main * 0.5
-            tip_offset_small = 0.6
-            for pos in extra_positions:
-                # skip center position to avoid overlapping the main triangle
-                if abs(pos - 0.5) < 1e-6:
-                    continue
-                left = (pos * self.length - base_half_small, 0.0)
-                right = (pos * self.length + base_half_small, 0.0)
-                tip = (pos * self.length, -height * tip_offset_small)
-                tri_small = Polygon([left, right, tip], closed=True,
-                                    facecolor=tri_color, edgecolor=tri_edge, linewidth=0.6,
-                                    zorder=29, alpha=tri_alpha)
-                tri_small.set_transform(t + ax.transData)
-                ax.add_patch(tri_small)
-        except Exception:
-            # non-fatal: continue without spikes if something goes wrong
-            pass
+        # Arrow size scales with fault length (slightly longer triangles)
+        arrow_len = max(self.length * 0.12, self.length * 0.04)
+        arrow_width = arrow_len * 0.7
 
+        # Adaptive spacing (prevents overlap)
+        min_spacing = arrow_len * 2.5
+        n_arrows = max(1, int(self.length / min_spacing))
+        positions = np.linspace(0.15, 0.85, n_arrows)
+
+        for pos in positions:
+            x = pos * self.length
+
+            # Triangle vertices (pointing DOWN = slip direction)
+            tip = (x, -arrow_len)
+            base_left = (x - arrow_width / 2, -arrow_len * 0.15)
+            base_right = (x + arrow_width / 2, -arrow_len * 0.15)
+
+            # Triangle behind rectangle (but above line)
+            triangle = Polygon(
+                [tip, base_left, base_right],
+                closed=True,
+                facecolor="black",
+                edgecolor="black",
+                zorder=29
+            )
+            triangle.set_transform(t + ax.transData)
+            ax.add_patch(triangle)
 
 def point_on_globe(latitude, longitude, names=None, size='0.7', fsize=10):
     fig = pygmt.Figure()
