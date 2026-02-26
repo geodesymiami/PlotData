@@ -243,7 +243,7 @@ def match_dates(a, b, schedule):
     a_vals = np.array([to_date(x) for x in a])
     b_vals = np.array([to_date(x) for x in b])
 
-    if False:
+    if True:
         b_index = {d: idx for idx, d in enumerate(b_vals)}
 
         matched_a = set()
