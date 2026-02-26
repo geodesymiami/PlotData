@@ -116,14 +116,13 @@ def get_volcano_coord_id(jsonfile, volcanoName: str):
 
 
 def get_volcano_coord_name(jsonfile, volcanoId):
-    data = get_volcano_json(jsonfile, JSON_DOWNLOAD_URL)
+    data = get_volcano_json(jsonfile, JSON_HOLOCENE_URL)
 
     for j in data['features']:
-        if j['properties']['VolcanoNumber'] == int(volcanoId):
-            name = j['properties']['VolcanoName']
+        if j['properties']['Volcano_Number'] == int(volcanoId):
+            name = j['properties']['Volcano_Name']
 
-            coordinates = j['geometry']['coordinates']
-            coordinates = coordinates[::-1]
+            coordinates = j['properties']['Latitude'], j['properties']['Longitude']
 
             return coordinates, name
 
