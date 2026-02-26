@@ -242,8 +242,19 @@ class VelocityPlot:
         tick_h = 0.005 * abs(lat_span)
         self.ax.plot([x0, x0], [y0 - tick_h, y0 + tick_h], color='k', lw=2)
         self.ax.plot([x0 + dlon, x0 + dlon], [y0 - tick_h, y0 + tick_h], color='k', lw=2)
+
+        if dist_km >= 1:
+            label = f"{dist_km:.0f} km"
+        else:
+            dist_m = dist_km * 1000
+            if dist_m >= 1:
+                label = f"{dist_m:.0f} m"
+            else:
+                dist_cm = dist_m * 100
+                label = f"{dist_cm:.0f} cm"
+
         # label centered under the bar
-        self.ax.text(x0 + dlon/2, y0 + 0.06 * abs(lat_span), f"{dist_km:.0f} km", ha='center', va='top', fontsize=8, path_effects=[withStroke(linewidth=1.5, foreground='white')], zorder=zorder)
+        self.ax.text(x0 + dlon/2, y0 + 0.06 * abs(lat_span), label, ha='center', va='top', fontsize=8, path_effects=[withStroke(linewidth=1.5, foreground='white')], zorder=zorder)
 
 
 
