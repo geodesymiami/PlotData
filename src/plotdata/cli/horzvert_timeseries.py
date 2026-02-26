@@ -497,10 +497,8 @@ def load_timeseries_file(file_path, geometry_file_input, mask_vmin, inps):
     else:
         if hasattr(obj, 'datasetGroupNameDict') and 'mask' in obj.datasetGroupNameDict:
             mask = readfile.read(eos_file, datasetName='mask')[0]
-        elif os.path.exists(geometry_file):
-            mask = readfile.read(geometry_file, datasetName='mask')[0]
         else:
-            print(f"Mask dataset not found in {eos_file} or {geometry_file}, proceeding without mask.")
+            print(f"Mask dataset not found in {eos_file}, proceeding without mask.")
 
     # Try to read los angles from geometry file first, fallback to metadata calculation
     if os.path.exists(geometry_file):
