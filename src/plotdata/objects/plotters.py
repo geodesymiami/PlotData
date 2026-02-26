@@ -8,7 +8,9 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.ticker as ticker
 from matplotlib.colors import LightSource
+from matplotlib.transforms import Affine2D
 from matplotlib.patheffects import withStroke
+from matplotlib.patches import Rectangle, Circle, Polygon
 from plotdata.volcano_functions import get_volcanoes_data
 from plotdata.helper_functions import draw_vectors, calculate_distance, get_bounding_box, parse_polygon, resize_to_match
 
@@ -37,8 +39,14 @@ class VelocityPlot:
         if 'data' in dataset:
             self.data = dataset["data"]
             self.attributes = dataset["attributes"]
+        elif 'synth' in dataset:
+            self.synth = dataset["synth"]
+            self.attributes = dataset["attributes"]
+            self.east = dataset["east"]
+            self.north = dataset["north"]
         elif 'geometry' in dataset:
             self.attributes = dataset["geometry"]["attributes"]
+
 
         if "region" in self.attributes:
             self.region = self.attributes["region"]
@@ -61,6 +69,9 @@ class VelocityPlot:
 
         if "earthquakes" in dataset:
             self.earthquakes = dataset["earthquakes"]
+
+        if "focal_mechanism" in dataset:
+            self.focal_mechanism = dataset["focal_mechanism"]
 
         self.zorder = 0
 
@@ -114,37 +125,79 @@ class VelocityPlot:
         self.zorder += 1
         return z
 
-    def _plot_velocity(self):
+    def _plot_source(self, sources):
+        if sources:
+            source_type = {
+                "mogi": {"class": Mogi, "attributes": ["xcen", "ycen"]},
+                "spheroid": {"class": Spheroid, "attributes": ["xcen", "ycen", "s_axis_max", "ratio", "strike", "dip"]},
+                "penny": {"class": Penny,  "attributes": ["xcen", "ycen", "radius"]},
+                "okada": {"class": Okada,  "attributes": ["ytlc", "xtlc", "length", "width", "strike", "dip"]},
+            }
+            for s in sources:
+                s_keys = set(sources[s].keys())
+
+                for key, value in source_type.items():
+                    if set(value["attributes"]) == s_keys:
+                        model = value["class"]
+                        model(self.ax, **sources[s])
+
+    def _plot_synthetic(self, data):
+        zorder = self._get_next_zorder()
+
+        if not self.vmin and not self.vmax:
+            lim = max(abs(np.nanmin(data)), abs(np.nanmax(data))) * 1.2
+            self.vmin, self.vmax = -lim, lim
+
+        if self.style == 'scatter':
+            self.imdata = self.ax.scatter(self.east, self.north, c=data, cmap=self.cmap, marker='o', zorder=zorder, s=20, vmin=self.vmin, vmax=self.vmax, rasterized=True)
+        else:
+            self.imdata = self.ax.imshow(data, cmap=self.cmap, extent=self.region, origin='upper', interpolation='none', zorder=zorder, vmin=self.vmin, vmax=self.vmax, rasterized=True)
+
+        self._plot_source(self.sources) 
+
+        self._update_axis_limits()
+
+        self._plot_scale()
+
+        if not self.no_colorbar:
+            cbar = self.ax.figure.colorbar(self.imdata, ax=self.ax, orientation='horizontal', aspect=12, shrink=self.colorbar_size)
+            cbar.set_label(self.unit)
+
+            cbar.locator = ticker.MaxNLocator(3)
+            cbar.update_ticks()
+
+        self.imdata.set_alpha(0.7)
+
+    def _plot_velocity(self, data):
         # TODO change to argparse
         zorder = self._get_next_zorder()
 
         if not self.vmin and not self.vmax:
-            lim = max(abs(np.nanmin(self.data)), abs(np.nanmax(self.data))) * 1.2
+            lim = max(abs(np.nanmin(data)), abs(np.nanmax(data))) * 1.2
             self.vmin, self.vmax = -lim, lim
 
         if self.style == 'pixel':
-            self.imdata = self.ax.imshow(self.data, cmap=self.cmap, extent=self.region, origin='upper', interpolation='none', zorder=zorder, vmin=self.vmin, vmax=self.vmax, rasterized=True)
-            # self.ax.set_aspect('auto')
+            self.imdata = self.ax.imshow(data, cmap=self.cmap, extent=self.region, origin='upper', interpolation='none', zorder=zorder, vmin=self.vmin, vmax=self.vmax, rasterized=True)
 
         elif self.style == 'scatter':
             # Assuming self.velocity is a 2D numpy array
-            nrows, ncols = self.data.shape
+            nrows, ncols = data.shape
 
             x = np.linspace(self.region[0], self.region[1], ncols)
             y = np.linspace(self.region[2], self.region[3], nrows)
             X, Y = np.meshgrid(x, y)
             X = X.flatten()
             Y = np.flip(Y.flatten())
-            C = self.data.flatten()
+            C = data.flatten()
 
-            self.imdata = self.ax.scatter(X, Y, c=C, cmap=self.cmap, marker='o', zorder=zorder, s=2, vmin=self.vmin, vmax=self.vmax, rasterized=True)
+            self.imdata = self.ax.scatter(X, Y, c=C, cmap=self.cmap, marker='o', zorder=zorder, s=10, vmin=self.vmin, vmax=self.vmax, rasterized=True)
 
         elif self.style == 'ifgram':
             # Wavelength for the interferogram
             wavelength = 0.05546576
 
             # Calculate the interferogram
-            interferogram = (self.data) % (12 * np.pi)
+            interferogram = (data) % (12 * np.pi)
 
             # Plot the interferogram
             self.imdata = self.ax.imshow(interferogram, cmap=self.cmap, extent=self.region, origin='upper', interpolation='none', zorder=zorder, rasterized=True)
@@ -160,7 +213,7 @@ class VelocityPlot:
             #########################################################################################################################################
 
         if not self.no_colorbar:
-            cbar = self.ax.figure.colorbar(self.imdata, ax=self.ax, orientation='horizontal', aspect=13)
+            cbar = self.ax.figure.colorbar(self.imdata, ax=self.ax, orientation='horizontal', aspect=12, shrink=self.colorbar_size)
             cbar.set_label(self.unit)
 
             cbar.locator = ticker.MaxNLocator(3)
@@ -170,6 +223,8 @@ class VelocityPlot:
 
 
     def _plot_scale(self):
+        zorder = self._get_next_zorder()
+
         lon1, lon2 = self.ax.get_xlim()
         lat1, lat2 = self.ax.get_ylim()
         lon_span = lon2 - lon1
@@ -189,8 +244,19 @@ class VelocityPlot:
         tick_h = 0.005 * abs(lat_span)
         self.ax.plot([x0, x0], [y0 - tick_h, y0 + tick_h], color='k', lw=2)
         self.ax.plot([x0 + dlon, x0 + dlon], [y0 - tick_h, y0 + tick_h], color='k', lw=2)
+
+        if dist_km >= 1:
+            label = f"{dist_km:.0f} km"
+        else:
+            dist_m = dist_km * 1000
+            if dist_m >= 1:
+                label = f"{dist_m:.0f} m"
+            else:
+                dist_cm = dist_m * 100
+                label = f"{dist_cm:.0f} cm"
+
         # label centered under the bar
-        self.ax.text(x0 + dlon/2, y0 + 0.06 * abs(lat_span), f"{dist_km:.0f} km", ha='center', va='top', fontsize=8, path_effects=[withStroke(linewidth=1.5, foreground='white')],)
+        self.ax.text(x0 + dlon/2, y0 + 0.06 * abs(lat_span), label, ha='center', va='top', fontsize=8, path_effects=[withStroke(linewidth=1.5, foreground='white')], zorder=zorder)
 
 
 
@@ -243,7 +309,7 @@ class VelocityPlot:
 
         # Compute hillshade with real spacing
         ls = LightSource(azdeg=315, altdeg=45)
-        hillshade = ls.hillshade(self.z, vert_exag=0.5, dx=dx, dy=dy)
+        hillshade = ls.hillshade(self.z, vert_exag=0.7, dx=dx, dy=dy)
 
         # Use pcolormesh to plot hillshade using real coordinates
         self.im = self.ax.pcolormesh(lon2d,lat2d,hillshade,cmap='gray',shading='auto',zorder=zorder,)
@@ -281,7 +347,7 @@ class VelocityPlot:
         z = lines.values
 
         #Plot the isolines
-        cont = self.ax.contour(lon, lat, z, levels=self.contour, colors=self.color, linewidths=self.contour_linewidth, alpha=0.5, zorder=zorder)
+        cont = self.ax.contour(lon, lat, z, levels=self.contour, colors=self.color, linewidths=self.contour_linewidth, alpha=0.3, zorder=zorder)
 
         if self.inline:
             self.ax.clabel(cont, inline=self.inline, fontsize=8)
@@ -337,7 +403,10 @@ class VelocityPlot:
             self._plot_dem()
 
         if hasattr(self, 'data') and self.data is not None:
-            self._plot_velocity()
+            self._plot_velocity(self.data)
+
+        if hasattr(self, 'synth') and self.synth is not None:
+            self._plot_synthetic(self.synth)
 
         if self.contour:
             self._plot_isolines()
@@ -361,14 +430,41 @@ class VelocityPlot:
         if self.label:
             self.ax.annotate(self.label,xy=(0.02, 0.98),xycoords='axes fraction',fontsize=7,ha='left',va='top',color='white',bbox=dict(facecolor='black', edgecolor='none', alpha=0.6, boxstyle='round,pad=0.3'))
 
+        min_lon, max_lon = self.ax.get_xlim()
+        min_lat, max_lat = self.ax.get_ylim()
+
         if self.volcano:
-            min_lon, max_lon, min_lat, max_lat = self.region
             volcanoName, volcanoId, volcanoCoordinates = get_volcanoes_data(bbox=[min_lon, min_lat, max_lon, max_lat])
+            # volcanoName, volcanoId, volcanoCoordinates = ['Chiles', 'Cerro Negro'], [None, None], [[-77.938, 0.817], [-77.9654, 0.8247]]
             for name, id, coord in zip(volcanoName, volcanoId, volcanoCoordinates):
                 lon, lat = coord
                 print(f'Plotting volcano: {name}, id: {id}, coordinates: {lat}, {lon}')
-                plot_point(self.ax, [lat], [lon], marker='^', color='#383838db', size=7, alpha=0.3, zorder=self._get_next_zorder())
-                self.ax.text(lon, lat, name, fontsize=6, color='black', zorder=self._get_next_zorder())
+                plot_point(self.ax, [lat], [lon], marker='^', color='#900C3F', size=7, alpha=0.6, zorder=self._get_next_zorder())
+
+                dlon = (max_lon - min_lon) * 0.01
+                self.ax.text(lon+dlon, lat, name, fontsize=12, color='black', zorder=self._get_next_zorder())
+
+        if hasattr(self, 'focal_mechanism') and len(self.focal_mechanism) > 0:
+            lon_span = abs(max_lon - min_lon)
+            lat_span = abs(max_lat - min_lat)
+            map_span = min(lon_span, lat_span)  # degrees
+
+            for f in self.focal_mechanism:
+                # Magnitude key fallback
+                mag = f.get("magnitude", f.get("mag", 5.0))
+
+                # Normalize magnitude in [0, 1] for M3..M7.5
+                mag_n = np.clip((mag - 3.0) / (7.5 - 3.0), 0.0, 1.0)
+
+                # Radius = 0.4% .. 1.6% of map span (keeps beachballs small)
+                radius = map_span * (0.04 + 0.012 * mag_n)
+
+                # Resolution = 40 .. 140 points
+                resolution = int(4 + 100 * mag_n)
+
+                plot_beachball(self.ax,strike=f["strike"],dip=f["dip"],rake=f["rake"],xy=(f["lon"], f["lat"]),radius=radius,resolution=resolution,zorder=self._get_next_zorder(),)
+
+        self.ax.set_aspect('equal', adjustable='datalim')
 
 ####################################################################################
 
@@ -465,7 +561,7 @@ class TimeseriesPlot:
 
         dates, ts= dataset['dates'], dataset['data']
 
-        ax_ts.scatter(dates, ts + self.offset, color=color, marker='o', label=label, alpha=0.5, s=7)
+        ax_ts.scatter(dates, ts + self.offset, color=color, marker='o', label=label, alpha=0.5, s=17)
 
         self.offset = 0
 
@@ -495,6 +591,134 @@ class TimeseriesPlot:
 
         self._plot_event()
 
+####################################################################################
+
+class ProfilePlot:
+    """Handles the plotting of deformation profiles for both model and observed data."""
+    def __init__(self, dataset, inps):
+        for attr in dir(inps):
+            if not attr.startswith('__') and not callable(getattr(inps, attr)):
+                setattr(self, attr, getattr(inps, attr))
+
+        self.data = dataset["data"]
+        self.synth = resize_to_match(dataset["synth"], dataset["data"], 'Profile Data')
+        self.geometry = dataset.get("geometry").get("data") if "geometry" in dataset else None
+        self.attributes = dataset.get("geometry").get("attributes") if "geometry" in dataset else None
+        self.region = self.attributes.get('region')
+
+        resize_to_match(dataset["synth"], dataset["data"], 'Profile Data')
+
+        # Double check if the line is set
+        if not self.line or type(self.line) == float:
+            self.line = set_default_section(self.line, self.region)
+
+        if not self.region:
+            if "scene_footprint" in self.geometry_attr:
+                self.region = parse_polygon(self.geometry_attr["scene_footprint"])
+            elif "region" in self.geometry_attr:
+                self.region = self.geometry_attr["region"]
+            else:
+                latitude, longitude = get_bounding_box(self.geometry_attr)
+                self.region = [longitude[0], longitude[1], latitude[0], latitude[1]]
+
+    def _draw_line(self, data, region, latitude, longitude):
+        """Draws a line on the data grid and returns the indices of the path."""
+        ny, nx = data.shape
+
+        lon_min, lon_max = float(region[0]), float(region[1])
+        lat_min, lat_max = float(region[2]), float(region[3])
+
+        # avoid zero-division for degenerate regions
+        lon_span = lon_max - lon_min if (lon_max - lon_min) != 0 else 1.0
+        lat_span = lat_max - lat_min if (lat_max - lat_min) != 0 else 1.0
+
+        # number of sample points along the profile
+        distance_deg = math.hypot(latitude[1] - latitude[0], longitude[1] - longitude[0])
+        num_points = max(2, int(distance_deg / min(lat_span / max(1, ny - 1), lon_span / max(1, nx - 1))) + 1)
+
+        lon_points = np.linspace(longitude[0], longitude[1], num_points)
+        lat_points = np.linspace(latitude[0], latitude[1], num_points)
+
+        # fractional column index: 0..(nx-1) left->right
+        col_f = (lon_points - lon_min) / lon_span * (nx - 1)
+
+        # fractional row index: if row 0 == top (lat_max), map lat -> row via lat_max - lat
+        row_f = (lat_max - lat_points) / lat_span * (ny - 1)
+
+        # round/clip to integer array indices
+        lon_indices = np.clip(np.round(col_f).astype(int), 0, nx - 1)
+        lat_indices = np.clip(np.round(row_f).astype(int), 0, ny - 1)
+
+        return lat_indices, lon_indices
+
+
+    def _process_sections(self, data, region):
+        """Processes the sections for horizontal and vertical components."""
+        lat_indices, lon_indices = self._draw_line(data, region, self.line[1], self.line[0])
+
+        # Extract the values data along the snapped path
+        values = data[lat_indices, lon_indices]
+
+        return values
+
+    def _plot_profile(self, dataset, key, ax):
+        style = {
+            'model': dict(c='#5190cb', lw=2.5, ls='-', label='Model'),
+            'data': dict(c='#ff7366', marker='o', ls='--', ms=3, label='Data', alpha=0.6),
+            'smooth': dict(c='#79419e', lw=1, ls='-', label='Smoothed Data'),
+            'residual': dict(c='gray', ls='-.', marker=',', label='Residual', alpha=0.5),
+        }.get(key, {})
+
+        y = np.asarray(dataset[key]).ravel()
+        x = np.linspace(0, calculate_distance(self.line[1][0], self.line[0][0], self.line[1][1], self.line[0][1]), y.size)
+
+        ax.plot(x, y, **style)
+
+    def plot(self, ax):
+        """Creates and configures the profile plot."""
+        self.ax = ax
+
+        profile_synth = self._process_sections(self.synth, self.region)
+        profile_data = self._process_sections(self.data, self.region)
+        profile_residual = profile_data - profile_synth
+        # profile_topo = self._process_sections(self.geometry, self.region) if self.geometry is not None else None
+
+        self.ax.set_ylabel(f'{self.unit}')
+
+        if self.norm:
+            profile_synth = (profile_synth - np.nanmin(profile_synth)) / (np.nanmax(profile_synth) - np.nanmin(profile_synth))
+            profile_data = (profile_data - np.nanmin(profile_data)) / (np.nanmax(profile_data) - np.nanmin(profile_data))
+            ax.set_ylabel('Normalized')
+
+        self.profiles = {
+            "model": profile_synth,
+            "data": profile_data,
+            "residual": profile_residual,
+        }
+
+        if self.denoise:
+            window = self.denoise if self.denoise % 2 == 1 else self.denoise + 1
+            # profile_data = savgol_filter(profile_data, window_length=window, polyorder=2,)
+            self.profiles["smooth"] = np.convolve(profile_data, np.ones(window)/window, mode='valid')
+
+        for key in self.profiles:
+            self._plot_profile(self.profiles, key, self.ax)
+
+        self.ax.legend(fontsize='xx-small')
+
+        if 'ascending' in self.ax.get_label():
+            self.label = "ASCENDING"
+        elif 'descending' in self.ax.get_label():
+            self.label = "DESCENDING"
+        elif self.attributes.get('ORBIT_DIRECTION'):
+            self.label = self.attributes['ORBIT_DIRECTION'].upper()
+
+        self.ax.set_xlabel(f'Distance (km)')
+
+        if self.label:
+            self.ax.annotate(self.label,xy=(0.02, 0.98),xycoords='axes fraction',fontsize=7,ha='left',va='top',color='white',bbox=dict(facecolor='black', edgecolor='none', alpha=0.6, boxstyle='round,pad=0.3'))
+
+####################################################################################
 
 class VectorsPlot:
     """Handles the plotting of velocity maps, elevation profiles, and vector fields."""
@@ -516,6 +740,8 @@ class VectorsPlot:
         self.horz_attr = dataset["horizontal"]["attributes"]
         self.vert_attr = dataset["vertical"]["attributes"]
         self.geometry_attr = dataset["horizontal"].get("geometry", {}).get("attributes", {})
+        self.direction = dataset.get("geometry").get("attributes").get('ORBIT_DIRECTION').lower() if "geometry" in dataset else None
+
 
         # Double check if the line is set
         if not self.line or type(self.line) == float:
@@ -605,30 +831,21 @@ class VectorsPlot:
             lon_indices = np.clip(np.round(col_f).astype(int), 0, nx - 1)
             lat_indices = np.clip(np.round(row_f).astype(int), 0, ny - 1)
 
-            # store path for debugging/plotting
-            self.path_df = pd.DataFrame({
-                'longitude': lon_points,
-                'latitude': lat_points,
-                'lon_index': lon_indices,
-                'lat_index': lat_indices,
-                'distance': np.linspace(0, 1, len(lon_points))
-            })
-
             return lat_indices, lon_indices
 
     def _compute_vectors(self):
         """Computes velocity vectors and scaling factors."""
         x, v, h, self.z = draw_vectors(self.topography_section, self.vertical_section, self.horizontal_section, self.line)
-        fig = self.ax.get_figure()
-        fig_width, fig_height = fig.get_size_inches()
-        max_elevation = np.nanmax(self.z)
-        max_x = np.nanmax(x)
+        # fig = self.ax.get_figure()
+        # fig_width, fig_height = fig.get_size_inches()
+        # max_elevation = np.nanmax(self.z)
+        # max_x = np.nanmax(x)
 
-        self.v_adj = 2 * max_elevation / max_x
-        self.h_adj = 1 / self.v_adj
+        # self.v_adj = 2 * max_elevation / max_x
+        # self.h_adj = 1 / self.v_adj
 
-        self.rescale_h = self.h_adj / fig_width
-        self.rescale_v = self.v_adj / fig_height
+        # self.rescale_h = self.h_adj / fig_width
+        # self.rescale_v = self.v_adj / fig_height
 
         # Resample vectors
         for i in range(len(h)):
@@ -654,26 +871,177 @@ class VectorsPlot:
 
         # Plot elevation profile
         self.ax.plot(self.xrange, self.z, color='#a8a8a8', alpha=0.5)
-        self.ax.set_ylim([0, 2 * max(self.z)])
+        ylim = [np.nanmin(self.z) - 1/self.vertical_exag*(np.nanmax(self.z)-np.nanmin(self.z)), np.nanmax(self.z) + 1/self.vertical_exag*(np.nanmax(self.z)-np.nanmin(self.z))]
+        self.ax.set_ylim(ylim)
         self.ax.set_xlim([min(self.xrange), max(self.xrange)])
 
         # Plot velocity vectors
         #Probably right one
-        self.ax.quiver(self.filtered_x, self.filtered_elevation, self.filtered_h, self.filtered_v, color='#ff7366', width=(1 / 10**(2.5)))
+        if self.vector_legend == 'mean_vector':
+            # Mean velocity vector
+            self.imdata = self.ax.quiver(self.filtered_x, self.filtered_elevation, self.filtered_h, self.filtered_v, color='#ff7366', width=(1 / 10**(2.5)))
+            start_x = max(self.xrange) * 0.1
+            start_y = (max(ylim) * 0.95)
+            mean_velocity = np.nanmean(np.sqrt(((self.filtered_v[self.filtered_v!=0]))**2 + ((self.filtered_h[self.filtered_h!=0]))**2))
 
-        # Mean velocity vector
-        start_x = max(self.xrange) * 0.1
-        start_y = (2 * max(self.z) * 0.8)
-        mean_velocity = np.sqrt(np.nanmean((self.vertical_section[self.vertical_section!=0]))**2 + np.nanmean((self.horizontal_section[self.horizontal_section!=0]))**2)
-        rounded_mean_velocity = round(mean_velocity, 4) if mean_velocity else round(mean_velocity, 3)
+            vel_indicator = f"{mean_velocity:.1f} {self.unit}" if mean_velocity >= 0.1 else f"{mean_velocity:.2f} {self.unit}"
+            self.ax.quiver([start_x], [start_y], [mean_velocity], [0], color='#ff7366', scale_units='xy', scale=1, width=(1 / 10**(2.5)))
+            self.ax.text(start_x, start_y * 1.01, vel_indicator, color='black', ha='left', fontsize=8)
 
-        self.ax.quiver([start_x], [start_y], [mean_velocity], [0], color='#ff7366', scale_units='xy', width=(1 / 10**(2.5)))
-        self.ax.text(start_x, start_y * 1.03, f"{rounded_mean_velocity:.4f} {self.unit}", color='black', ha='left', fontsize=8)
+        elif self.vector_legend == 'colorbar':
+            from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+            self.imdata = self.ax.quiver(self.filtered_x, self.filtered_elevation, self.filtered_h, self.filtered_v, np.hypot(self.filtered_h, self.filtered_v), cmap='viridis', width=(1 / 10**(2.5)))
+            cax = inset_axes(self.ax, width="15%", height="2.8%", loc="lower left", borderpad=2.0)
+
+            cb = self.ax.figure.colorbar(self.imdata, cax=cax, orientation="horizontal")
+
+            mag = np.sqrt(((self.filtered_v[self.filtered_v!=0]))**2 + ((self.filtered_h[self.filtered_h!=0]))**2)
+            vmin, vmax = np.nanmin(mag), np.nanmax(mag)
+            # Get current normalized limits (usually 0–1)
+            nmin, nmax = cax.get_xlim()
+
+            # Place ticks at the colorbar ends
+            cax.set_xticks([nmin, nmax])
+
+            # Replace text only
+            cax.set_xticklabels([f"{vmin:.1f}", f"{vmax:.1f}"])
+
+            cb.set_label(self.unit)
+            cb.ax.xaxis.set_label_position('top')
 
         # Add labels
         self.ax.set_ylabel("Elevation (m)")
         self.ax.set_xlabel("Distance (km)")
 
+
+class Mogi():
+    def __init__(self, ax, xcen, ycen):
+        self.x = xcen
+        self.y = ycen
+        self._plot_source(ax)
+
+    def _plot_source(self, ax):
+        ax.scatter(self.x, self.y, s=15, color="black", linewidth=2, marker="x")
+
+
+class Spheroid():
+    def __init__(self, ax, xcen, ycen, s_axis_max, ratio, strike, dip):
+        self.x = xcen
+        self.y = ycen
+        self.s_axis = s_axis_max
+        self.ratio = ratio
+        self.strike = strike
+        self.dip = dip
+        self._plot_source(ax)
+
+    def _plot_source(self, ax):
+        # Calculate semi-minor axis
+        s_minor = self.s_axis * self.ratio
+
+        # Convert angles to radians
+        strike_rad = np.radians(self.strike - 90)
+        dip_rad = np.radians(self.dip)
+
+        # Adjust the semi-major axis length for the dip projection
+        s_axis_projected = self.s_axis * np.sin(dip_rad)
+
+        # Calculate endpoints of the major axis (with dip projection)
+        dx_major = s_axis_projected * np.cos(strike_rad)
+        dy_major = s_axis_projected * np.sin(strike_rad)
+        x_major = [self.x - dx_major, self.x + dx_major]
+        y_major = [self.y - dy_major, self.y + dy_major]
+
+        # Calculate endpoints of the minor axis (without dip projection)
+        dx_minor = s_minor * np.sin(strike_rad)
+        dy_minor = s_minor * -np.cos(strike_rad)
+        x_minor = [self.x - dx_minor, self.x + dx_minor]
+        y_minor = [self.y - dy_minor, self.y + dy_minor]
+
+        ax.plot(x_major, y_major, 'r-', label='Major Axis')  # Major axis in red
+        ax.plot(x_minor, y_minor, 'b-', label='Minor Axis')  # Minor axis in blue
+
+
+class Penny():
+    def __init__(self, ax, xcen, ycen, radius):
+        self.x = xcen
+        self.y = ycen
+        self.radius = radius
+        self._plot_source(ax)
+
+    def _plot_source(self, ax):
+        circle = plt.Circle((self.x, self.y), self.radius, edgecolor='black', color="#7cc0ff", fill=True, alpha=0.7, label='Penny')
+        ax.add_patch(circle)
+
+
+class Okada:
+    def __init__(self, ax, xtlc, ytlc, length, width, strike, dip):
+        self.xtlc = xtlc
+        self.ytlc = ytlc
+        self.length = length
+        self.width = width
+        self.strike = strike
+        self.dip = dip
+        self._plot_source(ax)
+
+    def _plot_source(self, ax):
+        dip_radians = np.radians(self.dip)
+        projected_width = self.width * np.cos(dip_radians)
+        height = abs(projected_width)
+
+        # Transform
+        t = Affine2D().rotate_deg(90 - self.strike).translate(self.xtlc, self.ytlc)
+
+        # Rectangle on top
+        rect = Rectangle(
+            (0.0, -height),
+            self.length,
+            height,
+            fill=False,
+            linestyle="--",
+            edgecolor="black",
+            linewidth=1.4,
+            zorder=30
+        )
+        rect.set_transform(t + ax.transData)
+        ax.add_patch(rect)
+
+        # Line behind rectangle
+        ax.plot(
+            [0, self.length],
+            [0, 0],
+            color="black",
+            linewidth=2,
+            transform=t + ax.transData,
+            zorder=28
+        )
+
+        # Arrow size scales with fault length (slightly longer triangles)
+        arrow_len = max(self.length * 0.12, self.length * 0.04)
+        arrow_width = arrow_len * 0.7
+
+        # Adaptive spacing (prevents overlap)
+        min_spacing = arrow_len * 2.5
+        n_arrows = max(1, int(self.length / min_spacing))
+        positions = np.linspace(0.15, 0.85, n_arrows)
+
+        for pos in positions:
+            x = pos * self.length
+
+            # Triangle vertices (pointing DOWN = slip direction)
+            tip = (x, -arrow_len)
+            base_left = (x - arrow_width / 2, -arrow_len * 0.15)
+            base_right = (x + arrow_width / 2, -arrow_len * 0.15)
+
+            # Triangle behind rectangle (but above line)
+            triangle = Polygon(
+                [tip, base_left, base_right],
+                closed=True,
+                facecolor="black",
+                edgecolor="black",
+                zorder=29
+            )
+            triangle.set_transform(t + ax.transData)
+            ax.add_patch(triangle)
 
 def point_on_globe(latitude, longitude, names=None, size='0.7', fsize=10):
     fig = pygmt.Figure()
@@ -715,9 +1083,72 @@ def point_on_globe(latitude, longitude, names=None, size='0.7', fsize=10):
     return fig
 
 
-if __name__ == '__main__':
-    # Example usage
-    file = "/Users/giacomo/onedrive/scratch/Chiles-CerroNegroSenAT120/mintpy/S1_IW2_120_1184_1185_20170112_XXXXXXXX.he5"
-    # file = "/Users/giacomo/onedrive/scratch/AgungBaturSenAT156/mintpy/S1_IW12_156_1154_1155_20170121_XXXXXXXX.he5"
-    ref_point = [0.8389,-77.902]
-    TimeseriesPlot(file, lalo=[0.8, -77.95], ref_lalo=ref_point)
+def plot_beachball(ax, strike, dip, rake, xy=(0, 0), radius=0.01, facecolor="k", edgecolor="k", resolution=200, zorder=10):
+    """
+    Pure matplotlib focal mechanism beachball.
+
+    Parameters
+    ----------
+    ax : matplotlib axis
+    strike, dip, rake : degrees
+    xy : center (x, y)
+    radius : size in data units
+    """
+
+    strike = np.radians(strike)
+    dip = np.radians(dip)
+    rake = np.radians(rake)
+
+    # Fault normal vector
+    n = np.array([
+        -np.sin(dip) * np.sin(strike),
+        np.sin(dip) * np.cos(strike),
+        -np.cos(dip)
+    ])
+
+    # Slip vector
+    s = np.array([
+        np.cos(rake) * np.cos(strike) + np.sin(rake) * np.cos(dip) * np.sin(strike),
+        np.cos(rake) * np.sin(strike) - np.sin(rake) * np.cos(dip) * np.cos(strike),
+        -np.sin(rake) * np.sin(dip)
+    ])
+
+    # Circle boundary
+    circle = Circle(xy, radius, edgecolor=edgecolor, facecolor="white", lw=1.5, zorder=zorder)
+    ax.add_patch(circle)
+
+    # Sample sphere directions
+    theta = np.linspace(0, 2*np.pi, resolution)
+    phi = np.linspace(0, np.pi/2, resolution)
+
+    X, Y = [], []
+
+    for t in theta:
+        for p in phi:
+            # Direction vector
+            v = np.array([
+                np.sin(p) * np.cos(t),
+                np.sin(p) * np.sin(t),
+                np.cos(p)
+            ])
+
+            # Polarity sign
+            sign = np.dot(v, s) * np.dot(v, n)
+
+            if sign > 0:  # compressional quadrant
+                x = xy[0] + radius * np.sin(p) * np.cos(t)
+                y = xy[1] + radius * np.sin(p) * np.sin(t)
+                X.append(x)
+                Y.append(y)
+
+    ax.scatter(X, Y, s=0.01, color=facecolor, zorder=zorder)
+
+    return circle
+
+
+# if __name__ == '__main__':
+#     # Example usage
+#     file = "/Users/giacomo/onedrive/scratch/Chiles-CerroNegroSenAT120/mintpy/S1_IW2_120_1184_1185_20170112_XXXXXXXX.he5"
+#     # file = "/Users/giacomo/onedrive/scratch/AgungBaturSenAT156/mintpy/S1_IW12_156_1154_1155_20170121_XXXXXXXX.he5"
+#     ref_point = [0.8389,-77.902]
+#     TimeseriesPlot(file, lalo=[0.8, -77.95], ref_lalo=ref_point)

@@ -1,14 +1,17 @@
 #! /usr/bin/env python3
 import os
+import re
 import sys
 import math
 import glob
+import shutil
 import logging
 import subprocess
 import numpy as np
+import pandas as pd
 import multiprocessing
-import shutil
 from pathlib import Path
+from pyproj import Transformer
 from scipy.ndimage import zoom
 from mintpy.utils import readfile
 from mintpy.objects import HDFEOS
@@ -17,6 +20,62 @@ from mintpy.cli import generate_mask
 from scipy.interpolate import interp1d
 from mintpy.utils import utils, writefile
 from mintpy.save_hdfeos5 import polygon_corners_string
+
+
+def detect_direction_from_name(fname, asc_tokens=None, desc_tokens=None, default=None):
+    """
+    Robustly decide 'ascending' / 'descending' from a filename/string.
+    - tokenizes on non-alnum characters and matches whole tokens first.
+    - falls back to substring search for compatibility.
+    """
+    s = str(fname).lower()
+    tokens = set(re.findall(r'[a-z0-9]+', s))
+
+    asc_tokens = {t.lower() for t in (asc_tokens or ['sena', 'cska', 'asc'])}
+    desc_tokens = {t.lower() for t in (desc_tokens or ['send', 'cskd', 'desc'])}
+
+    # match whole tokens
+    if tokens & asc_tokens:
+        return 'ascending'
+    if tokens & desc_tokens:
+        return 'descending'
+
+    # fallback substring match (keeps backward compatibility)
+    for t in asc_tokens:
+        if t in s:
+            return 'ascending'
+    for t in desc_tokens:
+        if t in s:
+            return 'descending'
+
+    return default
+
+
+def read_best_values(file):
+    df = pd.read_csv(file)
+    row = df.iloc[0]  # best-fit row
+
+    sources = {}
+    terms = ["xcen", "ycen", "radius", "ytlc", "xtlc", "s_axis_max", "ratio", "strike", "dip", "length", "width"]
+
+    for col in df.columns:
+        for term in terms:
+            # Match columns with the term and optional "_<n>", excluding those ending with "sigma"
+            m = re.match(fr"({term})(?:_(\d+))?(?<!sigma)$", col)
+
+            if m:
+                feature = m.group(1)  # Extract the feature name (e.g., "xcen", "s_axis_max")
+                idx = m.group(2) if m.group(2) else "1"  # Default index = 1 if no "_<n>"
+
+                # Group by source index
+                if idx not in sources:
+                    sources[idx] = {}
+
+                sources[idx][feature] = row[col]
+                break
+
+    return sources
+
 
 def configure_logging(directory=None):
     """Configure logging for the application.
@@ -126,16 +185,67 @@ def resize_to_match(target, reference, name):
     ValueError: If the target array has an invalid shape (i.e., any dimension is non-positive).
     """
 
-    if target.shape != reference.shape:
-        if all(dim > 0 for dim in target.shape):
-            zoom_factors = (
-                reference.shape[0] / target.shape[0],
-                reference.shape[1] / target.shape[1],
+    target = np.asarray(target)
+    reference = np.asarray(reference)
+
+    if target.ndim != reference.ndim:
+        raise ValueError(
+            f"Dimensionality mismatch: {target.ndim}D vs {reference.ndim}D"
+        )
+
+    if target.size == 0 or reference.size == 0:
+        raise ValueError(f"Empty array for {name}")
+
+    # ------------------------
+    # 2D case
+    # ------------------------
+    if target.ndim == 2:
+        zoom_factors = (
+            reference.shape[0] / target.shape[0],
+            reference.shape[1] / target.shape[1],
+        )
+
+        out = zoom(target, zoom_factors, order=1)
+
+        # force exact shape
+        out = out[: reference.shape[0], : reference.shape[1]]
+
+        if out.shape != reference.shape:
+            pad_y = reference.shape[0] - out.shape[0]
+            pad_x = reference.shape[1] - out.shape[1]
+            out = np.pad(out, ((0, pad_y), (0, pad_x)), mode="edge")
+
+        return out
+
+    # ------------------------
+    # 1D case
+    # ------------------------
+    if target.ndim == 1:
+        zoom_factor = reference.shape[0] / target.shape[0]
+        out = zoom(target, zoom_factor, order=1)
+
+        # force exact length
+        out = out[: reference.shape[0]]
+        if out.shape[0] != reference.shape[0]:
+            out = np.pad(
+                out,
+                (0, reference.shape[0] - out.shape[0]),
+                mode="edge",
             )
-            return zoom(target, zoom_factors, order=1)
-        else:
-            raise ValueError(f"Invalid shape for {name}: {target.shape}")
-    return target
+
+        return out
+
+
+    # if target.shape != reference.shape:
+    #     if all(dim > 0 for dim in target.shape) and (target.ndim == 2 and reference.ndim ==2):
+    #         zoom_factors = (
+    #             reference.shape[0] / target.shape[0],
+    #             reference.shape[1] / target.shape[1],
+    #         )
+    #         return zoom(target, zoom_factors, order=1)
+    #     else:
+    #         raise ValueError(f"Invalid shape for {name}: {target.shape}")
+    # return target
 
 
 def extract_temporalCoherence(file_path, coords):
@@ -250,15 +360,17 @@ def get_file_names(path):
     eos_file = get_eos5_file(path, scratch)
 
     metadata = readfile.read_attribute(eos_file)
-    velocity_file = 'geo/geo_velocity.h5'
+    velocity_file = 'geo_velocity.h5'
     geometryRadar_file = 'geo_geometryRadar.h5'
+    maskTempCoh_file = 'geo_maskTempCoh.h5.h5'
 
     # Check if geocoded
     if 'Y_STEP' not in metadata:
         velocity_file = (velocity_file.split(os.sep)[-1]).replace('geo_', '')
         geometryRadar_file = geometryRadar_file.split(os.sep)[-1].replace('geo_', '')
+        maskTempCoh_file = maskTempCoh_file.split(os.sep)[-1].replace('geo_', '')
 
-    keywords = ['SenD','SenA','SenDT', 'SenAT', 'CskAT', 'CskDT']
+    keywords = ['SenD','SenA', 'CskA', 'CskD']
     elements = path.split(os.sep)
     project_dir = None
     for element in elements:
@@ -272,11 +384,12 @@ def get_file_names(path):
     project_base_dir = os.path.join(scratch, project_base_dir)
     vel_file = os.path.join(eos_file.rsplit('/', 1)[0], velocity_file)
     geometry_file = os.path.join(project_base_dir, track_dir, geometryRadar_file)
+    mask_file = os.path.join(project_base_dir, track_dir, maskTempCoh_file)
 
     inputs_folder = os.path.join(scratch, project_dir)
     out_vel_file = os.path.join(project_base_dir, track_dir, velocity_file.split(os.sep)[-1])
 
-    return eos_file, vel_file, geometry_file, project_base_dir, out_vel_file, inputs_folder
+    return eos_file, vel_file, geometry_file, mask_file, project_base_dir, out_vel_file, inputs_folder
 
 
 def prepend_scratchdir_if_needed(path):
@@ -596,6 +709,16 @@ def calculate_distance(lat_1, lon_1, lat_2, lon_2):
     return (((lat_1 - lat_2)*111)**2 + ((lon_1 - lon_2)*km_per_deg)**2)**0.5
 
 
+def meters_to_lat_deg(meters):
+    """Convert meters to degrees latitude."""
+    return meters / 111_000.0
+
+
+def meters_to_lon_deg(meters, ref_lat):
+    """Convert meters to degrees longitude at reference latitude."""
+    return meters / (111_000.0 * math.cos(math.radians(ref_lat)))
+
+
 def expand_bbox(bbox):
     """
     Expands the bounding box to cover a distance of 150 km in both directions.
@@ -745,6 +868,89 @@ def plot_point(ax, lat, lon, marker='o', color='black', size=5, alpha=1, zorder=
     ax.plot(lon, lat, marker, color=color, markersize=size, alpha=alpha, zorder=zorder)
 
 
+def latlon_to_utm_zone(lat, lon):
+    """
+    Return UTM zone number and hemisphere for a lat/lon point.
+    """
+    lat = float(lat)
+    lon = float(lon)
+    zone = int((lon + 180) // 6) + 1
+    hemisphere = 'north' if lat >= 0 else 'south'
+    return zone, hemisphere
+
+
+def utm_to_latlon(easting, northing, zone, hemisphere=None):
+    """
+    Convert UTM coordinates (Easting, Northing) to geographic (lat, lon).
+
+    Parameters
+    ----------
+    easting, northing : scalar or array-like
+        UTM coordinates (meters).
+    zone : int or str
+        UTM zone number (e.g. 12) or string like '12N' / '12S'.
+    hemisphere : {'north','south', True/False}, optional
+        If given, overrides hemisphere. True/'north' -> northern, False/'south' -> southern.
+
+    Returns
+    -------
+    lat, lon : tuple
+        latitude and longitude (same shape as input).
+    """
+    # parse zone if passed as '12N' or '12S'
+    if isinstance(zone, str):
+        zone_str = zone.strip()
+        if zone_str[-1].isalpha():
+            zone_num = int(zone_str[:-1])
+            hemisphere = 'north' if zone_str[-1].upper() >= 'N' else 'south'
+        else:
+            zone_num = int(zone_str)
+    else:
+        zone_num = int(zone)
+
+    if hemisphere is None:
+        northern = True
+    elif isinstance(hemisphere, str):
+        northern = hemisphere.lower().startswith('n')
+    else:
+        northern = bool(hemisphere)
+
+    epsg = 32600 + zone_num if northern else 32700 + zone_num
+    transformer = Transformer.from_crs(f"epsg:{epsg}", "epsg:4326", always_xy=True)
+
+    # Transformer.transform expects x,y inputs and returns x',y' (here lon,lat)
+    lon, lat = transformer.transform(easting, northing)
+    return lat, lon
+
+
+def convert_to_utm(longitude, latitude):
+    """
+    Converts latitude and longitude to UTM coordinates.
+
+    Parameters:
+        longitude (array-like): Array of longitude values.
+        latitude (array-like): Array of latitude values.
+
+    Returns:
+        tuple: Arrays of UTM Eastings (x) and Northings (y).
+    """
+    # Calculate the UTM zone based on the longitude
+    utm_zone = int((np.nanmean(longitude) + 180) // 6) + 1
+
+    # Determine the hemisphere based on latitude
+    hemisphere = 'north' if np.nanmean(latitude) >= 0 else 'south'
+
+    # Determine the EPSG code based on the UTM zone and hemisphere
+    epsg_code = f"326{utm_zone:02d}" if hemisphere == 'north' else f"327{utm_zone:02d}"
+
+    # Create a Transformer object for WGS84 to UTM
+    transformer = Transformer.from_crs("epsg:4326", f"epsg:{epsg_code}", always_xy=True)
+
+    # Convert to UTM coordinates (Eastings, Northings)
+    x, y = transformer.transform(longitude, latitude)
+
+    return x, y
+
 
 def are_we_on_slurm_system():
     """Determine whether we are on a SLURM system. Returns
@@ -783,3 +989,56 @@ def detect_cores():
         n = multiprocessing.cpu_count()       # Local machine (macOS/Linux workstation)
 
     return max(1, round(n * 0.8))
+
+
+def parse_global_cmt(soup):
+    """
+    Extract events from Global CMT HTML soup.
+
+    Returns list of dicts.
+    """
+
+    events = []
+
+    # Find all event IDs
+    for tag in soup.find_all("b"):
+
+        event_id = tag.text.strip()
+
+        # Skip non-event <b> tags
+        if not re.match(r"\d{12}[A-Z]", event_id):
+            continue
+
+        # The event info is in the next <pre>
+        pre = tag.find_next("pre")
+        if not pre:
+            continue
+
+        text = pre.get_text()
+
+        # --- Extract location ---
+        lat = float(re.search(r"Lat=\s*([-\d\.]+)", text).group(1))
+        lon = float(re.search(r"Lon=\s*([-\d\.]+)", text).group(1))
+        depth = float(re.search(r"Depth=\s*([-\d\.]+)", text).group(1))
+
+        # --- Extract first fault plane (standard choice) ---
+        fp = re.search(
+            r"Fault plane:\s*strike=(\d+)\s*dip=(\d+)\s*slip=([-\d]+)",
+            text
+        )
+
+        strike = float(fp.group(1))
+        dip = float(fp.group(2))
+        rake = float(fp.group(3))
+
+        events.append({
+            "id": event_id,
+            "lat": lat,
+            "lon": lon,
+            "depth": depth,
+            "strike": strike,
+            "dip": dip,
+            "rake": rake,
+        })
+
+    return events

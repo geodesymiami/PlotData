@@ -14,33 +14,65 @@ class PlotTemplate:
     def _get_layout(self, name):
         layouts = {
             "default": [
-                ["ascending.point.section", "horizontal.point.section", ],
-                ["descending.point.section", "vertical.point.section", ],
-                ["timeseries", "vectors", ],
+                ["velocity_ascending.point.section",    "horizontal.point.section", ],
+                ["velocity_descending.point.section",   "vertical.point.section", ],
+                ["timeseries",                          "vectors", ],
             ],
             "default_with_seismicity": [
-                ["ascending.point.section", "horizontal.point.section", "seismicmap"],
-                ["descending.point.section", "vertical.point.section", "seismicity.distance"],
-                ["timeseries", "vectors", "seismicity.date"],
+                ["velocity_ascending.point.section",    "horizontal.point.section", "seismicmap"],
+                ["velocity_descending.point.section",   "vertical.point.section",   "seismicity.distance"],
+                ["timeseries",                          "vectors",                  "seismicity.date"],
+            ],
+            "default_with_model": [
+                ["velocity_ascending.point.section",  "horizontal.point.section",   "profile_ascending"],
+                ["velocity_descending.point.section", "vertical.point.section",     "profile_descending"],
+                ["timeseries",                        "vectors",                    "seismicity.date"],
             ],
             "ascending": [
-                ["ascending.point" ],
+                ["velocity_ascending" ],
             ],
             "descending": [
-                ["descending.point" ],
+                ["velocity_descending" ],
+            ],
+            "velocity": [
+                ["velocity_ascending" ],
+                ["velocity_descending" ],
             ],
             "timeseries": [
-                ["ascending.point" ],
-                ["descending.point" ],
+                ["velocity_ascending.point" ],
+                ["velocity_descending.point" ],
                 ["timeseries" ],
             ],
+            "vectors": [
+                ["velocity_ascending.section" ],
+                ["velocity_descending.section" ],
+                ["vectors" ],
+            ],
+            "seismicmap": [
+                ["seismicmap" ],
+            ],
+            "model": [
+                ["profile_ascending",           "profile_descending"],
+                ["velocity_ascending.section",  "velocity_descending.section"],
+                ["model_ascending.section",     "model_descending.section"],
+            ],
+            "model_descending": [
+                ["profile_descending"],
+                ["velocity_descending.section"],
+                ["model_descending.section"],
+            ],
+            "model_ascending": [
+                ["profile_ascending"],
+                ["velocity_ascending.section"],
+                ["model_ascending.section"],
+            ],
             "test": [
-                # ["descending.point" ],
-                ["timeseries" ],
-                # ["ascending"],
-                # ["descending",],
+                # ["velocity_descending", "velocity_ascending"],
+                # ["horizontal", "vertical"]
+                ["vectors",             "velocity_descending.section.point"],
+                ["profile_descending",  "timeseries"],
+                # ["timeseries"],
                 # ["seismicmap"],
-                # ["descending.point.section",],
                 # ["seismicity.date",],
                 # ["seismicity.distance",],
             ]
@@ -150,9 +182,9 @@ class PlotGrid:
 
     def _create_axes(self, inps):
         width = {
-            1: 6,
+            1: 5,
             2: 10,
-            3: 20,
+            3: 18,
         }
         num_columns = int(max(len(row) for row in self.template.layout))
         fig, axs = plt.subplot_mosaic(
@@ -172,7 +204,7 @@ class PlotGrid:
         return axs
 
     def _axes_properties(self, ax, inps):
-        ax.set_box_aspect(0.5)
+        ax.set_box_aspect(0.7)
         ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=4))
         ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=4))
 

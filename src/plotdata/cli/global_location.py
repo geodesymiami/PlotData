@@ -14,7 +14,6 @@ from plotdata.volcano_functions import get_volcano_coord_name
 from plotdata.objects.plotters import point_on_globe
 import argparse
 import os
-import pygmt
 
 
 SCRATCHDIR = os.getenv('SCRATCHDIR')
@@ -92,6 +91,7 @@ def main(iargs=None, namespace=None):
 
     if inps.id:
         volcanoes = [get_volcano_coord_name(None, id_) for id_ in inps.id]
+
         coords = [v[0] for v in volcanoes]
         names = [v[1] for v in volcanoes]
 

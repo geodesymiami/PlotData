@@ -120,7 +120,7 @@ def add_plot_parameters_arguments(parser):
                         type=int,
                         help='fontsize for view.py (default: %(default)s).')
     plot_parameters.add_argument('--dpi',
-                        default=100,
+                        default=300,
                         type=int,
                         help='DPI of the plot (default: %(default)s).')
     plot_parameters.add_argument('--colormap',
@@ -128,6 +128,12 @@ def add_plot_parameters_arguments(parser):
                         default='jet',
                         metavar='COLORMAP',
                         help='Colormap for the plot (default: %(default)s).')
+    plot_parameters.add_argument('-cbrs','--colorbar-size',
+                        dest='colorbar_size',
+                        default=0.3,
+                        type=float,
+                        metavar='SIZE',
+                        help='Size of the colorbar (0.1 - 1) (default: %(default)s).')
     plot_parameters.add_argument('--no-colorbar',
                         action='store_true',
                         help='Do not display colorbar')
@@ -135,6 +141,16 @@ def add_plot_parameters_arguments(parser):
                         type=float,
                         default=None,
                         help='Zoom factor for the plot.')
+    parser.add_argument("--vector-legend",
+                        choices=["colorbar", "mean_vector"],
+                        default="mean_vector",
+                        help="Legend style for velocity representation"
+                    ),
+    parser.add_argument("--vertical-exaggeration",
+                        dest='vertical_exag',
+                        type=float,
+                        default=1,
+                        help="Vertical exaggeration factor for vector plot (default: %(default)s).")
     return parser
 
 
@@ -300,6 +316,13 @@ def add_seismicity_arguments(parser):
                             nargs='*',
                             type=float,
                             help='Minimum magnitude for the earthquake events in the timeeries'
+                            )
+    seismicity.add_argument('--focal',
+                            metavar='MAGNITUDE',
+                            nargs='?',
+                            type=float,
+                            default=None,
+                            help='Add focal mechanisms to the plot with magnitude above specified value (default: %(default)s).'
                             )
 
     return parser
