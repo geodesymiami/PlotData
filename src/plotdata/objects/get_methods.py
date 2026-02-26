@@ -4,13 +4,14 @@ import pygmt
 import requests
 import numpy as np
 import pandas as pd
+from bs4 import BeautifulSoup
 from datetime import datetime
 from mintpy.utils import readfile
 from itertools import zip_longest
 from scipy.interpolate import griddata
 from mintpy.objects.coord import coordinate
 from mintpy.objects import timeseries, HDFEOS
-from plotdata.helper_functions import resize_to_match, get_bounding_box, expand_bbox, set_default_section, utm_to_latlon, latlon_to_utm_zone, detect_direction_from_name, detect_direction_from_name
+from plotdata.helper_functions import resize_to_match, get_bounding_box, expand_bbox, set_default_section, utm_to_latlon, latlon_to_utm_zone, detect_direction_from_name, parse_global_cmt
 
 # ------------------- API Classes ------------------- #
 
@@ -23,11 +24,15 @@ class DataFetcher(ABC):
     def construct_url(self, *args, **kwargs):
         pass
 
+    @abstractmethod
+    def parse_fetch(self, *args, **kwargs):
+        pass
+
     def fetch_data(self, *args, **kwargs):
         url = self.construct_url(*args, **kwargs)
         response = requests.get(url)
         response.raise_for_status()
-        return response.json()
+        return self.parse_fetch(response)
 
 
 class DataFetcherFactory:
@@ -38,6 +43,10 @@ class DataFetcherFactory:
             print("USGS database\n")
 
             return USGSDataFetcher(**kwargs)
+        elif website == "cmt":
+            print("-" * 50)
+            print("Global CMT database\n")
+            return GlobalCMTDataFetcher(**kwargs)
         elif website == "anotherwebsite":
             return AnotherWebsiteDataFetcher(**kwargs)
         else:
@@ -65,6 +74,54 @@ class USGSDataFetcher(DataFetcher):
             "minmagnitude": self.magnitude
         })
         return f"{self.base_url}?{'&'.join([f'{k}={v}' for k, v in self.params.items()])}"
+
+    def parse_fetch(self, response):
+        return response.json()
+
+
+class GlobalCMTDataFetcher(DataFetcher):
+    API_ENDPOINT = "https://www.globalcmt.org/cgi-bin/globalcmt-cgi-bin/CMT5/form"
+
+    def __init__(self, start_date, end_date, magnitude, params=None):
+        super().__init__(self.API_ENDPOINT, params or {})
+        self.start_date = start_date
+        self.end_date = end_date
+        self.magnitude = magnitude
+
+    def construct_url(self, minlat, maxlat, minlon, maxlon, output_format=0):
+        sdt = datetime.strptime(self.start_date, "%Y%m%d")
+        edt = datetime.strptime(self.end_date, "%Y%m%d")
+
+        self.params.update({
+                'itype': 'ymd',
+                'yr': sdt.year,
+                'mo': sdt.month,
+                'day': sdt.day,
+                'oyr': edt.year, # For single day search, use same year/month/day
+                'omo': edt.month,
+                'oday': edt.day,
+                # 'jyr': sdt.year, # Not strictly necessary if using ymd, but part of original request
+                # 'jday': 1, # Not strictly necessary if using ymd, but part of original request
+                # 'ojyr': edt.year,
+                # 'ojday': 1, # Not strictly necessary if using ymd, but part of original request
+                'otype': 'ymd',
+                # 'nday': 1, # Number of days to search from start date
+                'lmw': float(self.magnitude), 'umw': 10, # Magnitude Mw range
+                'lms': 0, 'ums': 10, # Magnitude Ms range
+                'lmb': 0, 'umb': 10, # Magnitude mb range
+                'llat': minlat, 'ulat': maxlat, # Latitude range (global)
+                'llon': minlon, 'ulon': maxlon, # Longitude range (global)
+                'lhd': 0, 'uhd': 1000, # Depth range
+                'lts': -9999, 'uts': 9999, # Time shift range
+                'lpe1': 0, 'upe1': 90, # Tension plunge range
+                'lpe2': 0, 'upe2': 90, # Null plunge range
+                'list': output_format # This is key for the CMTSOLUTION format
+        })
+        return f"{self.base_url}?{'&'.join([f'{k}={v}' for k, v in self.params.items()])}"
+
+    def parse_fetch(self, response):
+        soup = BeautifulSoup(response.text, 'html.parser')
+        return parse_global_cmt(soup)
 
 
 class AnotherWebsiteDataFetcher(DataFetcher):
@@ -154,9 +211,9 @@ class DataExtractor:
             if 'data' in value or 'synth' in value:
                 days = value['attributes'].get('days', 1)
                 units.update({
-                    'mm': 1000 * 365.25 / days,
-                    'cm': 100 * 365.25 / days,
-                    'm': 365.25 / days,
+                    'mm': 1000 * days / 365.25,
+                    'cm': 100 * days/ 365.25,
+                    'm': days / 365.25 ,
                     })
                 if self.unit in units:
                     if 'data' in value and value['data'] is not None:
@@ -425,6 +482,10 @@ class DataExtractor:
             earthquakes = self._extract_earthquakes()
             dictionary['earthquakes'] = earthquakes
 
+        if self.focal:
+            focal_mechanism = self._extract_cmt_data(file)
+            dictionary['focal_mechanism'] = focal_mechanism
+
         if not self.line or type(self.line) == float:
             self.line = set_default_section(self.line, self.region)
 
@@ -441,7 +502,7 @@ class DataExtractor:
                         dictionary['earthquakes'] = self._extract_earthquakes()
                         return dictionary
 
-        dictionary = self._extract_geometry_data(file)
+        dictionary['geometry'] = self._extract_geometry_data(file)
         dictionary['earthquakes'] = self._extract_earthquakes()
 
         return dictionary
@@ -485,6 +546,8 @@ class DataExtractor:
                 atr["longitude"] = lon1d
                 atr["latitude"] = lat1d
                 atr["region"] = [np.nanmin(longitude), np.nanmax(longitude), np.nanmin(latitude), np.nanmax(latitude)]
+
+                self.region = atr["region"]
 
                 dictionary = {
                     'data': elevation,
@@ -595,14 +658,26 @@ class DataExtractor:
 
         return earthquakes
 
-    def _extract_earthquakes_from_dataset(self):
+    def _extract_earthquakes_from_dataset(self, file=None):
         """
         Search `dataset` for embedded 'earthquakes' covering `region`
         region = [min_lon, max_lon, min_lat, max_lat]
         Returns a dict with keys: date, lalo, magnitude, depth, moment (or {} if none).
         """
         out = {}
-        min_lon, max_lon, min_lat, max_lat = self.region
+        if not hasattr(self, 'region') or not self.region and file:
+            atr = readfile.read_attribute(file)
+            latitude, longitude = get_bounding_box(atr)
+            self.region = [min(longitude), max(longitude), min(latitude), max(latitude)]
+
+        if hasattr(self, 'subset') and self.subset:
+            lat1, lon1 = map(float, self.subset.split(":")[0].split(","))
+            lat2, lon2 = map(float, self.subset.split(":")[1].split(","))
+
+            min_lon, max_lon = min(lon1, lon2), max(lon1, lon2)
+            min_lat, max_lat = min(lat1, lat2), max(lat1, lat2)
+        else:
+            min_lon, max_lon, min_lat, max_lat = self.region
 
         for key, entry in self.dataset.items():
             attrs = entry.get('attributes')
@@ -635,3 +710,41 @@ class DataExtractor:
             return out
 
         return {}
+
+    def _extract_cmt_data(self, file=None):
+        website = self.website if hasattr(self, "website") else "cmt"
+
+        if not hasattr(self, 'region') or not self.region and file:
+            atr = readfile.read_attribute(file)
+            latitude, longitude = get_bounding_box(atr)
+            self.region = [min(longitude), max(longitude), min(latitude), max(latitude)]
+
+        if hasattr(self, 'subset') and self.subset:
+            lat1, lon1 = map(float, self.subset.split(":")[0].split(","))
+            lat2, lon2 = map(float, self.subset.split(":")[1].split(","))
+
+            min_lon, max_lon = min(lon1, lon2), max(lon1, lon2)
+            min_lat, max_lat = min(lat1, lat2), max(lat1, lat2)
+        else:
+            min_lon, max_lon, min_lat, max_lat = self.region
+
+        if not hasattr(self, 'magnitude') or not self.magnitude:
+            self.magnitude = self.focal if self.focal else 2
+
+        # start_date = datetime.strptime(self.start_date,'%Y%m%d') if isinstance(self.start_date, str) else self.start_date
+        # end_date = datetime.strptime(self.end_date,'%Y%m%d') if isinstance(self.end_date, str) else self.end_date
+
+        fetcher = DataFetcherFactory.create_fetcher(
+            website=website,
+            start_date=self.start_date,
+            end_date=self.end_date,
+            magnitude=self.magnitude
+        )
+        data = fetcher.fetch_data(
+            minlat=min_lat,
+            maxlat=max_lat,
+            minlon=min_lon,
+            maxlon=max_lon
+        )
+
+        return data
