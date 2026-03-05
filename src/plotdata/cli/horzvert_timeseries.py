@@ -507,6 +507,12 @@ def load_timeseries_file(file_path, geometry_file_input, mask_vmin, inps):
     else:
         raise FileNotFoundError("Geometry file not found")
 
+    if los_inc_angle.shape != data.shape[1:]:
+        os.makedirs(os.path.dirname(geometry_file), exist_ok=True)
+        create_geometry_file(eos_file, os.path.dirname(geometry_file))
+        los_inc_angle = readfile.read(geometry_file, datasetName='incidenceAngle')[0]
+        los_az_angle = readfile.read(geometry_file, datasetName='azimuthAngle')[0]
+
     ts_obj = SimpleNamespace()
     ts_obj.data = data
     ts_obj.dateList = dateList

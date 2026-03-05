@@ -370,9 +370,13 @@ def get_file_names(path):
         geometryRadar_file = geometryRadar_file.split(os.sep)[-1].replace('geo_', '')
         maskTempCoh_file = maskTempCoh_file.split(os.sep)[-1].replace('geo_', '')
 
+    # if scratch not in eos_file:
+    #     project_base_dir = os.path.dirname(eos_file)
+    # else:
+    project_dir = None
     keywords = ['SenD','SenA', 'CskA', 'CskD']
     elements = path.split(os.sep)
-    project_dir = None
+
     for element in elements:
         for keyword in keywords:
             if keyword in element:
@@ -381,8 +385,12 @@ def get_file_names(path):
                 track_dir = keyword + element.split(keyword)[1]
                 break
 
-    project_base_dir = os.path.join(scratch, project_base_dir)
-    vel_file = os.path.join(eos_file.rsplit('/', 1)[0], velocity_file)
+    if scratch not in eos_file:
+        project_base_dir = os.path.join(eos_file.rsplit(project_base_dir)[0], project_base_dir)
+    else:
+        project_base_dir = os.path.join(scratch, project_base_dir)
+
+    vel_file = os.path.join(os.path.dirname(eos_file), velocity_file)
     geometry_file = os.path.join(project_base_dir, track_dir, geometryRadar_file)
     mask_file = os.path.join(project_base_dir, track_dir, maskTempCoh_file)
 
