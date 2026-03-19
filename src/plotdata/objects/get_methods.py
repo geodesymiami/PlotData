@@ -11,7 +11,7 @@ from itertools import zip_longest
 from scipy.interpolate import griddata
 from mintpy.objects.coord import coordinate
 from mintpy.objects import timeseries, HDFEOS
-from plotdata.helper_functions import resize_to_match, get_bounding_box, expand_bbox, set_default_section, utm_to_latlon, latlon_to_utm_zone, detect_direction_from_name, parse_global_cmt
+from plotdata.helper_functions import resize_to_match, get_bounding_box, expand_bbox, set_default_section, utm_to_latlon, latlon_to_utm_zone, detect_direction_from_name, parse_global_cmt, parse_coord_vert
 
 # ------------------- API Classes ------------------- #
 
@@ -231,7 +231,16 @@ class DataExtractor:
                             v['data'] *= units[self.unit]
                             v['attributes']['unit'] = self.unit
                         else:
-                            raise ValueError(f"Unit '{self.unit}' is not recognized.")
+                            if 'cm' in self.unit:
+                                unit = 'cm/yr'
+                            elif 'mm' in self.unit:
+                                unit = 'mm/yr'
+                            elif 'm' in self.unit:
+                                unit = 'm/yr'
+                            else:
+                                raise ValueError(f"Unit '{self.unit}' is not recognized.")
+                            v['data'] *= units[unit]
+                            v['attributes']['unit'] = unit
 
     def _fetch_data(self):
         self.dataset = {}
@@ -386,14 +395,15 @@ class DataExtractor:
         self.end_date = datetime.strptime(self.end_date, "%Y%m%d") if type(self.end_date) == str else self.end_date
 
         # Extract timeseries data
-        data = readfile.read(file, datasetName=date_list)[0]
+        data = obj.read()
 
         # Handle complex data
         if atr['DATA_TYPE'].startswith('complex'):
             print('Input data is complex, calculating amplitude.')
             data = np.abs(data)
 
-        geometry = self.ascending_geometry if detect_direction_from_name(file)=='ascending' else self.descending_geometry
+        direction = atr.get('ORBIT_DIRECTION', atr.get('ORBIT_DIRECTION_SECOND')).lower() if atr.get('ORBIT_DIRECTION', atr.get('ORBIT_DIRECTION_SECOND', None)) is not None else detect_direction_from_name(file)
+        geometry = self.ascending_geometry if direction == 'ascending' else self.descending_geometry
 
         # Convert geocoordinates to radar
         # TODO Fix stupid mintpy behaviour
@@ -671,11 +681,10 @@ class DataExtractor:
             self.region = [min(longitude), max(longitude), min(latitude), max(latitude)]
 
         if hasattr(self, 'subset') and self.subset:
-            lat1, lon1 = map(float, self.subset.split(":")[0].split(","))
-            lat2, lon2 = map(float, self.subset.split(":")[1].split(","))
+            lon, lat = parse_coord_vert(self.subset)
+            min_lon, max_lon = min(lon), max(lon)
+            min_lat, max_lat = min(lat), max(lat)
 
-            min_lon, max_lon = min(lon1, lon2), max(lon1, lon2)
-            min_lat, max_lat = min(lat1, lat2), max(lat1, lat2)
         else:
             min_lon, max_lon, min_lat, max_lat = self.region
 
@@ -720,11 +729,9 @@ class DataExtractor:
             self.region = [min(longitude), max(longitude), min(latitude), max(latitude)]
 
         if hasattr(self, 'subset') and self.subset:
-            lat1, lon1 = map(float, self.subset.split(":")[0].split(","))
-            lat2, lon2 = map(float, self.subset.split(":")[1].split(","))
-
-            min_lon, max_lon = min(lon1, lon2), max(lon1, lon2)
-            min_lat, max_lat = min(lat1, lat2), max(lat1, lat2)
+            lon, lat = parse_coord_vert(self.subset)
+            min_lon, max_lon = min(lon), max(lon)
+            min_lat, max_lat = min(lat), max(lat)
         else:
             min_lon, max_lon, min_lat, max_lat = self.region
 

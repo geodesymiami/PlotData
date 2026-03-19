@@ -51,12 +51,15 @@ def detect_direction_from_name(fname, asc_tokens=None, desc_tokens=None, default
     return default
 
 
-def read_best_values(file):
+def read_best_values(file, params=None):
     df = pd.read_csv(file)
     row = df.iloc[0]  # best-fit row
 
     sources = {}
     terms = ["xcen", "ycen", "radius", "ytlc", "xtlc", "s_axis_max", "ratio", "strike", "dip", "length", "width"]
+
+    if params:
+        terms.extend(params)
 
     for col in df.columns:
         for term in terms:
@@ -246,6 +249,27 @@ def resize_to_match(target, reference, name):
     #     else:
     #         raise ValueError(f"Invalid shape for {name}: {target.shape}")
     # return target
+
+
+def parse_coord_vert(section):
+    """
+    Parses the section string and extracts the coordinates.
+
+    Args:
+        section (str): The section string in the format "lon1 lon2 lat1 lat2".
+
+    Returns:
+        tuple: A tuple containing the coordinates as floats.
+               The first two elements are the longitude coordinates,
+               and the last two elements are the latitude coordinates.
+    """
+    latitude = []
+    longitude = []
+    for coord in section.split(','):
+        latitude.append(float(coord.split(':')[0]))
+        longitude.append(float(coord.split(':')[1]))
+
+    return [(min(longitude), max(longitude)), (min(latitude), max(latitude))]
 
 
 def extract_temporalCoherence(file_path, coords):
