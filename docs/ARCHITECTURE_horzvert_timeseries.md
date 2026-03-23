@@ -116,6 +116,34 @@ So: **ref_lalo** fixes the approximate location; **find_reference_points_from_su
 
 ---
 
+## image_pairs.txt
+
+### What it contains
+
+`image_pairs.txt` is a human-readable table of acquisition dates for the two tracks and which dates were paired for vertical/horizontal decomposition.
+
+- **Header**: One line with the two track labels (e.g. `D128`, `A106`) right-aligned in an 8‑character column each.
+- **Date rows**: One row per date that appears in either track, sorted by date. Each row has:
+  - A **symbol** (e.g. `*`, `+`, `-`) indicating the pair’s shift block (same symbol = same shift in days).
+  - **Track 1 date** (YYYYMMDD) or blank if that row is an unpaired date from track 2.
+  - **Track 2 date** (YYYYMMDD) or blank if that row is an unpaired date from track 1.
+  - Optional **shift** in days, e.g. `(+12)` or `(-6)`, for paired rows (date_2 − date_1).
+  Paired rows show both dates and the shift; unpaired dates show one date and a blank in the other column.
+- **Totals**: A line like `Totals: D128 N images, A106 M images, pairs P`.
+- **Note**: A short line describing the typical shift between tracks (e.g. “diff D128 to A106: +12 days”), followed by optional **interval blocks**: for each shift block (e.g. “Interval 1 [0..6]: K pairs”), a list of the pairs in that block with their symbols and shifts.
+- **Legend**: A “Summary” section mapping each symbol to a shift and count (e.g. `* +12 days  5 pairs`), then `Total: P pairs`.
+
+So the file lists every acquisition date from both tracks, marks which are paired and with what day offset, and summarizes pair counts by shift.
+
+### How it is generated
+
+- **When**: Written once at the end of the **fast pairing** path in `main`, after the track order is chosen (swap or original) and before any timeseries loading. So it is produced from **dates and metadata only** (no full data read). With `--dry-run`, this is the only output; no vert/horz processing runs.
+- **Where**: `project_base_dir/image_pairs.txt` (project base is inferred from the first input path, e.g. from a segment name like `FernandinaSenD128`).
+- **Function**: `write_date_table(ts1_dates, ts2_dates, pairs, meta1, meta2, output_path, note=..., pair_symbols=symbol_map, pair_shifts=shift_display, legend_lines=legend_lines)`. It builds a combined list of entries (paired rows plus unpaired dates from each track), sorts by date, then writes the header, one line per entry with symbol and optional shift, the totals line, the note (and any interval/extra lines), and the legend.
+- **Inputs**: The date lists and pairs come from `match_and_filter_pairs` (the chosen order’s `d1`, `d2`, `pairs_fast`). The symbol and shift per pair come from `block_map` and `shift_map` (same shift → same symbol). The note includes `describe_shift(...)` (e.g. “diff D128 to A106: +12 days”) and the interval block lines. The legend is built from `shift_counts` and `shift_symbol` (positive shifts first, then zero, then negative).
+
+---
+
 ## Cases where the logic may not work
 
 ### Pairs and track order
