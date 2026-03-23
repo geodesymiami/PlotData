@@ -8,7 +8,9 @@ import tempfile
 import netCDF4
 import numpy as np
 from tqdm.auto import tqdm
+from shapely import wkt as _wkt
 from datetime import datetime, date, timedelta
+from mintpy.objects import HDFEOS
 
 
 DEFAULT_SSH_USER = "exouser"
@@ -31,6 +33,114 @@ def parse_args():
 
 def to_date(x):
     return datetime.strptime(str(x), "%Y%m%d").date()
+
+
+def polygon_corners_string(polygon_str: str) -> str:
+    """
+    Return corners from the polygon as S0081W09112_S0081W09130_S0100W09130_S0100W09112
+    """
+
+    def fmt_lat(lat: float) -> str:
+        val = int(round(abs(lat) * 100))              # keep 2 decimals
+        return f"{'N' if lat >= 0 else 'S'}{val:04d}" # 2 deg digits + 2 decimals
+
+    def fmt_lon(lon: float) -> str:
+        val = int(round(abs(lon) * 100))
+        return f"{'E' if lon >= 0 else 'W'}{val:05d}" # 3 deg digits + 2 decimals
+
+    poly = _wkt.loads(polygon_str)
+
+    # polygon vertices in counter-clockwise order starting SW, drop duplicate last point
+    coords = list(poly.exterior.coords)[:-1]
+    corners = [(lat, lon) for lon, lat in coords]
+    parts = [f"{fmt_lat(lat)}{fmt_lon(lon)}" for (lat, lon) in corners]
+
+    corners_str = "_".join(parts)
+
+    return  corners_str
+
+
+def get_output_filename(metadata, template, direction=None):
+    """Build output filename from OPERA identification metadata."""
+
+    def mget(key, default=None):
+        # supports dict metadata and argparse.Namespace(attrs=..., variables=...)
+        if isinstance(metadata, dict):
+            return metadata.get(key, default)
+        if hasattr(metadata, "attrs") and key in metadata.attrs:
+            return metadata.attrs.get(key, default)
+        if hasattr(metadata, "variables") and key in metadata.variables:
+            return metadata.variables.get(key, default)
+        return default
+
+    def parse_ymd(value):
+        if not value:
+            return "00000000"
+        s = str(value).strip()
+        for fmt in (
+            "%Y-%m-%d",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d %H:%M:%S.%f",
+            "%Y-%m-%dT%H:%M:%S",
+            "%Y-%m-%dT%H:%M:%S.%f",
+        ):
+            try:
+                return datetime.strptime(s, fmt).strftime("%Y%m%d")
+            except ValueError:
+                pass
+        # fallback for strings like "2017-01-07T04:30:28.815125Z"
+        return s[:10].replace("-", "")
+
+    sat_raw = mget("source_data_satellite_names", mget("mission", "OPERA"))
+    sat_str = str(sat_raw).upper().replace(" ", "") if sat_raw is not None else ""
+
+    if "S1A" in sat_str or "S1B" in sat_str:
+        sat = "S1"
+    else:
+        sat = str(sat_raw).split(",")[0].strip() if sat_raw else "OPERA"
+
+    relorb = f"{int(mget('relative_orbit', mget('track_number', 0))):03d}"
+    relorb2 = f"{int(mget('relative_orbit_second', mget('frame_id', 0))):05d}"
+
+    method_str = str(mget("post_processing_method", "opera")).lower()
+
+    date1 = parse_ymd(
+        mget("first_date", mget("reference_datetime", mget("reference_zero_doppler_start_time")))
+    )
+    date2 = parse_ymd(
+        mget("last_date", mget("secondary_datetime", mget("secondary_zero_doppler_start_time")))
+    )
+
+    update_flag = str(mget("cfg.mintpy.save.hdfEos5.update", "")).lower() == "yes"
+    if update_flag:
+        date2 = "XXXXXXXX"
+
+    direction_val = direction or mget("orbit_pass_direction", None)
+    if direction_val:
+        direction_upper = str(direction_val).strip().upper()
+        if "ASC" in direction_upper:
+            direction_val = "asc"
+        elif "DES" in direction_upper:
+            direction_val = "desc"
+        else:
+            direction_val = str(direction_val).strip().lower()
+
+    if direction_val:
+        out_name = f"{sat}_{direction_val}_{relorb}_{relorb2}_{method_str}_{date1}_{date2}.he5"
+    else:
+        out_name = f"{sat}_{relorb}_{relorb2}_{method_str}_{date1}_{date2}.he5"
+
+    fbase, fext = os.path.splitext(out_name)
+    polygon_str = mget("data_footprint", mget("bounding_polygon", None))
+
+    if polygon_str:
+        try:
+            sub = polygon_corners_string(polygon_str)
+            out_name = f"{fbase}_{sub}{fext}"
+        except Exception:
+            pass
+
+    return out_name
 
 
 def aaa(a_vals, b_vals, delta):
@@ -78,6 +188,11 @@ def generate_date_lists():
 
 
 def _normalize_meta_value(value):
+    def _collapse_singleton(v):
+        while isinstance(v, (list, tuple)) and len(v) == 1:
+            v = v[0]
+        return v
+
     if isinstance(value, bytes):
         return value.decode("utf-8", errors="replace")
     if isinstance(value, np.generic):
@@ -85,14 +200,16 @@ def _normalize_meta_value(value):
     if isinstance(value, np.ndarray):
         if value.ndim == 0:
             return _normalize_meta_value(value.item())
-        return [_normalize_meta_value(item) for item in value.tolist()]
+        norm_list = [_normalize_meta_value(item) for item in value.tolist()]
+        return _collapse_singleton(norm_list)
     if isinstance(value, (list, tuple)):
-        return [_normalize_meta_value(item) for item in value]
+        norm_list = [_normalize_meta_value(item) for item in value]
+        return _collapse_singleton(norm_list)
     return value
 
 
 def extract_identification_metadata(opera):
-    identification_group = opera.groups.get("identification")
+    identification_group = opera.groups.get("identification") if hasattr(opera, "groups") else None
     if identification_group is None:
         return argparse.Namespace(attrs={}, variables={})
 
@@ -107,6 +224,55 @@ def extract_identification_metadata(opera):
         identification_variables[var_name] = var_value
 
     return argparse.Namespace(attrs=identification_attrs, variables=identification_variables)
+
+
+def _decode_if_bytes(value):
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    if isinstance(value, np.bytes_):
+        return value.astype(str)
+    return value
+
+
+def _parse_hdf_time_value(time_value, units):
+    units_str = str(_decode_if_bytes(units or "")).strip()
+    if " since " not in units_str.lower():
+        raise ValueError(f"Unsupported time units: {units_str}")
+
+    split_idx = units_str.lower().index(" since ")
+    unit_name = units_str[:split_idx].strip().lower()
+    origin_str = units_str[split_idx + len(" since "):].strip().rstrip("Z")
+
+    origin = None
+    for fmt in (
+        "%Y-%m-%d %H:%M:%S.%f",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S.%f",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d",
+    ):
+        try:
+            origin = datetime.strptime(origin_str, fmt)
+            break
+        except ValueError:
+            continue
+
+    if origin is None:
+        raise ValueError(f"Unsupported time origin: {origin_str}")
+
+    value = float(np.asarray(time_value).squeeze())
+    if unit_name.startswith("day"):
+        delta = timedelta(days=value)
+    elif unit_name.startswith("hour"):
+        delta = timedelta(hours=value)
+    elif unit_name.startswith("min"):
+        delta = timedelta(minutes=value)
+    elif unit_name.startswith("sec"):
+        delta = timedelta(seconds=value)
+    else:
+        raise ValueError(f"Unsupported time unit: {unit_name}")
+
+    return origin + delta
 
 
 def get_orbit_pass_direction(meta):
@@ -134,8 +300,12 @@ def get_orbit_pass_direction(meta):
 
 def process_opera_file(file_path, label=None):
     with netCDF4.Dataset(file_path, "r") as opera:
-        displacement = opera.variables["displacement"][:]  # (time, y, x)
-        temporal_coh = opera.variables["temporal_coherence"][:]
+        displacement = opera.variables["displacement"][:]
+        displacement_data = displacement.filled(np.nan) if hasattr(displacement, "filled") else np.asarray(displacement)
+        displacement_data = np.asarray(displacement_data, dtype=np.float32)
+
+        temporal_coh = np.asarray(opera.variables["temporal_coherence"][:], dtype=np.float32)
+        mask = np.asarray(opera.variables["recommended_mask"][:])
 
         time_var = opera.variables["time"]
         time_dt = netCDF4.num2date(
@@ -144,16 +314,13 @@ def process_opera_file(file_path, label=None):
             calendar=getattr(time_var, "calendar", "standard"),
             only_use_cftime_datetimes=False,
         )
-        meta = extract_identification_metadata(opera)  # for debugging
         time = time_dt[0].date()
 
-        mask = np.asarray((temporal_coh > 0.65).filled(False), dtype=bool)
-        displacement_data = displacement.filled(np.nan)
-
+        meta = extract_identification_metadata(opera)
         x = np.asarray(opera.variables["x"][:], dtype=float)
         y = np.asarray(opera.variables["y"][:], dtype=float)
 
-    return displacement_data, mask, datetime.strftime(time, "%Y%m%d"), y, x, meta
+    return displacement_data, mask, temporal_coh, datetime.strftime(time, "%Y%m%d"), y, x, meta
 
 
 def _slice_for_overlap_axis(axis_vals, overlap_min, overlap_max):
@@ -234,6 +401,182 @@ def finalize_orbit_group(data_chunks, y_list, x_list):
     data = np.where(overlap_mask.reshape(mask_shape), data, np.nan)
 
     return data, y_list[0], x_list[0]
+
+
+def _flatten_time_cube(data):
+    arr = np.asarray(data)
+    if arr.ndim == 4:
+        n_files, n_time, ny, nx = arr.shape
+        return arr.reshape(n_files * n_time, ny, nx), n_time
+    if arr.ndim == 3:
+        return arr, 1
+    raise ValueError(f"Unsupported displacement dimensions: {arr.shape}")
+
+
+def write_orbit_hdf5(group, out_file):
+    data, y, x = finalize_orbit_group(group["data_chunks"], group["y_list"], group["x_list"])
+    if data is None:
+        return None
+
+    data_3d, n_time_per_file = _flatten_time_cube(data)
+
+    mask_stack = None
+    if group["mask"]:
+        mask_chunks, _, _ = crop_chunks_to_common_xy(group["mask"], group["y_list"], group["x_list"])
+        mask_stack = np.stack(mask_chunks, axis=0)
+
+    temporal_stack = None
+    if group["temporal_coh"]:
+        temporal_chunks, _, _ = crop_chunks_to_common_xy(group["temporal_coh"], group["y_list"], group["x_list"])
+        temporal_stack = np.stack(temporal_chunks, axis=0)
+
+    date_list = list(group["date_list"])
+    if n_time_per_file > 1:
+        expanded_dates = []
+        for date_item in date_list:
+            expanded_dates.extend([date_item] * n_time_per_file)
+        date_list = expanded_dates
+
+    os.makedirs(os.path.dirname(out_file) or ".", exist_ok=True)
+
+    if mask_stack is not None:
+        mask_2d = np.all(np.asarray(mask_stack) > 0, axis=0).astype(np.bool_)
+    else:
+        mask_2d = np.ones((data_3d.shape[1], data_3d.shape[2]), dtype=np.bool_)
+
+    if temporal_stack is not None:
+        temporal_arr = np.asarray(temporal_stack, dtype=np.float32)
+        if temporal_arr.ndim == 4:
+            temporal_2d = np.nanmean(temporal_arr, axis=(0, 1))
+        elif temporal_arr.ndim == 3:
+            temporal_2d = np.nanmean(temporal_arr, axis=0)
+        elif temporal_arr.ndim == 2:
+            temporal_2d = temporal_arr
+        else:
+            raise ValueError(f"Unsupported temporal coherence dimensions: {temporal_arr.shape}")
+    else:
+        temporal_2d = np.full((data_3d.shape[1], data_3d.shape[2]), np.nan, dtype=np.float32)
+
+    with netCDF4.Dataset(out_file, "w", format="NETCDF4") as f:
+        f.createDimension("time", len(date_list))
+        f.createDimension("y", data_3d.shape[1])
+        f.createDimension("x", data_3d.shape[2])
+
+        hdfeos_group = f.createGroup("HDFEOS")
+        grids_group = hdfeos_group.createGroup("GRIDS")
+        ts_group = grids_group.createGroup("timeseries")
+        obs_group = ts_group.createGroup("observation")
+        qual_group = ts_group.createGroup("quality")
+        geom_group = ts_group.createGroup("geometry")
+
+        disp_var = obs_group.createVariable("displacement", "f4", ("time", "y", "x"), zlib=True, complevel=4)
+        disp_var[:] = data_3d.astype(np.float32)
+
+        date_var = obs_group.createVariable("date", str, ("time",))
+        date_var[:] = np.asarray(date_list, dtype=object)
+
+        bperp_var = obs_group.createVariable("bperp", "f4", ("time",))
+        bperp_var[:] = np.zeros((len(date_list),), dtype=np.float32)
+
+        tcoh_var = qual_group.createVariable("temporalCoherence", "f4", ("y", "x"), zlib=True, complevel=4)
+        tcoh_var[:] = temporal_2d.astype(np.float32)
+
+        mask_var = qual_group.createVariable("mask", "i1", ("y", "x"), zlib=True, complevel=4)
+        mask_var[:] = mask_2d.astype(np.int8)
+
+        y_var = geom_group.createVariable("y", "f4", ("y",))
+        y_var[:] = np.asarray(y, dtype=np.float32)
+
+        x_var = geom_group.createVariable("x", "f4", ("x",))
+        x_var[:] = np.asarray(x, dtype=np.float32)
+
+        f.FILE_TYPE = "HDFEOS"
+        f.LENGTH = str(data_3d.shape[1])
+        f.WIDTH = str(data_3d.shape[2])
+
+        if group["meta_list"]:
+            meta_attrs = _meta_to_dict(group["meta_list"][0])
+            for key, value in meta_attrs.items():
+                if value is None:
+                    continue
+                norm_val = _normalize_meta_value(value)
+                setattr(f, key, str(norm_val) if isinstance(norm_val, (list, tuple, dict, np.ndarray)) else _decode_if_bytes(norm_val))
+
+    validator = HDFEOS(out_file)
+    validator.open(print_msg=False)
+    validator.get_date_list()
+    validator.close(print_msg=False)
+
+    return out_file
+
+
+def _meta_to_dict(meta):
+    data = {}
+    if isinstance(meta, dict):
+        data.update(meta)
+    if hasattr(meta, "attrs") and isinstance(meta.attrs, dict):
+        data.update(meta.attrs)
+    if hasattr(meta, "variables") and isinstance(meta.variables, dict):
+        data.update(meta.variables)
+    return data
+
+
+def _normalize_satellite_token(value):
+    if value is None:
+        return None
+    token = str(value).strip().upper().replace(" ", "")
+    if "S1A" in token or "S1B" in token:
+        return "S1"
+    return token
+
+
+def _build_filename_metadata(meta_list):
+    if not meta_list:
+        return {}
+
+    all_meta_dicts = [_meta_to_dict(meta) for meta in meta_list]
+    filename_meta = dict(all_meta_dicts[0])
+
+    sat_tokens = []
+    for meta_dict in all_meta_dicts:
+        sat_raw = meta_dict.get("source_data_satellite_names", meta_dict.get("mission"))
+        sat_token = _normalize_satellite_token(sat_raw)
+        if sat_token:
+            sat_tokens.append(sat_token)
+
+    if sat_tokens and len(set(sat_tokens)) == 1:
+        filename_meta["source_data_satellite_names"] = sat_tokens[0]
+    else:
+        filename_meta["source_data_satellite_names"] = "OPERA"
+
+    return filename_meta
+
+
+def save_hdfeos5(orbit_groups, output_dir):
+    saved_files = []
+
+    print(f"Saving HDFEOS outputs to: {output_dir}")
+
+    for orbit_direction, group in orbit_groups.items():
+        n_files = len(group.get("meta_list", []))
+        print(f"Processing orbit group: {orbit_direction} ({n_files} files)")
+
+        if not group["meta_list"]:
+            print(f"Skipping {orbit_direction}: no metadata/files collected.")
+            continue
+
+        filename_meta = _build_filename_metadata(group["meta_list"])
+        out_name = get_output_filename(filename_meta, None, direction=orbit_direction)
+        out_file = os.path.join(output_dir, out_name)
+        print(f"Writing {orbit_direction} output: {out_file}")
+        written = write_orbit_hdf5(group, out_file)
+        if written:
+            saved_files.append(written)
+            print(f"Finished {orbit_direction}: {written}")
+
+    print(f"Completed save_hdfeos5: wrote {len(saved_files)} file(s).")
+
+    return saved_files
 
 
 
@@ -335,9 +678,9 @@ if __name__ == "__main__":
         raise ValueError("Invalid OPERA_SOURCE. Use 'local' or 'ssh'.")
 
     orbit_groups = {
-        "ASCENDING": {"data_chunks": [], "date_list": [], "y_list": [], "x_list": [], "meta_list": []},
-        "DESCENDING": {"data_chunks": [], "date_list": [], "y_list": [], "x_list": [], "meta_list": []},
-        "UNKNOWN": {"data_chunks": [], "date_list": [], "y_list": [], "x_list": [], "meta_list": []},
+        "ASCENDING": {"data_chunks": [], "mask": [], "temporal_coh": [], "date_list": [], "y_list": [], "x_list": [], "meta_list": []},
+        "DESCENDING": {"data_chunks": [], "mask": [], "temporal_coh": [], "date_list": [], "y_list": [], "x_list": [], "meta_list": []},
+        "UNKNOWN": {"data_chunks": [], "mask": [], "temporal_coh": [], "date_list": [], "y_list": [], "x_list": [], "meta_list": []},
     }
 
     for source_file in tqdm(source_files, desc=f"Processing ({source_mode})", unit="file"):
@@ -351,11 +694,13 @@ if __name__ == "__main__":
             label = source_file
 
         try:
-            displacement_data, mask, time, y, x, meta = process_opera_file(file_path, label=label)
+            displacement_data, mask, temporal_coh, time, y, x, meta = process_opera_file(file_path, label=label)
             orbit_direction = get_orbit_pass_direction(meta)
             group = orbit_groups[orbit_direction]
 
             group["data_chunks"].append(displacement_data)
+            group['mask'].append(mask)
+            group['temporal_coh'].append(temporal_coh)
             group["date_list"].append(time)
             group["y_list"].append(y)
             group["x_list"].append(x)
@@ -367,20 +712,11 @@ if __name__ == "__main__":
             if temp_path and os.path.exists(temp_path):
                 os.remove(temp_path)
 
-    ascending_data_list = orbit_groups["ASCENDING"]["data_chunks"]
-    descending_data_list = orbit_groups["DESCENDING"]["data_chunks"]
-    ascending_meta_list = orbit_groups["ASCENDING"]["meta_list"]
-    descending_meta_list = orbit_groups["DESCENDING"]["meta_list"]
+    output_dir = os.path.abspath(local_parent if source_mode == "local" else os.getcwd())
+    saved = save_hdfeos5(orbit_groups, output_dir)
 
-    ascending_data, ascending_y, ascending_x = finalize_orbit_group(
-        orbit_groups["ASCENDING"]["data_chunks"],
-        orbit_groups["ASCENDING"]["y_list"],
-        orbit_groups["ASCENDING"]["x_list"],
-    )
-    descending_data, descending_y, descending_x = finalize_orbit_group(
-        orbit_groups["DESCENDING"]["data_chunks"],
-        orbit_groups["DESCENDING"]["y_list"],
-        orbit_groups["DESCENDING"]["x_list"],
-    )
-
-    pass
+    if saved:
+        for out_path in saved:
+            print(f"Wrote: {out_path}")
+    else:
+        print("No orbit groups with data to save.")
