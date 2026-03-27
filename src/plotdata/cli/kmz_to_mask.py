@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 kmz_to_mask.py
 
@@ -29,7 +30,7 @@ from rasterio.features import rasterize
 from rasterio.transform import from_origin
 
 
-EXAMPLE = "kmz_to_mask.py --input /Users/giacomo/onedrive/scratch/Chiles/Chiles_mask.kmz --output /Users/giacomo/onedrive/scratch/Chiles/SenAT120/Chiles_mask.h5 --geom /Users/giacomo/onedrive/scratch/Chiles/SenAT120/geo_geometryRadar.h5 --mask /Users/giacomo/onedrive/scratch/Chiles/SenAT120/geo_maskTempCoh.h5"
+EXAMPLE = "kmz_to_mask.py --input /Users/giacomo/onedrive/scratch/Chiles/Chiles_mask.kmz /Users/giacomo/onedrive/scratch/Chiles/Mask2.kmz --mask-mode exclude include --output /Users/giacomo/onedrive/scratch/Chiles/SenAT120/Chiles_mask.h5 --geom /Users/giacomo/onedrive/scratch/Chiles/SenAT120/geo_geometryRadar.h5 --mask /Users/giacomo/onedrive/scratch/Chiles/SenAT120/geo_maskTempCoh.h5"
 def create_parser():
     """Build and parse CLI for KMZ->mask tool (compatible style with create_parser() used elsewhere)."""
     synopsis = 'Convert KMZ polygons to a raster mask GeoTIFF'
@@ -394,7 +395,7 @@ def main():
 
         out_mask = adapt_mask(arr, transform, width, height, args.geom)
 
-        if args.mmode[i] == 'include':
+        if args.mmode[i] == 'exclude':
             out_mask = np.logical_not(out_mask)
 
         masks.append(out_mask)

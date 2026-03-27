@@ -875,6 +875,13 @@ def create_hdfeos_output(ts_data, date_list, mask, delta_days, bperp, latitude, 
         'HDFEOS/GRIDS/timeseries/quality/avgSpatialCoherence': np.full((length, width), np.nan, dtype='float32'),
         'HDFEOS/GRIDS/timeseries/quality/mask': mask.astype('bool'),
         'HDFEOS/GRIDS/timeseries/quality/temporalCoherence': np.full((length, width), np.nan, dtype='float32'),
+        # ---- aliases (short names for easier reading) ----
+        'latitude': lat_grid.astype('float32'),
+        'longitude': lon_grid.astype('float32'),
+        'bperp': bperp.astype('float32'),
+        'date': date_list.astype('S8'),
+        'timeseries': ts_data.astype('float32'),
+        'mask': mask.astype('bool'),
     }
 
     # Update metadata for HDFEOS format

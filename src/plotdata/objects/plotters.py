@@ -8,11 +8,12 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.ticker as ticker
 from matplotlib.colors import LightSource
+# from obspy.imaging.beachball import Beach
 from matplotlib.transforms import Affine2D
 from matplotlib.patheffects import withStroke
 from matplotlib.patches import Rectangle, Circle, Polygon
 from plotdata.volcano_functions import get_volcanoes_data
-from plotdata.helper_functions import draw_vectors, calculate_distance, get_bounding_box, parse_polygon, resize_to_match
+from plotdata.helper_functions import draw_vectors, calculate_distance, get_bounding_box, parse_polygon, resize_to_match, parse_coord_vert, find_longitude_degree
 
 
 def set_default_section(line, region):
@@ -78,19 +79,13 @@ class VelocityPlot:
     def _update_axis_limits(self, x_min=None, x_max=None, y_min=None, y_max=None):
         if hasattr(self, 'subset') and self.subset:
             try:
-                # Split the string into two parts
-                coords1, coords2 = self.subset.split(':')
+                coords = parse_coord_vert(self.subset)
 
-                # Split each part into lat and lon
-                lat1, lon1 = map(float, coords1.split(','))
-                lat2, lon2 = map(float, coords2.split(','))
-
-                # Assign to x_min, x_max, y_min, y_max
-                x_min, x_max = sorted([lon1, lon2])  # Longitude corresponds to x-axis
-                y_min, y_max = sorted([lat1, lat2])  # Latitude corresponds to y-axis
+                x_min, x_max = min(coords[0]), max(coords[0])  # Longitude corresponds to x-axis
+                y_min, y_max = min(coords[1]), max(coords[1])  # Latitude corresponds to y-axis
 
             except ValueError:
-                raise ValueError(f"Invalid subset format: {self.subset}. Expected format is 'lat,lon:lat2,lon2'.")
+                raise ValueError(f"Invalid subset format: {self.subset}. Expected format is 'lat:lon,lat2:lon2'.")
 
             self.ax.set_xlim(x_min, x_max)
             self.ax.set_ylim(y_min, y_max)
@@ -161,7 +156,7 @@ class VelocityPlot:
 
         if not self.no_colorbar:
             cbar = self.ax.figure.colorbar(self.imdata, ax=self.ax, orientation='horizontal', aspect=12, shrink=self.colorbar_size)
-            cbar.set_label(self.unit)
+            cbar.set_label(self.unit,)
 
             cbar.locator = ticker.MaxNLocator(3)
             cbar.update_ticks()
@@ -214,9 +209,11 @@ class VelocityPlot:
 
         if not self.no_colorbar:
             cbar = self.ax.figure.colorbar(self.imdata, ax=self.ax, orientation='horizontal', aspect=12, shrink=self.colorbar_size)
-            cbar.set_label(self.unit)
 
             cbar.locator = ticker.MaxNLocator(3)
+            cbar.set_label(self.unit, fontsize=20)
+            cbar.ax.tick_params(labelsize=20)
+
             cbar.update_ticks()
 
         self.imdata.set_alpha(0.7)
@@ -225,6 +222,7 @@ class VelocityPlot:
     def _plot_scale(self):
         zorder = self._get_next_zorder()
 
+        self.ax.figure.canvas.draw()
         lon1, lon2 = self.ax.get_xlim()
         lat1, lat2 = self.ax.get_ylim()
         lon_span = lon2 - lon1
@@ -572,7 +570,8 @@ class TimeseriesPlot:
         # Fill area between the vertical lines with a rectangle
         ax_ts.axvspan(self.start_date, self.end_date, color='#a8a8a8', alpha=0.1)
         ax_ts.set_ylabel(f'LOS displacement ({self.unit.replace("/yr", "")})')
-        ax_ts.legend(fontsize='x-small')
+        size = 'xx-small' if self.font_size <= 10 else 'small'
+        ax_ts.legend(fontsize=size)
 
     def _plot_event(self):
         if self.add_event:
@@ -680,7 +679,7 @@ class ProfilePlot:
 
         profile_synth = self._process_sections(self.synth, self.region)
         profile_data = self._process_sections(self.data, self.region)
-        profile_residual = profile_data - profile_synth
+        # profile_residual = profile_data - profile_synth
         # profile_topo = self._process_sections(self.geometry, self.region) if self.geometry is not None else None
 
         self.ax.set_ylabel(f'{self.unit}')
@@ -693,7 +692,7 @@ class ProfilePlot:
         self.profiles = {
             "model": profile_synth,
             "data": profile_data,
-            "residual": profile_residual,
+            # "residual": profile_residual,
         }
 
         if self.denoise:
@@ -704,7 +703,9 @@ class ProfilePlot:
         for key in self.profiles:
             self._plot_profile(self.profiles, key, self.ax)
 
-        self.ax.legend(fontsize='xx-small')
+        size = 'xx-small' if self.font_size <= 10 else 'small'
+        self.ax.legend(fontsize=size)
+
 
         if 'ascending' in self.ax.get_label():
             self.label = "ASCENDING"
@@ -875,22 +876,27 @@ class VectorsPlot:
         self.ax.set_ylim(ylim)
         self.ax.set_xlim([min(self.xrange), max(self.xrange)])
 
+        unit = self.horz_attr.get('unit', self.vert_attr.get('unit', self.unit))
+
         # Plot velocity vectors
-        #Probably right one
         if self.vector_legend == 'mean_vector':
             # Mean velocity vector
-            self.imdata = self.ax.quiver(self.filtered_x, self.filtered_elevation, self.filtered_h, self.filtered_v, color='#ff7366', width=(1 / 10**(2.5)))
+            self.imdata = self.ax.quiver(self.filtered_x, self.filtered_elevation, self.filtered_h, self.filtered_v, color='#ff7366', width=(3 / 10**(2.5)))
             start_x = max(self.xrange) * 0.1
-            start_y = (max(ylim) * 0.95)
-            mean_velocity = np.nanmean(np.sqrt(((self.filtered_v[self.filtered_v!=0]))**2 + ((self.filtered_h[self.filtered_h!=0]))**2))
+            y_span = ylim[1] - ylim[0]
+            start_y = (max(ylim) - y_span * 0.2)
 
-            vel_indicator = f"{mean_velocity:.1f} {self.unit}" if mean_velocity >= 0.1 else f"{mean_velocity:.2f} {self.unit}"
-            self.ax.quiver([start_x], [start_y], [mean_velocity], [0], color='#ff7366', scale_units='xy', scale=1, width=(1 / 10**(2.5)))
-            self.ax.text(start_x, start_y * 1.01, vel_indicator, color='black', ha='left', fontsize=8)
+            vel = np.nanmax(np.sqrt(((self.filtered_v[self.filtered_v!=0]))**2 + ((self.filtered_h[self.filtered_h!=0]))**2)) * 0.9
+            cands = np.array([1.0, 5.0, 10.0]) * (10 ** math.floor(math.log10(vel)))
+            velocity_rep = float(cands[np.argmin(np.abs(cands - vel))])
+
+            vel_indicator = f"{velocity_rep:g} {unit}"
+            self.ax.quiver([start_x], [start_y], [velocity_rep], [0], color='#ff7366', scale_units='xy', scale=1, width=(3 / 10**(2.5)))
+            self.ax.text(start_x, start_y * 1.02, vel_indicator, color='black', ha='left', fontsize=self.font_size, alpha=0.9)
 
         elif self.vector_legend == 'colorbar':
             from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-            self.imdata = self.ax.quiver(self.filtered_x, self.filtered_elevation, self.filtered_h, self.filtered_v, np.hypot(self.filtered_h, self.filtered_v), cmap='viridis', width=(1 / 10**(2.5)))
+            self.imdata = self.ax.quiver(self.filtered_x, self.filtered_elevation, self.filtered_h, self.filtered_v, np.hypot(self.filtered_h, self.filtered_v), cmap='viridis', width=(3 / 10**(2.5)))
             cax = inset_axes(self.ax, width="15%", height="2.8%", loc="lower left", borderpad=2.0)
 
             cb = self.ax.figure.colorbar(self.imdata, cax=cax, orientation="horizontal")
@@ -1043,15 +1049,31 @@ class Okada:
             triangle.set_transform(t + ax.transData)
             ax.add_patch(triangle)
 
-def point_on_globe(latitude, longitude, names=None, size='0.7', fsize=10):
+def point_on_globe(latitude, longitude, names=None, size='0.7', fsize=5):
     fig = pygmt.Figure()
 
-    # Set up orthographic projection centered on your point
+    # Local extent around your points
+    lon_min, lon_max = float(np.min(longitude)), float(np.max(longitude))
+    lat_min, lat_max = float(np.min(latitude)), float(np.max(latitude))
+    avg_lat = (lat_min + lat_max) / 2
+    avg_lon = (lon_min + lon_max) / 2
+    lat_pad = max((lat_max - lat_min) * 0.5, 20)
+    lon_pad = max(find_longitude_degree(avg_lat, lat_pad), abs(lon_max - lon_min))
+
+    region = [avg_lon - lon_pad, avg_lon + lon_pad, avg_lat - lat_pad, avg_lat + lat_pad]
+
     fig.basemap(
-        region="d",  # Global domain
-        projection=f"G{np.mean(longitude)}/{np.mean(latitude)}/15c",  # Centered on your coordinates
-        frame="g"  # Show gridlines only
+        region=region,
+        projection="M15c",   # local Mercator map
+        frame="afg"
     )
+
+    # # # Set up orthographic projection centered on your point
+    # fig.basemap(
+    #     region="d",  # Global domain
+    #     projection=f"G{np.mean(longitude)}/{np.mean(latitude)}/15c",  # Centered on your coordinates
+    #     frame="g"  # Show gridlines only
+    # )
 
     # Add continent borders with black lines
     fig.coast(
@@ -1085,7 +1107,7 @@ def point_on_globe(latitude, longitude, names=None, size='0.7', fsize=10):
 
 def plot_beachball(ax, strike, dip, rake, xy=(0, 0), radius=0.01, facecolor="k", edgecolor="k", resolution=200, zorder=10):
     """
-    Pure matplotlib focal mechanism beachball.
+    Focal mechanism beachball using ObsPy.
 
     Parameters
     ----------
@@ -1095,55 +1117,11 @@ def plot_beachball(ax, strike, dip, rake, xy=(0, 0), radius=0.01, facecolor="k",
     radius : size in data units
     """
 
-    strike = np.radians(strike)
-    dip = np.radians(dip)
-    rake = np.radians(rake)
+    # Create beachball
+    beachball = Beach([strike, dip, rake], xy=xy, width=radius*2, axes=ax, facecolor=facecolor, edgecolor=edgecolor, zorder=zorder)
+    ax.add_collection(beachball)
 
-    # Fault normal vector
-    n = np.array([
-        -np.sin(dip) * np.sin(strike),
-        np.sin(dip) * np.cos(strike),
-        -np.cos(dip)
-    ])
-
-    # Slip vector
-    s = np.array([
-        np.cos(rake) * np.cos(strike) + np.sin(rake) * np.cos(dip) * np.sin(strike),
-        np.cos(rake) * np.sin(strike) - np.sin(rake) * np.cos(dip) * np.cos(strike),
-        -np.sin(rake) * np.sin(dip)
-    ])
-
-    # Circle boundary
-    circle = Circle(xy, radius, edgecolor=edgecolor, facecolor="white", lw=1.5, zorder=zorder)
-    ax.add_patch(circle)
-
-    # Sample sphere directions
-    theta = np.linspace(0, 2*np.pi, resolution)
-    phi = np.linspace(0, np.pi/2, resolution)
-
-    X, Y = [], []
-
-    for t in theta:
-        for p in phi:
-            # Direction vector
-            v = np.array([
-                np.sin(p) * np.cos(t),
-                np.sin(p) * np.sin(t),
-                np.cos(p)
-            ])
-
-            # Polarity sign
-            sign = np.dot(v, s) * np.dot(v, n)
-
-            if sign > 0:  # compressional quadrant
-                x = xy[0] + radius * np.sin(p) * np.cos(t)
-                y = xy[1] + radius * np.sin(p) * np.sin(t)
-                X.append(x)
-                Y.append(y)
-
-    ax.scatter(X, Y, s=0.01, color=facecolor, zorder=zorder)
-
-    return circle
+    return beachball
 
 
 # if __name__ == '__main__':

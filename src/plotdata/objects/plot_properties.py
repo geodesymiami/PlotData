@@ -183,7 +183,7 @@ class PlotGrid:
     def _create_axes(self, inps):
         width = {
             1: 5,
-            2: 10,
+            2: 12,
             3: 18,
         }
         num_columns = int(max(len(row) for row in self.template.layout))
@@ -205,8 +205,8 @@ class PlotGrid:
 
     def _axes_properties(self, ax, inps):
         ax.set_box_aspect(0.7)
-        ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=4))
-        ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=4))
+        ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=3, integer=True))
+        ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=3, integer=True))
 
         if inps and hasattr(inps, "font_size"):
             font_size = inps.font_size

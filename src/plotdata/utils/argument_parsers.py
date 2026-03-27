@@ -58,7 +58,7 @@ def add_location_arguments(parser):
                         dest="subset",
                         default=None,
                         type=str,
-                        help="Subsection coordinates for zoom in, LAT,LON:LAT,LON")
+                        help="Subsection coordinates for zoom in, LAT:LON,LAT:LON")
     location.add_argument('--ref-lalo',
                         nargs='*',
                         metavar=('LATITUDE,LONGITUDE or LATITUDE LONGITUDE'),
@@ -71,6 +71,16 @@ def add_location_arguments(parser):
                         metavar=('LAT,LON or LAT LON or LAT1,LON1  LAT2,LON2'),
                         type=str,
                         help="lat/lon coords of  pixel for timeseries")
+    location.add_argument("--lat",
+                        default=None,
+                        metavar=('LATITUDE'),
+                        type=float,
+                        help="latitude of  pixel for timeseries")
+    location.add_argument("--lon",
+                        default=None,
+                        metavar=('LONGITUDE'),
+                        type=float,
+                        help="longitude of  pixel for timeseries")
     location.add_argument('--window-size',
                         dest='window_size',
                         type=int,
@@ -114,11 +124,11 @@ def add_plot_parameters_arguments(parser):
                         action='store_false',
                         default=True,
                         help='Do not show the plot')
-    plot_parameters.add_argument('--fontsize',
+    plot_parameters.add_argument('--font-size',
                         dest='font_size',
-                        default=15,
+                        default=10,
                         type=int,
-                        help='fontsize for view.py (default: %(default)s).')
+                        help='Font size for view.py (default: %(default)s).')
     plot_parameters.add_argument('--dpi',
                         default=300,
                         type=int,
