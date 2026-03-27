@@ -507,12 +507,6 @@ def load_timeseries_file(file_path, geometry_file_input, mask_vmin, inps):
     else:
         raise FileNotFoundError("Geometry file not found")
 
-    if los_inc_angle.shape != data.shape[1:]:
-        os.makedirs(os.path.dirname(geometry_file), exist_ok=True)
-        create_geometry_file(eos_file, os.path.dirname(geometry_file))
-        los_inc_angle = readfile.read(geometry_file, datasetName='incidenceAngle')[0]
-        los_az_angle = readfile.read(geometry_file, datasetName='azimuthAngle')[0]
-
     ts_obj = SimpleNamespace()
     ts_obj.data = data
     ts_obj.dateList = dateList
@@ -1176,20 +1170,12 @@ def main(iargs=None, namespace=None):
         geometry_file_input = inps.geom_file[idx] if inps.geom_file and idx < len(inps.geom_file) else None
         obj, los_inc_angle, los_az_angle, mask, project_base_dir, geometry_file = load_timeseries_file(f, geometry_file_input, inps.mask_vmin[idx], inps)
 
-        # Check step consistency from previous iteration (compare as floats to avoid
-        # string vs float or representation mismatches from HDF5 attributes)
+        # Check step consistency from previous iteration
         if 'Y_STEP' in obj.metadata:
             if y_step is not None and x_step is not None:
-                curr_y = float(obj.metadata['Y_STEP'])
-                curr_x = float(obj.metadata['X_STEP'])
-                prev_y = float(y_step)
-                prev_x = float(x_step)
-                if prev_y != curr_y or prev_x != curr_x:
+                if (y_step != obj.metadata['Y_STEP']) or (x_step != obj.metadata['X_STEP']):
                     print('-' * 50)
-                    raise ValueError(
-                        f'Files have different step sizes for geocoding: '
-                        f'file1 Y_STEP={prev_y} X_STEP={prev_x} vs file2 Y_STEP={curr_y} X_STEP={curr_x}'
-                    )
+                    raise ValueError('Files have different steps size for Geocoding')
 
         # Geocode if needed
         obj, los_inc_angle, los_az_angle, mask, y_step, x_step = geocode_timeseries(obj, los_inc_angle, los_az_angle, mask, geometry_file, inps)
