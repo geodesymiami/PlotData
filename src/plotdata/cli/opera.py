@@ -389,17 +389,6 @@ def finalize_orbit_group(data_chunks, y_list, x_list):
     data_chunks, y_list, x_list = crop_chunks_to_common_xy(data_chunks, y_list, x_list)
     data = np.stack(data_chunks, axis=0)
 
-    finite_data = np.isfinite(data)
-    axes_to_reduce = tuple(range(1, data.ndim - 2))
-    if axes_to_reduce:
-        valid_per_file = np.any(finite_data, axis=axes_to_reduce)
-    else:
-        valid_per_file = finite_data
-
-    overlap_mask = np.all(valid_per_file, axis=0)
-    mask_shape = (1,) * (data.ndim - 2) + overlap_mask.shape
-    data = np.where(overlap_mask.reshape(mask_shape), data, np.nan)
-
     return data, y_list[0], x_list[0]
 
 
@@ -440,7 +429,7 @@ def write_orbit_hdf5(group, out_file):
     os.makedirs(os.path.dirname(out_file) or ".", exist_ok=True)
 
     if mask_stack is not None:
-        mask_2d = np.all(np.asarray(mask_stack) > 0, axis=0).astype(np.bool_)
+        mask_2d = np.any(np.asarray(mask_stack) > 0, axis=0).astype(np.bool_)
     else:
         mask_2d = np.ones((data_3d.shape[1], data_3d.shape[2]), dtype=np.bool_)
 

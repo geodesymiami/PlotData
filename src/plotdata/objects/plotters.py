@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.ticker as ticker
 from matplotlib.colors import LightSource
-from obspy.imaging.beachball import Beach
+# from obspy.imaging.beachball import Beach
 from matplotlib.transforms import Affine2D
 from matplotlib.patheffects import withStroke
 from matplotlib.patches import Rectangle, Circle, Polygon
