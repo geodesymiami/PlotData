@@ -19,7 +19,7 @@ from datetime import datetime, date
 from mintpy.cli import generate_mask
 from scipy.interpolate import interp1d
 from mintpy.utils import utils, writefile
-from mintpy.save_hdfeos5 import polygon_corners_string
+from mintpy.save_hdfeos5 import get_output_filename
 
 
 def detect_direction_from_name(fname, asc_tokens=None, desc_tokens=None, default=None):
@@ -56,7 +56,7 @@ def read_best_values(file, params=None):
     row = df.iloc[0]  # best-fit row
 
     sources = {}
-    terms = ["xcen", "ycen", "radius", "ytlc", "xtlc", "s_axis_max", "ratio", "strike", "dip", "length", "width"]
+    terms = ["xcen", "ycen", "depth", "radius", "ytlc", "xtlc", "dtlc", "s_axis_max", "ratio", "strike", "dip", "length", "width"]
 
     if params:
         terms.extend(params)
@@ -114,39 +114,6 @@ def configure_logging(directory=None):
     rest = ' '.join(sys.argv[1:]) if len(sys.argv) > 1 else ''
     cmd_command = f"{script_name} {rest}".strip()
     logging.info(cmd_command)
-
-def get_output_filename(metadata, template, direction=None):
-    """Get output file name of HDF-EOS5 time-series file."""
-    SAT = metadata['mission']
-    # SW = metadata['beam_mode']
-    # if metadata['beam_swath']:
-    #     SW += str(metadata['beam_swath'])
-    RELORB = "{:03d}".format(int(metadata['relative_orbit']))
-    RELORB2 = "{:03d}".format(int(metadata['relative_orbit_second']))
-
-    method_str = metadata.get('post_processing_method', 'MintPy').lower()
-
-
-    DATE1 = datetime.strptime(metadata['first_date'], '%Y-%m-%d').strftime('%Y%m%d')
-    DATE2 = datetime.strptime(metadata['last_date'], '%Y-%m-%d').strftime('%Y%m%d')
-
-    # prefer explicit flag from metadata if present; fall back to passed flag
-    update_flag =  (str(metadata.get('cfg.mintpy.save.hdfEos5.update', '')).lower() == 'yes') or False
-    if update_flag:
-        DATE2 = 'XXXXXXXX'
-
-    if direction:
-        outName = f'{SAT}_{direction}_{RELORB}_{RELORB2}_{method_str}_{DATE1}_{DATE2}.he5'
-    else:
-        outName = f'{SAT}_{RELORB}_{RELORB2}_{method_str}_{DATE1}_{DATE2}.he5'
-
-    fbase, fext = os.path.splitext(outName)
-    polygon_str =  metadata.get('data_footprint')
-    SUB = polygon_corners_string(polygon_str)
-    outName = fbase + '_' + SUB + fext
-
-    return outName
-
 
 def to_date(x) -> date:
     # already a date/datetime
@@ -1058,3 +1025,13 @@ def parse_global_cmt(soup):
         })
 
     return events
+
+
+def calculate_LOS(incident, azimuth):
+    # Calculate LOS components using metadata values
+    lose = -np.sin(np.deg2rad(incident)) * np.cos(np.deg2rad(azimuth)-np.pi/2)
+    losn = np.sin(np.deg2rad(incident)) * np.sin(np.deg2rad(azimuth)-np.pi/2)
+    losz = np.cos(np.deg2rad(incident))
+
+
+    return lose, losn, losz
