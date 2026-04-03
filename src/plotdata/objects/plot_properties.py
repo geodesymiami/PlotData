@@ -70,7 +70,7 @@ class PlotTemplate:
                 # ["velocity_descending", "velocity_ascending"],
                 # ["horizontal", "vertical"]
                 ["vectors",             "velocity_descending.section.point"],
-                ["profile_descending",  "timeseries"],
+                ["profile_descending",  "model_descending.section"],
                 # ["timeseries"],
                 # ["seismicmap"],
                 # ["seismicity.date",],

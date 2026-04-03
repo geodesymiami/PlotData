@@ -18,7 +18,7 @@ from mintpy.objects import HDFEOS
 from datetime import datetime, date
 from mintpy.cli import generate_mask
 from scipy.interpolate import interp1d
-from mintpy.utils import utils, writefile
+from mintpy.utils import utils, writefile, readfile
 from mintpy.save_hdfeos5 import get_output_filename
 
 
