@@ -735,10 +735,7 @@ class Okada():
         """
         Function defining the names for the parameters in the model.
         """
-        if self.type=='slip':
-            self.parameters=("xcen","ycen","depth","length","width","slip","strike","dip","rake")
-        elif self.type=='open':
-            self.parameters=("xcen","ycen","depth","length","width","opening","strike","dip")
+        self.parameters=("xtlc","ytlc","dtlc","length","width","strike","dip","opening")
 
     def get_args(self,args, tilt):
         """
@@ -752,20 +749,20 @@ class Okada():
             rargs (list) : parameters for the Okada model.
         """
         nu=0.25
-        if self.type=='slip':
-            xcen,ycen,depth,length,width,slip,strike,dip,rake=args
+        if 'param1' in args:
+            xtlc,ytlc,dtlc,length,width,slip,strike,dip,rake=(args[k] for k in ['xtlc', 'ytlc', 'dtlc', 'length', 'width', 'param1', 'strike', 'dip', 'param2'])
             opening=0.0
         else:
-            xcen,ycen,depth,length,width,opening,strike,dip=args
+            xtlc, ytlc, dtlc, length, width, opening, strike, dip = (args[k] for k in ['xtlc', 'ytlc', 'dtlc', 'length', 'width', 'opening', 'strike', 'dip'])
             slip=0.0
             rake=0.0
-        rargs=[xcen, ycen,depth, length, width,slip, opening,strike, dip, rake,nu, tilt]
+        rargs=[xtlc, ytlc,dtlc, length, width,slip, opening,strike, dip, rake,nu, tilt]
         return rargs
 
     # =====================
     # Forward Models
     # =====================
-    def model(self,x,y,*args):
+    def model(self,x,y,**args):
         """
         3d displacement field on surface for dislocation (Okada, 1985)
 
@@ -794,8 +791,8 @@ class Okada():
         rargs=self.get_args(args,tilt=True)
         return self.model_gen(x,y, *rargs)
 
-    def model_gen(self,x,y, xcen=0, ycen=0,
-                        depth=5e3, length=1e3, width=1e3,
+    def model_gen(self,x,y, xtlc=0, ytlc=0,
+                        dtlc=5e3, length=1e3, width=1e3,
                         slip=0.0, opening=10.0,
                         strike=0.0, dip=0.0, rake=0.0,
                         nu=0.25,tilt=False):
@@ -805,9 +802,9 @@ class Okada():
         Parameters:
             x: x-coordinate for displacement (m)
             y: y-coordinate for displacement (m)
-            xcen: x-offset of dislocation center (m)
-            ycen: y-offset of dislocation center (m)
-            depth: depth to dislocation center (m)
+            xtlc: x-offset of dislocation top-left corner (m)
+            ytlc: y-offset of dislocation top-left corner (m)
+            dtlc: depth to dislocation top-left corner (m)
             length: length of dislocation path (m)
             width: width of dislocation path (m)
             slip: fault movement (m)
@@ -823,6 +820,17 @@ class Okada():
             uy (array) : displacements in north in meters.
             uz (array) : displacements in vertical in meters.
         """
+        strike = np.deg2rad(strike) #transformations accounted for below
+        dip    = np.deg2rad(dip)
+        rake   = np.deg2rad(rake)
+
+        L = length
+        W = width
+
+        xcen = xtlc + (L/2)*np.sin(strike) + (W/2)*np.cos(dip)*np.cos(strike)
+        ycen = ytlc + (L/2)*np.cos(strike) - (W/2)*np.cos(dip)*np.sin(strike)
+        depth = dtlc + (W/2)*np.sin(dip)
+
         e = x - xcen
         n = y - ycen
 
@@ -861,13 +869,6 @@ class Okada():
         #assert rake <= 180, 'rake should be:  rake <= 180'
         #assert -1.0 <= nu <= 0.5, 'Poisson ratio should be: -1 <= nu <= 0.5'
 
-        strike = np.deg2rad(strike) #transformations accounted for below
-        dip    = np.deg2rad(dip)
-        rake   = np.deg2rad(rake)
-
-        L = length
-        W = width
-
         U1 = np.cos(rake) * slip
         U2 = np.sin(rake) * slip
         U3 = opening
@@ -884,7 +885,7 @@ class Okada():
             ssx=Okada.dx_ss
             dsx=Okada.dx_ds
             tfx=Okada.dx_tf
-            
+
             ssy=Okada.dy_ss
             dsy=Okada.dy_ds
             tfy=Okada.dy_tf
@@ -892,15 +893,15 @@ class Okada():
             ssx=Okada.ux_ss
             dsx=Okada.ux_ds
             tfx=Okada.ux_tf
-            
+
             ssy=Okada.uy_ss
             dsy=Okada.uy_ds
             tfy=Okada.uy_tf
-            
+
             uz = - U1 / (2 * np.pi) * Okada.chinnery(Okada.uz_ss, x, p, L, W, q, dip, nu) - \
                    U2 / (2 * np.pi) * Okada.chinnery(Okada.uz_ds, x, p, L, W, q, dip, nu) + \
                    U3 / (2 * np.pi) * Okada.chinnery(Okada.uz_tf, x, p, L, W, q, dip, nu)
-            
+
         ux = - U1 / (2 * np.pi) * Okada.chinnery(ssx, x, p, L, W, q, dip, nu) - \
                U2 / (2 * np.pi) * Okada.chinnery(dsx, x, p, L, W, q, dip, nu) + \
                U3 / (2 * np.pi) * Okada.chinnery(tfx, x, p, L, W, q, dip, nu)
@@ -912,7 +913,7 @@ class Okada():
 
         ue = np.sin(strike) * ux - np.cos(strike) * uy
         un = np.cos(strike) * ux + np.sin(strike) * uy
-        
+
         if tilt:
             return ue,un
         else:
