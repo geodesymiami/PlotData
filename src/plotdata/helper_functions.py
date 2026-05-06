@@ -21,6 +21,8 @@ from scipy.interpolate import interp1d
 from mintpy.utils import utils, writefile
 from mintpy.save_hdfeos5 import polygon_corners_string
 
+UPDATE_X_MAX_AGE_DAYS = 31
+
 
 def detect_direction_from_name(fname, asc_tokens=None, desc_tokens=None, default=None):
     """
@@ -115,7 +117,15 @@ def configure_logging(directory=None):
     cmd_command = f"{script_name} {rest}".strip()
     logging.info(cmd_command)
 
-def get_output_filename(metadata, template, direction=None):
+def use_x_placeholder_for_update(last_date_ymd, today=None, max_age_days=UPDATE_X_MAX_AGE_DAYS):
+    """Return True if end date should be replaced by XXXXXXXX."""
+    if today is None:
+        today = date.today()
+    last = datetime.strptime(last_date_ymd[0:10], '%Y-%m-%d').date()
+    return (today - last).days <= max(0, int(max_age_days))
+
+
+def get_output_filename(metadata, template, direction=None, today=None):
     """Get output file name of HDF-EOS5 time-series file."""
     SAT = metadata['mission']
     # SW = metadata['beam_mode']
@@ -132,7 +142,7 @@ def get_output_filename(metadata, template, direction=None):
 
     # prefer explicit flag from metadata if present; fall back to passed flag
     update_flag =  (str(metadata.get('cfg.mintpy.save.hdfEos5.update', '')).lower() == 'yes') or False
-    if update_flag:
+    if update_flag and use_x_placeholder_for_update(metadata['last_date'], today=today):
         DATE2 = 'XXXXXXXX'
 
     if direction:
