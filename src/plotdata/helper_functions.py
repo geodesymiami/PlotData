@@ -19,7 +19,30 @@ from datetime import datetime, date
 from mintpy.cli import generate_mask
 from scipy.interpolate import interp1d
 from mintpy.utils import utils, writefile
-from mintpy.save_hdfeos5 import polygon_corners_string
+
+try:
+    from mintpy.save_hdfeos5 import polygon_corners_string
+except ImportError:
+    # Upstream MintPy omits this helper; MinSAR adds it in additions/mintpy/save_hdfeos5.py.
+    from shapely import wkt as _wkt
+
+    def polygon_corners_string(polygon_str: str) -> str:
+        """Corners string like S0081W09112_S0081W09130_... from a WKT POLYGON."""
+
+        def fmt_lat(lat: float) -> str:
+            val = int(round(abs(lat) * 100))
+            return f"{'N' if lat >= 0 else 'S'}{val:04d}"
+
+        def fmt_lon(lon: float) -> str:
+            val = int(round(abs(lon) * 100))
+            return f"{'E' if lon >= 0 else 'W'}{val:05d}"
+
+        poly = _wkt.loads(polygon_str)
+        coords = list(poly.exterior.coords)[:-1]
+        corners = [(lat, lon) for lon, lat in coords]
+        parts = [f"{fmt_lat(lat)}{fmt_lon(lon)}" for (lat, lon) in corners]
+        return "_".join(parts)
+
 
 UPDATE_X_MAX_AGE_DAYS = 31
 
