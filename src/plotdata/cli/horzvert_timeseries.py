@@ -1167,18 +1167,139 @@ def main(iargs=None, namespace=None):
     timeseries = []
 
     for idx, f in enumerate(inps.file):
+        # #region agent log
+        try:
+            import json as _dbg_json2, time as _dbg_time2
+            with open('/home/exouser/code/minsar/.cursor/debug-40779f.log', 'a') as _dbg_f2:
+                _dbg_f2.write(_dbg_json2.dumps({
+                    "sessionId": "40779f",
+                    "runId": "step-mismatch-2",
+                    "hypothesisId": "B+D+F",
+                    "location": "horzvert_timeseries.py:loop-enter",
+                    "message": "loop iteration entered",
+                    "data": {"idx": idx, "file_arg": str(f), "n_files": len(inps.file)},
+                    "timestamp": int(_dbg_time2.time() * 1000),
+                }) + "\n")
+        except Exception as _dbg_e2:
+            try:
+                with open('/home/exouser/code/minsar/.cursor/debug-40779f.log', 'a') as _dbg_f2:
+                    _dbg_f2.write('{"location":"loop-enter","error":"' + repr(_dbg_e2).replace('"', "'") + '"}\n')
+            except Exception:
+                pass
+        # #endregion
+
         geometry_file_input = inps.geom_file[idx] if inps.geom_file and idx < len(inps.geom_file) else None
         obj, los_inc_angle, los_az_angle, mask, project_base_dir, geometry_file = load_timeseries_file(f, geometry_file_input, inps.mask_vmin[idx], inps)
+
+        # #region agent log
+        try:
+            import json as _dbg_json, time as _dbg_time
+            _dbg_md = obj.metadata if hasattr(obj, 'metadata') else {}
+            _dbg_payload = {
+                "sessionId": "40779f",
+                "runId": "step-mismatch-2",
+                "hypothesisId": "B+D",
+                "location": "horzvert_timeseries.py:pre-check",
+                "message": "step-consistency-check inputs",
+                "data": {
+                    "idx": idx,
+                    "file_arg": str(f),
+                    "obj_FILE_PATH": str(_dbg_md.get('FILE_PATH')),
+                    "obj_has_Y_STEP": 'Y_STEP' in _dbg_md,
+                    "obj_Y_STEP": str(_dbg_md.get('Y_STEP')),
+                    "obj_X_STEP": str(_dbg_md.get('X_STEP')),
+                    "obj_Y_FIRST": str(_dbg_md.get('Y_FIRST')),
+                    "obj_X_FIRST": str(_dbg_md.get('X_FIRST')),
+                    "obj_LENGTH": str(_dbg_md.get('LENGTH')),
+                    "obj_WIDTH": str(_dbg_md.get('WIDTH')),
+                    "obj_Y_STEP_repr": repr(_dbg_md.get('Y_STEP')),
+                    "obj_X_STEP_repr": repr(_dbg_md.get('X_STEP')),
+                    "obj_Y_STEP_type": type(_dbg_md.get('Y_STEP')).__name__,
+                    "prev_y_step": "None" if y_step is None else str(y_step),
+                    "prev_x_step": "None" if x_step is None else str(x_step),
+                    "prev_y_step_repr": repr(y_step),
+                    "prev_x_step_repr": repr(x_step),
+                    "prev_y_step_type": type(y_step).__name__,
+                    "inps_lat_step": str(getattr(inps, 'lat_step', None)),
+                    "geometry_file": str(geometry_file),
+                },
+                "timestamp": int(_dbg_time.time() * 1000),
+            }
+            with open('/home/exouser/code/minsar/.cursor/debug-40779f.log', 'a') as _dbg_f:
+                _dbg_f.write(_dbg_json.dumps(_dbg_payload, default=str) + "\n")
+        except Exception as _dbg_e:
+            try:
+                with open('/home/exouser/code/minsar/.cursor/debug-40779f.log', 'a') as _dbg_f:
+                    _dbg_f.write('{"location":"pre-check","idx":' + str(idx) + ',"error":"' + repr(_dbg_e).replace('"', "'") + '"}\n')
+            except Exception:
+                pass
+        # #endregion
 
         # Check step consistency from previous iteration
         if 'Y_STEP' in obj.metadata:
             if y_step is not None and x_step is not None:
+                # #region agent log
+                try:
+                    import json as _dbg_json3, time as _dbg_time3
+                    with open('/home/exouser/code/minsar/.cursor/debug-40779f.log', 'a') as _dbg_f3:
+                        _dbg_f3.write(_dbg_json3.dumps({
+                            "sessionId": "40779f",
+                            "runId": "step-mismatch-2",
+                            "hypothesisId": "B+D",
+                            "location": "horzvert_timeseries.py:about-to-compare",
+                            "message": "about to compare prev (y_step,x_step) vs current obj.metadata",
+                            "data": {
+                                "idx": idx,
+                                "y_step_prev_repr": repr(y_step),
+                                "x_step_prev_repr": repr(x_step),
+                                "y_step_curr_repr": repr(obj.metadata.get('Y_STEP')),
+                                "x_step_curr_repr": repr(obj.metadata.get('X_STEP')),
+                                "y_neq": (y_step != obj.metadata.get('Y_STEP')),
+                                "x_neq": (x_step != obj.metadata.get('X_STEP')),
+                            },
+                            "timestamp": int(_dbg_time3.time() * 1000),
+                        }, default=str) + "\n")
+                except Exception:
+                    pass
+                # #endregion
                 if (y_step != obj.metadata['Y_STEP']) or (x_step != obj.metadata['X_STEP']):
                     print('-' * 50)
                     raise ValueError('Files have different steps size for Geocoding')
 
         # Geocode if needed
         obj, los_inc_angle, los_az_angle, mask, y_step, x_step = geocode_timeseries(obj, los_inc_angle, los_az_angle, mask, geometry_file, inps)
+
+        # #region agent log
+        try:
+            import json as _dbg_jsonp, time as _dbg_timep
+            with open('/home/exouser/code/minsar/.cursor/debug-40779f.log', 'a') as _dbg_fp:
+                _dbg_fp.write(_dbg_jsonp.dumps({
+                    "sessionId": "40779f",
+                    "runId": "step-mismatch-2",
+                    "hypothesisId": "B+D",
+                    "location": "horzvert_timeseries.py:post-geocode",
+                    "message": "step-consistency-check geocode_timeseries return",
+                    "data": {
+                        "idx": idx,
+                        "file_arg": str(f),
+                        "post_y_step": str(y_step),
+                        "post_x_step": str(x_step),
+                        "post_y_step_repr": repr(y_step),
+                        "post_x_step_repr": repr(x_step),
+                        "post_obj_Y_STEP": str(obj.metadata.get('Y_STEP')),
+                        "post_obj_X_STEP": str(obj.metadata.get('X_STEP')),
+                        "post_obj_Y_STEP_repr": repr(obj.metadata.get('Y_STEP')),
+                        "post_obj_X_STEP_repr": repr(obj.metadata.get('X_STEP')),
+                    },
+                    "timestamp": int(_dbg_timep.time() * 1000),
+                }, default=str) + "\n")
+        except Exception as _dbg_ep:
+            try:
+                with open('/home/exouser/code/minsar/.cursor/debug-40779f.log', 'a') as _dbg_fp:
+                    _dbg_fp.write('{"location":"post-geocode","idx":' + str(idx) + ',"error":"' + repr(_dbg_ep).replace('"', "'") + '"}\n')
+            except Exception:
+                pass
+        # #endregion
 
         # Prepare data for reference point selection
         slicedata = obj.data[0]
