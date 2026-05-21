@@ -4,12 +4,17 @@ import sys
 import argparse
 import numpy as np
 from datetime import datetime
+
 import matplotlib.dates as mdates
-from matplotlib.ticker import FuncFormatter
-from mintpy.utils import readfile
 from matplotlib import pyplot as plt
-from mintpy.objects import timeseries, HDFEOS
+import matplotlib.gridspec as gridspec
+from matplotlib.ticker import FuncFormatter
+
+from mintpy.utils import readfile
+from mintpy.objects import HDFEOS
+
 from scipy.interpolate import UnivariateSpline
+
 from plotdata.objects.forward import Penny, Mogi, Okada, Yang
 from plotdata.helper_functions import read_best_values, convert_to_utm, calculate_LOS
 
@@ -187,13 +192,14 @@ def main(iargs):
             if f"{start}_{end}" not in sources[f"{m}_{i}"]:
                 sources[f"{m}_{i}"][f"{start}_{end}"] = {}
 
-            sources[f"{m}_{i}"][f"{start}_{end}"]['point_xy'] = convert_to_utm([lat], [lon])
-            sources[f"{m}_{i}"][f"{start}_{end}"]['ts'] = ts[i0:i1+1]
+            sources[f"{m}_{i}"][f"{start}_{end}"]['point_xy'] = convert_to_utm([lon], [lat])
+            sources[f"{m}_{i}"][f"{start}_{end}"]['ts'] = ts[i0:i1+1] - ts[0]
             sources[f"{m}_{i}"][f"{start}_{end}"]['date_list'] = dates[i0:i1+1]
 
     data_path = os.path.join(SCRATCHDIR, inps.data_dir)
     params = ['dP_mu', 'dVol', 'opening', 'param1']
 
+################################## STRENGTH ######################################
     for s, e, m, i in zip(inps.start_date, inps.end_date, inps.model, inps.index):
         model_inps = os.path.join(data_path, f"{s}_{e}", m, "VSM_best.csv")
 
@@ -213,14 +219,96 @@ def main(iargs):
 
         if 'dP_mu' in param_vals:
             param_vals['dP_mu'] = 1
+            unit = ''
         if 'dVol' in param_vals:
             param_vals['dVol'] = 1
+            unit = 'm3'
+        if 'opening' in param_vals:
+            param_vals['opening'] = 1
+            unit = 'm'
+        if 'param1' in param_vals:
+            param_vals['param1'] = 1
+            unit = 'm'
 
-        _, _, Gz = frwd.model(np.array([x]), np.array([y]), **param_vals)
+        Ge, Gn, Gz = frwd.model(np.array([x]), np.array([y]), **param_vals)
 
-        dP = sources[f"{m}_{i}"][f"{s}_{e}"]['ts'] / Gz[0]
+        sources[f"{m}_{i}"][f"{s}_{e}"]['strength'] = (sources[f"{m}_{i}"][f"{s}_{e}"]['ts']/1000) / Gz[0]
+        sources[f"{m}_{i}"][f"{s}_{e}"]['unit'] = unit
+#########################################################################################
 
-    pass
+####################################### START END #######################################
+    start = []
+    end = []
+    for period in inps.period:
+        start.append(min(datetime.strptime(p, '%Y%m%d').date() for p in period.split(':')))
+        end.append(max(datetime.strptime(p, '%Y%m%d').date() for p in period.split(':')))
+
+    end = max(end)
+    start = min(start)
+#########################################################################################
+
+####################################### TICKS #######################################
+    def set_ticks(ax):
+        ax.xaxis.set_major_locator(mdates.YearLocator())
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+
+        # Set minor ticks: every July 1st
+        ax.xaxis.set_minor_locator(mdates.MonthLocator(bymonth=7))
+
+        # Optionally, make minor ticks smaller
+        ax.tick_params(axis='x', which='minor', length=4)
+        ax.tick_params(axis='x', which='major', length=8, labelsize=10)
+#####################################################################################
+
+    models = sources.keys()
+    n_models = len(models)
+
+    fig = plt.figure(figsize=(7 * max(len(sources[m]) for m in models), 2 * n_models))
+    outer_gs = gridspec.GridSpec(n_models, 1, figure=fig)
+    axs = {}
+
+######################### COLORS DEFINITION #############################################
+    cmap = plt.get_cmap("plasma")
+    vals = np.linspace(0.1, 0.9, n_models)  # avoid very dark/light ends
+    model_colors = {m: cmap(v) for m, v in zip(models, vals)}
+#########################################################################################
+
+    for i, model in enumerate(models):
+        dates = sorted(sources[model].keys())
+        n_dates = len(dates)
+
+        inner_gs = gridspec.GridSpecFromSubplotSpec(1, n_dates, subplot_spec=outer_gs[i, 0])
+        for j, date in enumerate(dates):
+            y = sources[model][date]["strength"] - sources[model][date]["strength"][0]
+            x = sources[model][date]["date_list"]
+            ax = fig.add_subplot(inner_gs[0, j])
+            axs[(model, date)] = ax
+
+            ### SET X-LIMITS ###
+            if j == 0:
+                s=start
+            else:
+                s = min(x)
+            if j+1 == inner_gs.ncols:
+                e = end
+            else:
+                e = max(x)
+            ax.set_xlim(s, e)
+
+##################### LINEAR REG ####################################
+            x_num = mdates.date2num(x)
+            coeffs = np.polyfit(x_num, y, 1)
+            slope, intercept = coeffs
+            y_fit = slope * x_num + intercept
+            ax.plot(x, y_fit, color=model_colors[model], linestyle='--', linewidth=2)
+#####################################################################
+
+            ax.scatter(x, y, label=model, color=model_colors[model])
+            ax.legend(fontsize=10)
+            ax.set_ylabel(f"{sources[model][date]['unit']}", fontsize=10)
+            set_ticks(ax)
+
+    plt.tight_layout(h_pad=1.5)
 
 def old_main(iargs):
     inps = create_parser()
