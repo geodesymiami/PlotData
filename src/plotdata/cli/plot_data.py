@@ -9,7 +9,7 @@ import re
 import sys
 
 # !!! The osgeo import breaks when called by readfile.py unless I do the following !!!
-from osgeo import gdal, osr
+# from osgeo import gdal, osr
 
 import logging
 import argparse

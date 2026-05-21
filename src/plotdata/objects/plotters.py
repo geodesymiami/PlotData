@@ -11,7 +11,7 @@ from matplotlib.colors import LightSource
 # from obspy.imaging.beachball import Beach
 from matplotlib.transforms import Affine2D
 from matplotlib.patheffects import withStroke
-from matplotlib.patches import Rectangle, Circle, Polygon
+from matplotlib.patches import Rectangle, Polygon
 from plotdata.volcano_functions import get_volcanoes_data
 from plotdata.helper_functions import draw_vectors, calculate_distance, get_bounding_box, parse_polygon, resize_to_match, parse_coord_vert, find_longitude_degree
 
@@ -757,8 +757,8 @@ class VectorsPlot:
                 latitude, longitude = get_bounding_box(self.geometry_attr)
                 self.region = [longitude[0], longitude[1], latitude[0], latitude[1]]
 
-        self.horizontal_section = self._process_sections((self.horz), self.region)
-        self.vertical_section = self._process_sections((self.vert), self.region)
+        self.horizontal_section = self._process_sections((self.horz), self.horz_attr['region'])
+        self.vertical_section = self._process_sections((self.vert), self.vert_attr['region'])
         self.topography_section = self._process_sections(self.geometry, self.geometry_attr["region"])
 
     def _process_sections(self, data, region):
@@ -772,67 +772,33 @@ class VectorsPlot:
         return values
 
     def _draw_line(self, data, region, latitude, longitude):
-        if False:
-            # Calculate the resolution in degrees
-            lat_res = (region[3] - region[2]) / (data.shape[0] - 1)
-            lon_res = (region[1] - region[0]) / (data.shape[1] - 1)
+        ny, nx = data.shape
 
-            # Calculate the distance between start and end points
-            distance = np.sqrt((latitude[1] - latitude[0])**2 + (longitude[1] - longitude[0])**2)
+        lon_min, lon_max = float(region[0]), float(region[1])
+        lat_min, lat_max = float(region[2]), float(region[3])
 
-            # Determine the number of points based on the distance
-            num_points = int(distance / min(lat_res, lon_res))
+        # avoid zero-division for degenerate regions
+        lon_span = lon_max - lon_min if (lon_max - lon_min) != 0 else 1.0
+        lat_span = lat_max - lat_min if (lat_max - lat_min) != 0 else 1.0
 
-            lon_points = np.linspace(longitude[0], longitude[1], num_points)
-            lat_points = np.linspace(latitude[0], latitude[1], num_points)
+        # number of sample points along the profile
+        distance_deg = math.hypot(latitude[1] - latitude[0], longitude[1] - longitude[0])
+        num_points = max(2, int(distance_deg / min(lat_span / max(1, ny - 1), lon_span / max(1, nx - 1))) + 1)
 
-            # Snap points to the nearest grid points
-            lon_indices = np.round((lon_points - region[0]) / lon_res).astype(int)
-            lat_indices = np.round((lat_points - region[2]) / lat_res).astype(int)
+        lon_points = np.linspace(longitude[0], longitude[1], num_points)
+        lat_points = np.linspace(latitude[0], latitude[1], num_points)
 
-            # Ensure indices are within bounds
-            lon_indices = np.clip(lon_indices, 0, data.shape[1] - 1)
-            lat_indices = np.clip(lat_indices, 0, data.shape[0] - 1)
+        # fractional column index: 0..(nx-1) left->right
+        col_f = (lon_points - lon_min) / lon_span * (nx - 1)
 
-            # TODO do i need it?
-            # Create a DataFrame to store the path data
-            self.path_df = pd.DataFrame({
-                'longitude': lon_points,
-                'latitude': lat_points,
-                'lon_index': lon_indices,
-                'lat_index': lat_indices,
-                'distance': np.linspace(0, 1, num_points)  # Normalized distance
-            })
+        # fractional row index: if row 0 == top (lat_max), map lat -> row via lat_max - lat
+        row_f = (lat_max - lat_points) / lat_span * (ny - 1)
 
-            return lat_indices, lon_indices
-        else:
-            ny, nx = data.shape
+        # round/clip to integer array indices
+        lon_indices = np.clip(np.round(col_f).astype(int), 0, nx - 1)
+        lat_indices = np.clip(np.round(row_f).astype(int), 0, ny - 1)
 
-            lon_min, lon_max = float(region[0]), float(region[1])
-            lat_min, lat_max = float(region[2]), float(region[3])
-
-            # avoid zero-division for degenerate regions
-            lon_span = lon_max - lon_min if (lon_max - lon_min) != 0 else 1.0
-            lat_span = lat_max - lat_min if (lat_max - lat_min) != 0 else 1.0
-
-            # number of sample points along the profile
-            distance_deg = math.hypot(latitude[1] - latitude[0], longitude[1] - longitude[0])
-            num_points = max(2, int(distance_deg / min(lat_span / max(1, ny - 1), lon_span / max(1, nx - 1))) + 1)
-
-            lon_points = np.linspace(longitude[0], longitude[1], num_points)
-            lat_points = np.linspace(latitude[0], latitude[1], num_points)
-
-            # fractional column index: 0..(nx-1) left->right
-            col_f = (lon_points - lon_min) / lon_span * (nx - 1)
-
-            # fractional row index: if row 0 == top (lat_max), map lat -> row via lat_max - lat
-            row_f = (lat_max - lat_points) / lat_span * (ny - 1)
-
-            # round/clip to integer array indices
-            lon_indices = np.clip(np.round(col_f).astype(int), 0, nx - 1)
-            lat_indices = np.clip(np.round(row_f).astype(int), 0, ny - 1)
-
-            return lat_indices, lon_indices
+        return lat_indices, lon_indices
 
     def _compute_vectors(self):
         """Computes velocity vectors and scaling factors."""
@@ -1052,28 +1018,45 @@ class Okada:
 def point_on_globe(latitude, longitude, names=None, size='0.7', fsize=5):
     fig = pygmt.Figure()
 
-    # Local extent around your points
-    lon_min, lon_max = float(np.min(longitude)), float(np.max(longitude))
-    lat_min, lat_max = float(np.min(latitude)), float(np.max(latitude))
-    avg_lat = (lat_min + lat_max) / 2
-    avg_lon = (lon_min + lon_max) / 2
-    lat_pad = max((lat_max - lat_min) * 0.5, 20)
-    lon_pad = max(find_longitude_degree(avg_lat, lat_pad), abs(lon_max - lon_min))
+    lat_min, lat_max = np.min(latitude), np.max(latitude)
+    lon_min, lon_max = np.min(longitude), np.max(longitude)
 
-    region = [avg_lon - lon_pad, avg_lon + lon_pad, avg_lat - lat_pad, avg_lat + lat_pad]
+    lat_span = lat_max - lat_min
+    lon_span = lon_max - lon_min
 
-    fig.basemap(
-        region=region,
-        projection="M15c",   # local Mercator map
-        frame="afg"
-    )
+    center_lat = np.mean(latitude)
+    center_lon = np.mean(longitude)
+
+    if lat_span <= 15 and lon_span <= 30:
+        lat_span = max(lat_span, 10)
+        lon_span = max(lon_span, lat_span / np.cos(np.radians(center_lat)))
+
+        dir = {
+            "projection": f"X{10}c",
+            "region": [center_lon - lon_span, center_lon + lon_span, center_lat - lat_span, center_lat + lat_span],
+            "frame": "afg"
+        }
+    elif lat_span > 15 and lat_span < 90 and lon_span > 30 and lon_span < 120:
+        # Use globe
+        dir = {
+            "projection": f"G{center_lon}/{center_lat}/15c",
+            "region": "d",
+            "frame": "g"
+        }
+    else:
+        # Use Mercator
+        dir = {
+            "projection": "R15c",
+            "region": "d",
+            "frame": "afg"
+        }
 
     # # # Set up orthographic projection centered on your point
-    # fig.basemap(
-    #     region="d",  # Global domain
-    #     projection=f"G{np.mean(longitude)}/{np.mean(latitude)}/15c",  # Centered on your coordinates
-    #     frame="g"  # Show gridlines only
-    # )
+    fig.basemap(
+        region=dir["region"],
+        projection=dir["projection"],
+        frame=dir["frame"]
+    )
 
     # Add continent borders with black lines
     fig.coast(

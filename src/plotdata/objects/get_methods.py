@@ -293,6 +293,8 @@ class DataExtractor:
 
         if not hasattr(dictionary, 'attributes'):
             dictionary['attributes'] = geometry['attributes']
+            geometry['attributes']['START_DATE'] = self.start_date
+            geometry['attributes']['END_DATE'] = self.end_date
 
         if self.region:
             geometry['attributes']['region'] = self.region

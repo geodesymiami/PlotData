@@ -4,18 +4,29 @@ import sys
 import argparse
 import numpy as np
 from datetime import datetime
+
 import matplotlib.dates as mdates
-from matplotlib.ticker import FuncFormatter
-from mintpy.utils import readfile
 from matplotlib import pyplot as plt
-from mintpy.objects import timeseries, HDFEOS
+import matplotlib.gridspec as gridspec
+from matplotlib.ticker import FuncFormatter
+
+from mintpy.utils import readfile
+from mintpy.objects import HDFEOS
+
 from scipy.interpolate import UnivariateSpline
-from plotdata.objects.get_methods import DataExtractor
-from plotdata.helper_functions import read_best_values
+
+from plotdata.objects.forward import Penny, Mogi, Okada, Yang
+from plotdata.helper_functions import read_best_values, convert_to_utm, calculate_LOS
 
 SCRATCHDIR = os.getenv('SCRATCHDIR')
 EXAMPLE = ''
 
+MODELS = {
+    'penny': Penny,
+    'mogi': Mogi,
+    'okada': Okada,
+    'spheroid': Yang,
+}
 
 def create_parser():
     synopsis = 'Plotting of InSAR, GPS and Seismicity data'
@@ -30,7 +41,7 @@ def create_parser():
     parser.add_argument('--lookup', '-l', dest='geometry_file', help='Geometry file')
     parser.add_argument("--lalo", nargs='*', default=None, metavar=('LAT:LON or LAT,LON'), type=str, help="lat/lon coords of  pixel for timeseries")
     parser.add_argument('--ref-lalo', nargs='?', metavar=('LAT:LON or LAT,LON'), default=None, type=str, help='reference point (default:  existing reference point)')
-    parser.add_argument("--offset", nargs='*', type=int, default=0, help="offset to apply to each timeseries (default: %(default)s).")
+    parser.add_argument("--offset", nargs='*', type=int, default=[0], help="offset to apply to each timeseries (default: %(default)s).")
 
     parser.add_argument('--unit', default='cm', help='Unit for velocity vectors (default: %(default)s).')
     parser.add_argument('--figsize', nargs=2, type=float, metavar=('WIDTH', 'HEIGHT'), default=[7.5, 12.0],
@@ -73,17 +84,39 @@ def create_parser():
         inps.layout = [['timeseries']]
 
     if len(inps.offset) != len(inps.period):
-        inps.offset = [inps.offset[0]] * len(inps.period)
+        for i in range(len(inps.period) - len(inps.offset)):
+            inps.offset.append(0)
 
     return inps
 
 
-def get_data(obj, inps):
-    obj.open()
-    data = obj.read()
-
-
 def get_source_increment(value):
+    """
+    Calculate the source increment based on the provided value dictionary.
+
+    The function computes an increment value (`inc`) depending on the keys present in the input dictionary `value`:
+    - If "param1" is present (not None), it calculates the increment as the Euclidean norm of the slip and opening contributions over an area defined by "length" and "width".
+    - If "dP_mu" and "radius" are present, it calculates the increment as the product of "dP_mu" and the cube of "radius".
+    - If "dVol" is present, it uses its value as the increment.
+
+    Works for the following source types:
+    - Mogi: uses "dVol".
+    - Penny-shaped crack: uses "dP_mu" and "radius".
+    - Okada: uses "param1" (slip), "length", and "width".
+
+    Parameters:
+        value (dict): A dictionary containing source parameters. Expected keys are:
+            - "param1" (float, optional): Slip value.
+            - "length" (float, optional): Length of the source.
+            - "width" (float, optional): Width of the source.
+            - "opening" (float, optional): Opening value.
+            - "dP_mu" (float, optional): Pressure change over shear modulus.
+            - "radius" (float, optional): Radius of the source.
+            - "dVol" (float, optional): Volume increment.
+
+    Returns:
+        float: The calculated source increment.
+    """
     inc = 0.0
     if value.get("param1") is not None:
         L = value.get("length", 0.0)
@@ -101,25 +134,196 @@ def get_source_increment(value):
 
     return inc
 
-
 def main(iargs):
     inps = create_parser()
 
     sources = {}
     if inps.timeseries:
-        if False:
-            map = {"timeseries": {"class": None, "attributes": ["timeseries"],},}
-            DataExtractor(map, inps)
-        else:
-            atr = readfile.read_attribute(inps.timeseries)
+        atr = readfile.read_attribute(inps.timeseries)
 
-            # Identify file type and open it
-            if atr['FILE_TYPE'] == 'timeseries':
-                obj = timeseries(inps.timeseries)
-            elif atr['FILE_TYPE'] == 'HDFEOS':
-                obj = HDFEOS(inps.timeseries)
+        # Identify file type and open it
+        if atr['FILE_TYPE'] == 'timeseries':
+            obj = timeseries(inps.timeseries)
+        elif atr['FILE_TYPE'] == 'HDFEOS':
+            obj = HDFEOS(inps.timeseries)
+        else:
+            raise ValueError(f'Input file is {atr["FILE_TYPE"]}, not timeseries.')
+
+        obj.open(print_msg=False)
+        if hasattr(obj, "datasetGroupNameDict"):
+            obj.datasetGroupNameDict.update({
+                "latitude": "geometry",
+                "longitude": "geometry",
+        })
+
+        data = obj.read()  # (nt, ny, nx)
+        mask = obj.read(datasetName='mask').astype(bool)  # (ny, nx)
+        timeseries = []
+
+        for lat, lon, start, end, m, i, off in zip(inps.latitudes, inps.longitudes, inps.start_date, inps.end_date, inps.model, inps.index, inps.offset):
+            y = np.argmin(np.abs(obj.read(datasetName='latitude')[:, 0] - lat))
+            x = np.argmin(np.abs(obj.read(datasetName='longitude')[0, :] - lon))
+
+            ref_x = np.argmin(np.abs(obj.read(datasetName='longitude')[0, :] - inps.ref_lo))
+            ref_y = np.argmin(np.abs(obj.read(datasetName='latitude')[:, 0] - inps.ref_la))
+
+            # keep 3D shape; set masked pixels to NaN
+            data = np.where(mask[None, :, :], data, np.nan)
+            data = data - data[:, ref_y, ref_x][:, None, None]
+
+            # then extract pixel time series normally
+            ts = (data[:, y, x] * 100) + off
+            dates = [datetime.strptime(str(int(date)), "%Y%m%d").date() for date in obj.read(datasetName='date')]
+            start_dt = datetime.strptime(str(int(start)), "%Y%m%d").date()
+            end_dt   = datetime.strptime(str(int(end)), "%Y%m%d").date()
+
+            if obj.read(datasetName='incidenceAngle')[~np.isnan(obj.read(datasetName='incidenceAngle'))].size > 0:
+                azimuth = obj.read(datasetName='azimuthAngle')[y, x]
+                incidence = obj.read(datasetName='incidenceAngle')[y, x]
+
+            i0 = int(np.argmin([abs((d - start_dt).days) for d in dates]))
+            i1 = int(np.argmin([abs((d - end_dt).days) for d in dates]))
+
+            if i0 > i1:
+                i0, i1 = i1, i0
+
+            if f"{m}_{i}" not in sources:
+                sources[f"{m}_{i}"] = {}
+            if f"{start}_{end}" not in sources[f"{m}_{i}"]:
+                sources[f"{m}_{i}"][f"{start}_{end}"] = {}
+
+            sources[f"{m}_{i}"][f"{start}_{end}"]['point_xy'] = convert_to_utm([lon], [lat])
+            sources[f"{m}_{i}"][f"{start}_{end}"]['ts'] = ts[i0:i1+1] - ts[0]
+            sources[f"{m}_{i}"][f"{start}_{end}"]['date_list'] = dates[i0:i1+1]
+
+    data_path = os.path.join(SCRATCHDIR, inps.data_dir)
+    params = ['dP_mu', 'dVol', 'opening', 'param1']
+
+################################## STRENGTH ######################################
+    for s, e, m, i in zip(inps.start_date, inps.end_date, inps.model, inps.index):
+        model_inps = os.path.join(data_path, f"{s}_{e}", m, "VSM_best.csv")
+
+        if not os.path.isfile(model_inps):
+            raise ValueError(f"Model input file '{model_inps}' not found. Skipping this period and model.")
+
+        if f"{m}_{i}" not in sources:
+            sources[f"{m}_{i}"] = {}
+        if f"{s}_{e}" not in sources[f"{m}_{i}"]:
+            sources[f"{m}_{i}"][f"{s}_{e}"] = {}
+
+        param_vals = next(iter(read_best_values(model_inps, params) .values()), {})
+        sources[f"{m}_{i}"][f"{s}_{e}"]['params'] = param_vals
+
+        frwd = MODELS[m]()
+        x, y = sources[f"{m}_{i}"][f"{s}_{e}"]['point_xy']
+
+        if 'dP_mu' in param_vals:
+            param_vals['dP_mu'] = 1
+            unit = ''
+        if 'dVol' in param_vals:
+            param_vals['dVol'] = 1
+            unit = 'm3'
+        if 'opening' in param_vals:
+            param_vals['opening'] = 1
+            unit = 'm'
+        if 'param1' in param_vals:
+            param_vals['param1'] = 1
+            unit = 'm'
+
+        Ge, Gn, Gz = frwd.model(np.array([x]), np.array([y]), **param_vals)
+
+        sources[f"{m}_{i}"][f"{s}_{e}"]['strength'] = (sources[f"{m}_{i}"][f"{s}_{e}"]['ts']/1000) / Gz[0]
+        sources[f"{m}_{i}"][f"{s}_{e}"]['unit'] = unit
+#########################################################################################
+
+####################################### START END #######################################
+    start = []
+    end = []
+    for period in inps.period:
+        start.append(min(datetime.strptime(p, '%Y%m%d').date() for p in period.split(':')))
+        end.append(max(datetime.strptime(p, '%Y%m%d').date() for p in period.split(':')))
+
+    end = max(end)
+    start = min(start)
+#########################################################################################
+
+####################################### TICKS #######################################
+    def set_ticks(ax):
+        ax.xaxis.set_major_locator(mdates.YearLocator())
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+
+        # Set minor ticks: every July 1st
+        ax.xaxis.set_minor_locator(mdates.MonthLocator(bymonth=7))
+
+        # Optionally, make minor ticks smaller
+        ax.tick_params(axis='x', which='minor', length=4)
+        ax.tick_params(axis='x', which='major', length=8, labelsize=10)
+#####################################################################################
+
+    models = sources.keys()
+    n_models = len(models)
+
+    fig = plt.figure(figsize=(7 * max(len(sources[m]) for m in models), 2 * n_models))
+    outer_gs = gridspec.GridSpec(n_models, 1, figure=fig)
+    axs = {}
+
+######################### COLORS DEFINITION #############################################
+    cmap = plt.get_cmap("plasma")
+    vals = np.linspace(0.1, 0.9, n_models)  # avoid very dark/light ends
+    model_colors = {m: cmap(v) for m, v in zip(models, vals)}
+#########################################################################################
+
+    for i, model in enumerate(models):
+        dates = sorted(sources[model].keys())
+        n_dates = len(dates)
+
+        inner_gs = gridspec.GridSpecFromSubplotSpec(1, n_dates, subplot_spec=outer_gs[i, 0])
+        for j, date in enumerate(dates):
+            y = sources[model][date]["strength"] - sources[model][date]["strength"][0]
+            x = sources[model][date]["date_list"]
+            ax = fig.add_subplot(inner_gs[0, j])
+            axs[(model, date)] = ax
+
+            ### SET X-LIMITS ###
+            if j == 0:
+                s=start
             else:
-                raise ValueError(f'Input file is {atr["FILE_TYPE"]}, not timeseries.')
+                s = min(x)
+            if j+1 == inner_gs.ncols:
+                e = end
+            else:
+                e = max(x)
+            ax.set_xlim(s, e)
+
+##################### LINEAR REG ####################################
+            x_num = mdates.date2num(x)
+            coeffs = np.polyfit(x_num, y, 1)
+            slope, intercept = coeffs
+            y_fit = slope * x_num + intercept
+            ax.plot(x, y_fit, color=model_colors[model], linestyle='--', linewidth=2)
+#####################################################################
+
+            ax.scatter(x, y, label=model, color=model_colors[model])
+            ax.legend(fontsize=10)
+            ax.set_ylabel(f"{sources[model][date]['unit']}", fontsize=10)
+            set_ticks(ax)
+
+    plt.tight_layout(h_pad=1.5)
+
+def old_main(iargs):
+    inps = create_parser()
+
+    sources = {}
+    if inps.timeseries:
+        atr = readfile.read_attribute(inps.timeseries)
+
+        # Identify file type and open it
+        if atr['FILE_TYPE'] == 'timeseries':
+            obj = timeseries(inps.timeseries)
+        elif atr['FILE_TYPE'] == 'HDFEOS':
+            obj = HDFEOS(inps.timeseries)
+        else:
+            raise ValueError(f'Input file is {atr["FILE_TYPE"]}, not timeseries.')
 
         obj.open(print_msg=False)
         if hasattr(obj, "datasetGroupNameDict"):
