@@ -18,8 +18,7 @@ from mintpy.objects import HDFEOS
 from datetime import datetime, date
 from mintpy.cli import generate_mask
 from scipy.interpolate import interp1d
-from mintpy.utils import utils, writefile, readfile
-from mintpy.save_hdfeos5 import get_output_filename
+from mintpy.utils import  utils, writefile, readfile
 
 
 def detect_direction_from_name(fname, asc_tokens=None, desc_tokens=None, default=None):
@@ -1035,3 +1034,116 @@ def calculate_LOS(incident, azimuth):
 
 
     return lose, losn, losz
+
+
+def get_output_filename(metadata,):
+    """Build output filename from OPERA identification metadata."""
+    def mget(key, default=None):
+        # supports dict metadata and argparse.Namespace(attrs=..., variables=...)
+        if isinstance(metadata, dict):
+            return metadata.get(key, default)
+        if hasattr(metadata, "attrs") and key in metadata.attrs:
+            return metadata.attrs.get(key, default)
+        if hasattr(metadata, "variables") and key in metadata.variables:
+            return metadata.variables.get(key, default)
+        if hasattr(metadata, key):
+            return getattr(metadata, key)
+        return default
+
+    def parse_ymd(value):
+        if not value:
+            return "00000000"
+        s = str(value).strip()
+        for fmt in (
+            "%Y-%m-%d",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d %H:%M:%S.%f",
+            "%Y-%m-%dT%H:%M:%S",
+            "%Y-%m-%dT%H:%M:%S.%f",
+        ):
+            try:
+                return datetime.datetime.strptime(s, fmt).strftime("%Y%m%d")
+            except ValueError:
+                pass
+        # fallback for strings like "2017-01-07T04:30:28.815125Z"
+        return s[:10].replace("-", "")
+
+    direction = metadata.orbit_pass_direction if hasattr(metadata, "orbit_pass_direction") else None
+    if direction is not None:
+        direction = str(direction).strip().upper()
+
+    sat_raw = mget("source_data_satellite_names", mget("mission", "OPERA"))
+    sat_str = str(sat_raw).upper().replace(" ", "") if sat_raw is not None else ""
+
+    if "S1A" in sat_str or "S1B" in sat_str:
+        sat = "S1"
+    else:
+        sat = str(sat_raw).split(",")[0].strip() if sat_raw else "OPERA"
+
+    relorb = f"{int(mget('relative_orbit', mget('track_number', 0))):03d}"
+    relorb2 = f"{int(mget('relative_orbit_second', mget('frame_id', 0))):05d}"
+
+    method_str = str(mget("post_processing_method", "opera")).lower()
+
+    date1 = parse_ymd(
+        mget("first_date", mget("reference_datetime", mget("reference_zero_doppler_start_time")))
+    )
+    date2 = parse_ymd(
+        mget("last_date", mget("secondary_datetime", mget("secondary_zero_doppler_start_time")))
+    )
+
+    update_flag = str(mget("cfg.mintpy.save.hdfEos5.update", "")).lower() == "yes"
+    if update_flag:
+        date2 = "XXXXXXXX"
+
+    direction_val = direction or mget("orbit_pass_direction", None)
+    if direction_val:
+        direction_upper = str(direction_val).strip().upper()
+        if "ASC" in direction_upper:
+            direction_val = "asc"
+        elif "DES" in direction_upper:
+            direction_val = "desc"
+        else:
+            direction_val = str(direction_val).strip().lower()
+
+    if direction_val:
+        out_name = f"{sat}_{direction_val}_{relorb}_{relorb2}_{method_str}_{date1}_{date2}.he5"
+    else:
+        out_name = f"{sat}_{relorb}_{relorb2}_{method_str}_{date1}_{date2}.he5"
+
+    fbase, fext = os.path.splitext(out_name)
+    polygon_str = mget("data_footprint", mget("bounding_polygon", None))
+
+    if polygon_str:
+        try:
+            sub = polygon_corners_string(polygon_str)
+            out_name = f"{fbase}_{sub}{fext}"
+        except Exception:
+            pass
+
+    return out_name
+
+
+def polygon_corners_string(polygon_str: str) -> str:
+    """
+    Return corners from the polygon as S0081W09112_S0081W09130_S0100W09130_S0100W09112
+    """
+
+    def fmt_lat(lat: float) -> str:
+        val = int(round(abs(lat) * 100))              # keep 2 decimals
+        return f"{'N' if lat >= 0 else 'S'}{val:04d}" # 2 deg digits + 2 decimals
+
+    def fmt_lon(lon: float) -> str:
+        val = int(round(abs(lon) * 100))
+        return f"{'E' if lon >= 0 else 'W'}{val:05d}" # 3 deg digits + 2 decimals
+
+    lon_min, lon_max, lat_min, lat_max = parse_polygon(polygon_str)
+    # CCW starting at SW: SW, NW, NE, SE
+    corners = [
+        (lat_min, lon_min),  # SW
+        (lat_max, lon_min),  # NW
+        (lat_max, lon_max),  # NE
+        (lat_min, lon_max),  # SE
+    ]
+    parts = [f"{fmt_lat(lat)}{fmt_lon(lon)}" for (lat, lon) in corners]
+    return "_".join(parts)
