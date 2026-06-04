@@ -326,7 +326,7 @@ def get_eos5_file(path, scratch=None):
         eos_file = os.path.join(scratch, path)
 
     else:
-        if 'mintpy' in path or 'network' in path:
+        if any(d in path for d in ['mintpy', 'dolphin', 'network']):
             files = glob.glob(path + '/*.he5')
         else:
             files = glob.glob(path + '/mintpy/*.he5')
@@ -782,32 +782,6 @@ def get_bounding_box(metadata):
         return None, None
 
     return [min(lat_out), max(lat_out)], [min(lon_out), max(lon_out)]
-
-
-def draw_vectors(elevation, vertical, horizontal, line):
-    v = interpolate(elevation, vertical) if elevation.shape[0]>vertical.shape[0] else vertical
-    h = interpolate(elevation, horizontal) if elevation.shape[0]>horizontal.shape[0] else horizontal
-    z = interpolate(vertical, elevation) if elevation.shape[0]<vertical.shape[0] else elevation
-
-    #Normalization
-    nv = [1 if val > 0 else -1 if val < 0 else 0 for val in v]
-    nh = [1 if val > 0 else -1 if val < 0 else 0 for val in h]
-
-    v1 = abs(v)
-    h1 = abs(h)
-
-    m = np.nanmax(v1) if np.nanmax(v1) > np.nanmax(h1) else np.nanmax(h1)
-
-    tv = (v1 - 0) / (m - 0)
-    th = (h1 - 0) / (m - 0)
-
-    # Matrix times normalized data
-    v = nv * tv
-    h = nh * th
-
-    x_coords = np.linspace(0, calculate_distance(line[0][0], line[1][0], line[0][1], line[1][1])*1000, len(z))
-
-    return x_coords, v, h, z
 
 
 def interpolate(x, y):

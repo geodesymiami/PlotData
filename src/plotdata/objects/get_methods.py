@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 
+import copy
 import pygmt
 import requests
 import numpy as np
@@ -226,21 +227,20 @@ class DataExtractor:
 
             if key == 'vectors':
                 for k, v in value.items():
-                    if ('horizontal' in k and 'horizontal' not in self.dataset) or ('vertical' in k and 'vertical' not in self.dataset):
-                        if self.unit in units:
-                            v['data'] *= units[self.unit]
-                            v['attributes']['unit'] = self.unit
+                    if self.unit in units:
+                        self.dataset[key][k]['data'] *= units[self.unit]
+                        self.dataset[key][k]['attributes']['unit'] = self.unit
+                    else:
+                        if 'cm' in self.unit:
+                            unit = 'cm/yr'
+                        elif 'mm' in self.unit:
+                            unit = 'mm/yr'
+                        elif 'm' in self.unit:
+                            unit = 'm/yr'
                         else:
-                            if 'cm' in self.unit:
-                                unit = 'cm/yr'
-                            elif 'mm' in self.unit:
-                                unit = 'mm/yr'
-                            elif 'm' in self.unit:
-                                unit = 'm/yr'
-                            else:
-                                raise ValueError(f"Unit '{self.unit}' is not recognized.")
-                            v['data'] *= units[unit]
-                            v['attributes']['unit'] = unit
+                            raise ValueError(f"Unit '{self.unit}' is not recognized.")
+                        self.dataset[key][k]['data'] *= units[unit]
+                        self.dataset[key][k]['attributes']['unit'] = unit
 
     def _fetch_data(self):
         self.dataset = {}
@@ -356,7 +356,7 @@ class DataExtractor:
             direction = "horizontal"
 
         if direction in self.dataset:
-            result = {direction: self.dataset[direction]}
+            result = {direction: self.dataset[direction].copy()}
             if "geometry" not in self.dataset["vectors"]:
                 geometry_file = self.ascending_geometry or self.descending_geometry
                 result["geometry"] = self._extract_geometry_data(geometry_file)
@@ -448,7 +448,7 @@ class DataExtractor:
         direction = "vertical" if "up" in file else "horizontal" if "hz" in file else None
 
         if (direction and self.dataset.get("vectors") and self.dataset["vectors"].get(direction)):
-            vector_data = self.dataset["vectors"][direction]
+            vector_data = copy.deepcopy(self.dataset["vectors"][direction])
             if 'geometry' not in vector_data:
                 return {**vector_data, "geometry": self._extract_geometry_data(file)}
             return vector_data
@@ -487,6 +487,8 @@ class DataExtractor:
                 elif direction == 'descending':
                     geometry["geometry"] = self._extract_geometry_data(self.descending_geometry)
                     geometry["geometry"]["data"] = geometry["geometry"]["data"]
+                elif 'horizontal' in direction or 'vertical' in direction:
+                    geometry["geometry"] = self._extract_geometry_data(self.ascending_geometry) if self.ascending_geometry else self._extract_geometry_data(self.descending_geometry)
 
             dictionary.update(geometry)
 

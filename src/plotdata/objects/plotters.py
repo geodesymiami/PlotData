@@ -13,7 +13,7 @@ from matplotlib.transforms import Affine2D
 from matplotlib.patheffects import withStroke
 from matplotlib.patches import Rectangle, Polygon
 from plotdata.volcano_functions import get_volcanoes_data
-from plotdata.helper_functions import draw_vectors, calculate_distance, get_bounding_box, parse_polygon, resize_to_match, parse_coord_vert, find_longitude_degree
+from plotdata.helper_functions import calculate_distance, get_bounding_box, parse_polygon, resize_to_match, parse_coord_vert, interpolate
 
 
 def set_default_section(line, region):
@@ -307,10 +307,10 @@ class VelocityPlot:
 
         # Compute hillshade with real spacing
         ls = LightSource(azdeg=315, altdeg=45)
-        hillshade = ls.hillshade(self.z, vert_exag=0.7, dx=dx, dy=dy)
+        hillshade = ls.hillshade(self.z, vert_exag=1, dx=dx, dy=dy)
 
         # Use pcolormesh to plot hillshade using real coordinates
-        self.im = self.ax.pcolormesh(lon2d,lat2d,hillshade,cmap='gray',shading='auto',zorder=zorder,)
+        self.im = self.ax.pcolormesh(lon2d, lat2d, hillshade, cmap='gist_yarg_r', shading='gouraud', zorder=zorder,)
 
     def _plot_isolines(self):
         print("Adding isolines...\n")
@@ -800,19 +800,33 @@ class VectorsPlot:
 
         return lat_indices, lon_indices
 
+    def _normalize_vectors(self, h, v):
+        #Normalization
+        nv = [1 if val > 0 else -1 if val < 0 else 0 for val in v]
+        nh = [1 if val > 0 else -1 if val < 0 else 0 for val in h]
+
+        v1 = abs(v)
+        h1 = abs(h)
+
+        m = np.nanmax(v1) if np.nanmax(v1) > np.nanmax(h1) else np.nanmax(h1)
+        mi = np.nanmin(v1) if np.nanmin(v1) < np.nanmin(h1) else np.nanmin(h1)
+
+        tv = (v1 - mi) / (m - mi)
+        th = (h1 - mi) / (m - mi)
+
+        # Matrix times normalized data
+        v = nv * tv
+        h = nh * th
+
+        return v, h
+
     def _compute_vectors(self):
         """Computes velocity vectors and scaling factors."""
-        x, v, h, self.z = draw_vectors(self.topography_section, self.vertical_section, self.horizontal_section, self.line)
-        # fig = self.ax.get_figure()
-        # fig_width, fig_height = fig.get_size_inches()
-        # max_elevation = np.nanmax(self.z)
-        # max_x = np.nanmax(x)
+        v = interpolate(self.topography_section, self.vertical_section) if self.topography_section.shape[0] > self.vertical_section.shape[0] else self.vertical_section
+        h = interpolate(self.topography_section, self.horizontal_section) if self.topography_section.shape[0] > self.horizontal_section.shape[0] else self.horizontal_section
+        self.z = interpolate(self.vertical_section, self.topography_section) if self.topography_section.shape[0] < self.vertical_section.shape[0] else self.topography_section
 
-        # self.v_adj = 2 * max_elevation / max_x
-        # self.h_adj = 1 / self.v_adj
-
-        # self.rescale_h = self.h_adj / fig_width
-        # self.rescale_v = self.v_adj / fig_height
+        x = np.linspace(0, calculate_distance(self.line[0][0], self.line[1][0], self.line[0][1], self.line[1][1])*1000, len(self.z))
 
         # Resample vectors
         for i in range(len(h)):
@@ -820,13 +834,17 @@ class VectorsPlot:
                 h[i] = 0
                 v[i] = 0
 
+
         distance = calculate_distance(self.line[1][0], self.line[0][0], self.line[1][1], self.line[0][1])
         self.xrange = np.linspace(0, distance, len(x))
+
         # Filter out zero-length vectors
         non_zero_indices = np.where((h != 0) | (v != 0))
+
         self.filtered_x = self.xrange[non_zero_indices]
         self.filtered_h = h[non_zero_indices]
         self.filtered_v = v[non_zero_indices]
+
         self.filtered_elevation = self.z[non_zero_indices]
 
     def plot(self, ax):
@@ -843,26 +861,33 @@ class VectorsPlot:
         self.ax.set_xlim([min(self.xrange), max(self.xrange)])
 
         unit = self.horz_attr.get('unit', self.vert_attr.get('unit', self.unit))
+        mean_velocity = abs(np.nanmean(np.hypot(self.filtered_v, self.filtered_h)))
+
+        self.filtered_v, self.filtered_h = self._normalize_vectors(self.filtered_h, self.filtered_v)
+
+        scale = np.nanmedian(np.hypot(self.filtered_v, self.filtered_h)) * 0.5 #0.2
+        width = 4 / 10**2.5 * (3 / 10**2.5 / scale)   ** 0.1
 
         # Plot velocity vectors
         if self.vector_legend == 'mean_vector':
             # Mean velocity vector
-            self.imdata = self.ax.quiver(self.filtered_x, self.filtered_elevation, self.filtered_h, self.filtered_v, color='#ff7366', width=(3 / 10**(2.5)))
+            self.imdata = self.ax.quiver(self.filtered_x, self.filtered_elevation, self.filtered_h, self.filtered_v, color='#ff7366', scale_units='xy', scale=scale, width=width)
             start_x = max(self.xrange) * 0.1
             y_span = ylim[1] - ylim[0]
             start_y = (max(ylim) - y_span * 0.2)
+            mean_norm = np.nanmean(np.hypot(self.filtered_v, self.filtered_h))
 
-            vel = np.nanmax(np.sqrt(((self.filtered_v[self.filtered_v!=0]))**2 + ((self.filtered_h[self.filtered_h!=0]))**2)) * 0.9
-            cands = np.array([1.0, 5.0, 10.0]) * (10 ** math.floor(math.log10(vel)))
-            velocity_rep = float(cands[np.argmin(np.abs(cands - vel))])
+            exp = math.floor(math.log10(max(mean_velocity, 1e-12)))
+            cands = np.array([1.0, 5.0, 10.0]) * (10 ** exp)
+            velocity_rep = float(cands[np.argmin(np.abs(cands - mean_velocity))])
 
             vel_indicator = f"{velocity_rep:g} {unit}"
-            self.ax.quiver([start_x], [start_y], [velocity_rep], [0], color='#ff7366', scale_units='xy', scale=1, width=(3 / 10**(2.5)))
+            self.ax.quiver([start_x], [start_y], [(mean_norm * velocity_rep) / mean_velocity], [0], color='#ff7366', scale_units='xy', scale=scale, width=width)
             self.ax.text(start_x, start_y * 1.02, vel_indicator, color='black', ha='left', fontsize=self.font_size, alpha=0.9)
 
         elif self.vector_legend == 'colorbar':
             from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-            self.imdata = self.ax.quiver(self.filtered_x, self.filtered_elevation, self.filtered_h, self.filtered_v, np.hypot(self.filtered_h, self.filtered_v), cmap='viridis', width=(3 / 10**(2.5)))
+            self.imdata = self.ax.quiver(self.filtered_x, self.filtered_elevation, self.filtered_h, self.filtered_v, np.hypot(self.filtered_h, self.filtered_v), cmap='viridis', scale_units='xy', scale=scale, width=width)
             cax = inset_axes(self.ax, width="15%", height="2.8%", loc="lower left", borderpad=2.0)
 
             cb = self.ax.figure.colorbar(self.imdata, cax=cax, orientation="horizontal")
