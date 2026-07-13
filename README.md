@@ -27,3 +27,27 @@ plotdata MaunaLoaSenDT87/mintpy MaunaLoaSenAT124/mintpy --template default  --pe
 ```
 
 Check the [Installation guide](https://github.com/geodesymiami/PlotData/blob/main/docs/installation.md) for more details.
+
+## Fault transect plotting (plot_fault_transect.py)
+
+`plot_fault_transect.py` takes a fault trace KMZ and 1-4 HDFEOS5 timeseries inputs
+(S1_*.he5 files or mintpy/miaplpy directories) and plots the across-fault
+displacement offset sampled along the fault (`--plot-type map`) and/or
+fault-perpendicular profiles (`--plot-type profile`, layouts: separate, subplot,
+stacked). All plotted data is exported to companion `.txt` files and an
+`index.html` is generated. Code lives in `src/plotdata/fault_transect/`;
+matplotlib is isolated in `fault_transect/backends/matplotlib_backend.py`.
+
+```bash
+# Multi-segment KMZ: create and inspect the joint fault first
+plot_fault_transect.py PFS_Pernicana_faults_system_.kmz --dry-run
+
+# Map (offset) + stacked profiles for one dataset
+plot_fault_transect.py PFS_Pernicana_faults_system_joint.kmz EtnaSenA44/mintpy --tag Pernicana --no-display
+
+# Two periods side-by-side, 10 profiles in a 10x1 subplot
+plot_fault_transect.py fault_joint.kmz EtnaSenA44/mintpy --plot-type profile --plot-layout subplot --profile-count 10 --period 20141020:20181231,20190101:20260626 --no-display
+```
+
+Default output directory: `<project>/transects_mintpy/` (or `transects_miaplpy/`).
+Run unit tests with `python -m unittest discover -s src/plotdata/fault_transect/tests`.

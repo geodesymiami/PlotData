@@ -19,6 +19,7 @@ setup(
     entry_points={
         "console_scripts": [
             "plotdata=plotdata.cli.plot_data:main",
+            "plot_fault_transect=plotdata.cli.plot_fault_transect:main",
         ],
     },
 

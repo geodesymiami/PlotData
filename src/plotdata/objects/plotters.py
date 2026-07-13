@@ -13,7 +13,17 @@ from matplotlib.transforms import Affine2D
 from matplotlib.patheffects import withStroke
 from matplotlib.patches import Rectangle, Polygon
 from plotdata.volcano_functions import get_volcanoes_data
-from plotdata.helper_functions import draw_vectors, calculate_distance, get_bounding_box, parse_polygon, resize_to_match, parse_coord_vert, find_longitude_degree
+from plotdata.helper_functions import (
+    draw_vectors,
+    calculate_distance,
+    get_bounding_box,
+    parse_polygon,
+    resize_to_match,
+    parse_coord_vert,
+    find_longitude_degree,
+    write_vectors_profile_txt,
+    format_section_header_suffix,
+)
 
 
 def set_default_section(line, region):
@@ -763,7 +773,7 @@ class VectorsPlot:
 
     def _process_sections(self, data, region):
         """Processes the sections for horizontal and vertical components."""
-        lat_indices, lon_indices = self._draw_line(data, region, self.line[1], self.line[0])
+        lat_indices, lon_indices, _, _ = self._draw_line(data, region, self.line[1], self.line[0])
 
         # Extract the values data along the snapped path
         values = data[lat_indices, lon_indices]
@@ -798,11 +808,35 @@ class VectorsPlot:
         lon_indices = np.clip(np.round(col_f).astype(int), 0, nx - 1)
         lat_indices = np.clip(np.round(row_f).astype(int), 0, ny - 1)
 
-        return lat_indices, lon_indices
+        return lat_indices, lon_indices, lat_points, lon_points
+
+    @staticmethod
+    def _align_profile_length(arr, target_len):
+        arr = np.asarray(arr, dtype=float)
+        if len(arr) == target_len:
+            return arr
+        if len(arr) == 0:
+            return np.full(target_len, np.nan)
+        if len(arr) == 1:
+            return np.full(target_len, arr[0])
+        x_old = np.linspace(0, 1, len(arr))
+        x_new = np.linspace(0, 1, target_len)
+        return np.interp(x_new, x_old, arr)
 
     def _compute_vectors(self):
         """Computes velocity vectors and scaling factors."""
+        _, _, lat_points, lon_points = self._draw_line(
+            self.horz, self.horz_attr['region'], self.line[1], self.line[0],
+        )
+        raw_horz = np.asarray(self.horizontal_section, dtype=float)
+        raw_vert = np.asarray(self.vertical_section, dtype=float)
+
         x, v, h, self.z = draw_vectors(self.topography_section, self.vertical_section, self.horizontal_section, self.line)
+        n = len(x)
+        lat_points = self._align_profile_length(lat_points, n)
+        lon_points = self._align_profile_length(lon_points, n)
+        raw_horz = self._align_profile_length(raw_horz, n)
+        raw_vert = self._align_profile_length(raw_vert, n)
         # fig = self.ax.get_figure()
         # fig_width, fig_height = fig.get_size_inches()
         # max_elevation = np.nanmax(self.z)
@@ -821,13 +855,38 @@ class VectorsPlot:
                 v[i] = 0
 
         distance = calculate_distance(self.line[1][0], self.line[0][0], self.line[1][1], self.line[0][1])
-        self.xrange = np.linspace(0, distance, len(x))
+        self.xrange = np.linspace(0, distance, n)
         # Filter out zero-length vectors
-        non_zero_indices = np.where((h != 0) | (v != 0))
+        non_zero_indices = np.where((h != 0) | (v != 0))[0]
         self.filtered_x = self.xrange[non_zero_indices]
         self.filtered_h = h[non_zero_indices]
         self.filtered_v = v[non_zero_indices]
         self.filtered_elevation = self.z[non_zero_indices]
+        self.profile_export_rows = [
+            (lat_points[i], lon_points[i], self.z[i], raw_horz[i], raw_vert[i], self.xrange[i])
+            for i in non_zero_indices
+        ]
+
+    def _section_quiver_display(self, ylim):
+        """Map normalized horz/vert components to axis units (km, m) so both are visible."""
+        vector_scale = float(getattr(self, "vector_scale", 1.0) or 1.0)
+        x_span = float(np.ptp(self.xrange)) if len(self.xrange) else 1.0
+        y_span = float(ylim[1] - ylim[0]) if ylim is not None else 1.0
+        if x_span <= 0:
+            x_span = 1.0
+        if y_span <= 0:
+            y_span = 1.0
+        # unit-normalized components -> axis units: km along section, m vertically
+        ref_frac = 0.05 * vector_scale
+        u = self.filtered_h * ref_frac * x_span
+        v = self.filtered_v * ref_frac * y_span
+        quiver_kw = {
+            "angles": "xy",
+            "scale_units": "xy",
+            "scale": 1.0,
+            "width": (3 / 10**(2.5)),
+        }
+        return u, v, quiver_kw, ref_frac, x_span
 
     def plot(self, ax):
         """Plots elevation profile and velocity vectors."""
@@ -843,26 +902,36 @@ class VectorsPlot:
         self.ax.set_xlim([min(self.xrange), max(self.xrange)])
 
         unit = self.horz_attr.get('unit', self.vert_attr.get('unit', self.unit))
+        u_plot, v_plot, quiver_kw, ref_frac, x_span = self._section_quiver_display(ylim)
 
         # Plot velocity vectors
         if self.vector_legend == 'mean_vector':
             # Mean velocity vector
-            self.imdata = self.ax.quiver(self.filtered_x, self.filtered_elevation, self.filtered_h, self.filtered_v, color='#ff7366', width=(3 / 10**(2.5)))
+            self.imdata = self.ax.quiver(
+                self.filtered_x, self.filtered_elevation, u_plot, v_plot,
+                color='#ff7366', **quiver_kw,
+            )
             start_x = max(self.xrange) * 0.1
             y_span = ylim[1] - ylim[0]
             start_y = (max(ylim) - y_span * 0.2)
 
             vel = np.nanmax(np.sqrt(((self.filtered_v[self.filtered_v!=0]))**2 + ((self.filtered_h[self.filtered_h!=0]))**2)) * 0.9
-            cands = np.array([1.0, 5.0, 10.0]) * (10 ** math.floor(math.log10(vel)))
+            cands = np.array([1.0, 5.0, 10.0]) * (10 ** math.floor(math.log10(max(vel, 1e-12))))
             velocity_rep = float(cands[np.argmin(np.abs(cands - vel))])
 
             vel_indicator = f"{velocity_rep:g} {unit}"
-            self.ax.quiver([start_x], [start_y], [velocity_rep], [0], color='#ff7366', scale_units='xy', scale=1, width=(3 / 10**(2.5)))
+            self.ax.quiver(
+                [start_x], [start_y], [velocity_rep * ref_frac * x_span], [0],
+                color='#ff7366', **quiver_kw,
+            )
             self.ax.text(start_x, start_y * 1.02, vel_indicator, color='black', ha='left', fontsize=self.font_size, alpha=0.9)
 
         elif self.vector_legend == 'colorbar':
             from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-            self.imdata = self.ax.quiver(self.filtered_x, self.filtered_elevation, self.filtered_h, self.filtered_v, np.hypot(self.filtered_h, self.filtered_v), cmap='viridis', width=(3 / 10**(2.5)))
+            self.imdata = self.ax.quiver(
+                self.filtered_x, self.filtered_elevation, u_plot, v_plot,
+                np.hypot(self.filtered_h, self.filtered_v), cmap='viridis', **quiver_kw,
+            )
             cax = inset_axes(self.ax, width="15%", height="2.8%", loc="lower left", borderpad=2.0)
 
             cb = self.ax.figure.colorbar(self.imdata, cax=cax, orientation="horizontal")
@@ -884,6 +953,14 @@ class VectorsPlot:
         # Add labels
         self.ax.set_ylabel("Elevation (m)")
         self.ax.set_xlabel("Distance (km)")
+
+        txt_path = getattr(self, 'vectors_profile_txt_path', None)
+        if txt_path:
+            section_suffix = format_section_header_suffix(
+                self.line, getattr(self, 'section_string', None),
+            )
+            write_vectors_profile_txt(txt_path, self.profile_export_rows, section_suffix)
+            print(f"Vector profile saved to {txt_path}\n")
 
 
 class Mogi():

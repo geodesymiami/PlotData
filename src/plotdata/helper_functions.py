@@ -140,6 +140,70 @@ def configure_logging(directory=None):
     cmd_command = f"{script_name} {rest}".strip()
     logging.info(cmd_command)
 
+
+def abbreviate_paths_in_command_message(msg):
+    """Replace known absolute paths with env-var tokens for compact log lines."""
+    tokens = msg.split(' ')
+    tokens_mod = []
+    for token in tokens:
+        sampledir = os.getenv('SAMPLESDIR')
+        if sampledir and sampledir in token:
+            token = token.replace(sampledir, '$SAMPLESDIR')
+        templates = os.getenv('TEMPLATES')
+        if templates and templates in token:
+            token = token.replace(templates, '$TE')
+        scratchdir = os.getenv('SCRATCHDIR')
+        if scratchdir and scratchdir in token:
+            token = token.replace(scratchdir, '$SCRATCHDIR')
+        tokens_mod.append(token)
+    return ' '.join(tokens_mod)
+
+
+def append_project_command_log(log_dir, message):
+    """Append a timestamped command line to log_dir/log (minsar message_rsmas style)."""
+    if not log_dir:
+        return
+    os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(log_dir, 'log')
+    date_str = datetime.strftime(datetime.now(), '%Y%m%d-%H:%M')
+    msg = abbreviate_paths_in_command_message(message)
+    line = f"{date_str} + {msg}"
+    print(line)
+    with open(log_path, 'a', encoding='utf-8') as f:
+        f.write(line + '\n')
+
+
+def build_plot_output_basename(project, tag_string, plot_label, start_date, end_date):
+    """Build output stem, e.g. Etna_Pernicarna_vectors_20141020_20260626 or Etna_vectors_...."""
+    tag_string = (tag_string or '').strip()
+    if tag_string:
+        return f"{project}_{tag_string}_{plot_label}_{start_date}_{end_date}"
+    return f"{project}_{plot_label}_{start_date}_{end_date}"
+
+
+def format_section_header_suffix(line, section_string=None):
+    """Format --section value for vector profile header brackets."""
+    if section_string:
+        return section_string
+    if isinstance(line, float):
+        return str(line)
+    return f"{line[1][0]}:{line[0][0]},{line[1][1]}:{line[0][1]}"
+
+
+def write_vectors_profile_txt(out_path, rows, section_suffix):
+    """Write vector profile data: header on line 1, samples from line 2."""
+    header = f"lat lon elevation_m horz vert distance_km [{section_suffix}]"
+    parent = os.path.dirname(out_path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    with open(out_path, 'w', encoding='utf-8') as f:
+        f.write(header + '\n')
+        for lat, lon, elev, horz, vert, dist_km in rows:
+            f.write(
+                f"{lat:.8f} {lon:.8f} {elev:.3f} {horz:.6f} {vert:.6f} {dist_km:.6f}\n"
+            )
+
+
 def use_x_placeholder_for_update(last_date_ymd, today=None, max_age_days=UPDATE_X_MAX_AGE_DAYS):
     """Return True if end date should be replaced by XXXXXXXX."""
     if today is None:

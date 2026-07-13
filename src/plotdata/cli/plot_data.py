@@ -7,17 +7,18 @@
 import os
 import re
 import sys
-
-# !!! The osgeo import breaks when called by readfile.py unless I do the following !!!
-# from osgeo import gdal, osr
-
-import logging
 import argparse
 from datetime import datetime
 from mintpy.utils import readfile
 from dateutil.relativedelta import relativedelta
 from plotdata.volcano_functions import get_volcano_event
-from plotdata.helper_functions import prepend_scratchdir_if_needed, get_eos5_file, parse_coord_vert
+from plotdata.helper_functions import (
+    prepend_scratchdir_if_needed,
+    get_eos5_file,
+    parse_coord_vert,
+    append_project_command_log,
+    build_plot_output_basename,
+)
 from plotdata.utils.argument_parsers import add_date_arguments, add_location_arguments, add_plot_parameters_arguments, add_map_parameters_arguments, add_save_arguments,add_gps_arguments, add_seismicity_arguments
 
 ############################################################
@@ -54,7 +55,9 @@ def create_parser():
     parser.add_argument('--unit', dest='unit', default="cm/yr", help='InSAR units (Default: cm)')
     # parser.add_argument("--noreference", dest="show_reference_point",  action='store_false', default=True, help="hide reference point (default: False)" )
     parser.add_argument("--section", dest="line", type=str, default=None, help="Section coordinates for deformation vectors, LAT:LON,LAT:LON")
+    parser.add_argument("--tag", dest="tag_string", type=str, default="", help="Optional tag inserted into output filenames (default: none).")
     parser.add_argument("--num-vectors", dest="resample_vector", type=int, default=1, help="resample factor for deformation vectors (default: %(default)s).")
+    parser.add_argument("--vector-scale", dest="vector_scale", type=float, default=1.0, help="Lengthen deformation-vector arrows on the section plot (default: %(default)s; try 2-5).")
     # parser.add_argument("--id", type=int, default=None, help="ID of the plot volcano ofr global location command (default: %(default)s).")
 
     parser.add_argument("--volcano", action='store_true', default=False, help="Plot volcanoes if they are in the region")
@@ -91,8 +94,11 @@ def create_parser():
 
     inps.vmax = max(inps.vlim) if inps.vlim else None
     inps.vmin = min(inps.vlim) if inps.vlim else None
+    inps.tag_string = (inps.tag_string or '').strip()
 
+    inps.section_string = None
     if inps.line:
+        inps.section_string = inps.line
         if ":" in inps.line:
             inps.line = parse_coord_vert(inps.line)
         else:
@@ -271,53 +277,26 @@ def populate_dates(inps):
     return inps
 
 
-def configure_logging(processors):
-    """
-    Configure logging so that ONLY the invoked command is logged.
-    """
+def _layout_includes_vectors(layout):
+    return any('vectors' in element for row in layout for element in row)
 
-    # Determine log directory
-    if processors and hasattr(processors[0], 'directory'):
-        log_dir = processors[0].directory
-    else:
-        log_dir = os.getcwd()
 
-    log_file = os.path.join(log_dir, "log")
-
-    # Create a dedicated logger
-    logger = logging.getLogger("plot_data")
-    logger.setLevel(logging.INFO)
-    logger.propagate = False
-
-    # Avoid adding handlers multiple times
-    if not logger.handlers:
-        handler = logging.FileHandler(log_file)
-        formatter = logging.Formatter(
-            fmt="%(asctime)s - %(message)s",
-            datefmt="%Y-%m-%d"
-        )
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-
-    # Silence noisy libraries completely
-    for name in (
-        "matplotlib",
-        "ipykernel",
-        "ipykernel.comm",
-        "jupyter_client",
-        "zmq",
-        "tornado",
-        "asyncio",
-    ):
-        logging.getLogger(name).setLevel(logging.CRITICAL)
-        logging.getLogger(name).propagate = False
-
-    # Log ONLY the invoked command
+def _log_plot_data_command(processors):
     script = os.path.basename(sys.argv[0])
-    args = " ".join(sys.argv[1:])
-    logger.info(f"{script} {args}".strip())
+    args = ' '.join(sys.argv[1:])
+    command = f"{script} {args}".strip()
+    log_dirs = [os.getcwd()]
+    for processor in processors:
+        if getattr(processor, 'directory', None):
+            log_dirs.append(processor.directory)
+    seen = set()
+    for log_dir in log_dirs:
+        norm = os.path.normpath(log_dir)
+        if norm in seen:
+            continue
+        append_project_command_log(log_dir, command)
+        seen.add(norm)
 
-    return logger
 
 ######################### MAIN #############################
 
@@ -370,6 +349,16 @@ def main(iargs=None):
         template.update_layout(plotter_map, process)
         process.layout = template.layout
 
+        images_dir = os.path.join(inps.outdir, process.project, 'images', f"{start_date}_{end_date}")
+        os.makedirs(images_dir, exist_ok=True)
+        if _layout_includes_vectors(template.layout):
+            stem = build_plot_output_basename(
+                process.project, inps.tag_string, 'vectors', start_date, end_date,
+            )
+            inps.vectors_profile_txt_path = os.path.join(images_dir, f"{stem}.txt")
+        else:
+            inps.vectors_profile_txt_path = None
+
         datafethched = DataExtractor(plotter_map, process)
 
         # Use PlotRenderer to populate the axes
@@ -378,8 +367,7 @@ def main(iargs=None):
 
         figures[id(process)] = fig if isinstance(fig, list) else [fig]
 
-    # Log
-    configure_logging(processors)
+    _log_plot_data_command(processors)
 
     # Save or show
     if inps.save == 'pdf':
@@ -391,9 +379,18 @@ def main(iargs=None):
             process_id = id(processor)
             if process_id in figures:
                 if len(figures[process_id]) > 1:
-                    saving_path = os.path.join(saving_root, f"{processor.project}_{figures[process_id][0].get_axes()[0].get_label().split('.')[0]}_{processor.start_date}_{processor.end_date}.pdf")
+                    plot_label = figures[process_id][0].get_axes()[0].get_label().split('.')[0]
+                    stem = build_plot_output_basename(
+                        processor.project, inps.tag_string, plot_label,
+                        processor.start_date, processor.end_date,
+                    )
+                    saving_path = os.path.join(saving_root, f"{stem}.pdf")
                 else:
-                    saving_path = os.path.join(saving_root, f"{processor.project}_{inps.template}_{processor.start_date}_{processor.end_date}.pdf")
+                    stem = build_plot_output_basename(
+                        processor.project, inps.tag_string, inps.template,
+                        processor.start_date, processor.end_date,
+                    )
+                    saving_path = os.path.join(saving_root, f"{stem}.pdf")
 
                 with PdfPages(saving_path) as pdf:
                     for fig in figures[process_id]:
@@ -411,9 +408,14 @@ def main(iargs=None):
             if process_id in figures:
                 for fig in figures[process_id]:
                     if len(figures[process_id]) > 1:
-                        png_path = os.path.join(saving_root, f"{processor.project}_{fig.get_axes()[0].get_label().split('.')[0]}_{processor.start_date}_{processor.end_date}.png")
+                        plot_label = fig.get_axes()[0].get_label().split('.')[0]
                     else:
-                        png_path = os.path.join(saving_root, f"{processor.project}_{inps.template}_{processor.start_date}_{processor.end_date}.png")
+                        plot_label = inps.template
+                    stem = build_plot_output_basename(
+                        processor.project, inps.tag_string, plot_label,
+                        processor.start_date, processor.end_date,
+                    )
+                    png_path = os.path.join(saving_root, f"{stem}.png")
                     fig.savefig(png_path, bbox_inches='tight', dpi=inps.dpi, transparent=True)
 
                     print(f"Figure saved to {png_path}\n")
