@@ -20,8 +20,7 @@ class MapFigureSpec:
     data: object                  # 2D array (NaN-masked velocity)
     lats: object                  # 1D array
     lons: object                  # 1D array
-    fault_lons: object            # fault polyline
-    fault_lats: object
+    fault_segments: object        # list of segments: each {'lons': [...], 'lats': [...]}
     offset_series: object         # offset.OffsetSeries
     perp_width_km: float = 0.5
     options: PlotOptions = field(default_factory=PlotOptions)

@@ -7,8 +7,10 @@ import unittest
 import zipfile
 
 from plotdata.fault_transect.kmz_fault import (
-    read_fault_kmz, join_segments, parse_segment_spec,
-    write_fault_kmz, joint_output_paths, polyline_length_km)
+    read_fault_kmz, join_segments, parse_segment_spec, resolve_segment_spec,
+    write_fault_kmz, write_fault_kmz_segments, joint_output_paths, polyline_length_km,
+    orient_segments_for_sequence, write_segment_qc, closest_point_on_polyline,
+    FaultSegment)
 
 
 def make_kmz(path, segments):
@@ -80,6 +82,24 @@ class TestKmzFault(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_segment_spec('7', 5)
 
+    def test_resolve_segment_spec_by_label(self):
+        segments = [
+            FaultSegment('PFS1', [(0, 0), (1, 0)]),
+            FaultSegment('PFS10', [(2, 0), (3, 0)]),
+            FaultSegment('PFS11', [(4, 0), (5, 0)]),
+            FaultSegment('PFS12', [(6, 0), (7, 0)]),
+            FaultSegment('PFS2', [(8, 0), (9, 0)]),
+            FaultSegment('PFS3', [(10, 0), (11, 0)]),
+            FaultSegment('PFS4', [(12, 0), (13, 0)]),
+            FaultSegment('PFS5', [(14, 0), (15, 0)]),
+        ]
+        indices, mode = resolve_segment_spec('1,2,4,5', segments)
+        self.assertEqual(indices, [0, 4, 6, 7])  # PFS1, PFS2, PFS4, PFS5 — not PFS3
+        self.assertIn('PFS1', mode)
+        self.assertNotIn('PFS3', mode.split('->')[-1])
+        indices_idx, _ = resolve_segment_spec('1,2,4', segments, segment_by='index')
+        self.assertEqual(indices_idx, [1, 2, 4])  # PFS10, PFS11, PFS2 by KMZ index
+
     def test_write_and_reread_joint_kmz(self):
         coords = [(15.0, 37.0), (15.1, 37.01), (15.2, 37.02)]
         path = os.path.join(self.tmp.name, 'fault_joint.kmz')
@@ -92,15 +112,55 @@ class TestKmzFault(unittest.TestCase):
     def test_joint_output_paths(self):
         kmz, txt = joint_output_paths('/data/PFS_fault_.kmz')
         self.assertEqual(os.path.basename(kmz), 'PFS_fault_joint.kmz')
-        self.assertEqual(os.path.basename(txt), 'PFS_fault_joint.txt')
+        self.assertEqual(os.path.basename(txt), 'PFS_fault_joint_qc.txt')
         kmz2, _ = joint_output_paths('/data/fault.kmz', outdir='/tmp/out')
         self.assertEqual(kmz2, '/tmp/out/fault_joint.kmz')
+
+    def test_write_segments_kmz_and_qc(self):
+        path = os.path.join(self.tmp.name, 'fault.kmz')
+        make_kmz(path, [('A', [(15.0, 37.0), (15.1, 37.0)]),
+                        ('B', [(15.3, 37.0), (15.4, 37.0)])])
+        segments = read_fault_kmz(path)
+        oriented, qc, total = orient_segments_for_sequence(segments, connect_gap_km=0.3)
+        out_kmz = os.path.join(self.tmp.name, 'out_joint.kmz')
+        out_qc = os.path.join(self.tmp.name, 'out_joint_qc.txt')
+        write_fault_kmz_segments(out_kmz, oriented, name='out_joint')
+        write_segment_qc(out_qc, path, qc, total)
+        reread = read_fault_kmz(out_kmz)
+        self.assertEqual(len(reread), 2)
+        with open(out_qc, encoding='utf-8') as f:
+            first = f.readline()
+        self.assertIn('order_index', first)
+        self.assertIn('connected', first)
 
     def test_polyline_length(self):
         # ~111.19 km per degree latitude
         length = polyline_length_km([(15.0, 37.0), (15.0, 38.0)])
         self.assertAlmostEqual(length, 111.19, delta=0.5)
 
+    def test_closest_point_gap_not_to_segment_start(self):
+        """Gap is measured to the closest point on the polyline, not its start."""
+        prev_end = (15.0, 37.0)
+        # Segment start is ~11 km east; a vertex ~0.29 km north of prev end is closest.
+        seg_coords = [(15.1, 37.0), (15.0, 37.0026), (15.2, 37.0)]
+        dist, conn_lon, conn_lat, edge_i, t = closest_point_on_polyline(
+            prev_end[1], prev_end[0], seg_coords)
+        self.assertLess(dist, 0.35)
+        self.assertGreater(dist, 0.25)
+        self.assertAlmostEqual(conn_lon, 15.0, places=3)
+        self.assertAlmostEqual(conn_lat, 37.0026, places=3)
+
+        segments = [
+            FaultSegment('A', [(14.9, 37.0), prev_end]),
+            FaultSegment('B', seg_coords),
+        ]
+        oriented, qc, _ = orient_segments_for_sequence(segments, connect_gap_km=0.3)
+        self.assertTrue(qc[1]['connected'])
+        self.assertLess(qc[1]['gap_to_prev_km'], 0.35)
+        self.assertGreater(qc[1]['gap_to_prev_km'], 0.25)
+        # Trimmed segment should begin at the connection point, not the original start.
+        self.assertAlmostEqual(oriented[1].coords[0][0], conn_lon, places=3)
+        self.assertAlmostEqual(oriented[1].coords[0][1], conn_lat, places=3)
 
 if __name__ == '__main__':
     unittest.main()

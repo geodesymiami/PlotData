@@ -79,6 +79,43 @@ def sample_points(coords, along_step_km, along_start_km=0.0, along_end_km=None):
     return points
 
 
+def sample_points_segments(segments, along_step_km, along_start_km=0.0, along_end_km=None):
+    """Sample points along an ordered list of disconnected segments.
+
+    Along-strike distance is computed by concatenating segment lengths in order
+    (no gap penalty). The sampling points restart at the beginning of each
+    segment, but their returned `along_km` is global cumulative distance.
+
+    segments: list of (lon, lat) coordinate lists.
+    """
+    if not segments:
+        return []
+    # compute segment cumulative lengths (segments already include any <=300m connectors)
+    seg_lengths = [float(cumulative_distance_km(seg)[-1]) for seg in segments]
+    cum0 = [0.0]
+    for L in seg_lengths:
+        cum0.append(cum0[-1] + L)
+    total = cum0[-1]
+    end = min(along_end_km, total) if along_end_km is not None else total
+    if along_start_km >= end:
+        raise ValueError(f'--along-start ({along_start_km} km) must be smaller than '
+                         f'--along-end / fault length ({end:.3f} km)')
+    targets = np.arange(along_start_km, end + 1e-9, along_step_km)
+
+    points = []
+    for target in targets:
+        seg_idx = int(np.searchsorted(cum0, target, side='right') - 1)
+        seg_idx = min(max(seg_idx, 0), len(segments) - 1)
+        local_target = target - cum0[seg_idx]
+        seg_points = sample_points(segments[seg_idx], along_step_km=along_step_km,
+                                   along_start_km=local_target, along_end_km=local_target)
+        if seg_points:
+            p = seg_points[0]
+            p.along_km = float(target)
+            points.append(p)
+    return points
+
+
 def offset_latlon(lat, lon, east_km, north_km):
     """Shift a (lat, lon) point by east/north km offsets."""
     km_lat, km_lon = _local_scale(lat)

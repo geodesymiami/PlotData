@@ -26,7 +26,12 @@ class MatplotlibBackend(PlotBackend):
         cbar = fig.colorbar(im, ax=ax_map, shrink=0.75, pad=0.02)
         cbar.set_label(opts.unit, fontsize=opts.font_size)
 
-        ax_map.plot(spec.fault_lons, spec.fault_lats, 'k-', linewidth=1.5)
+        all_lons = []
+        all_lats = []
+        for seg in spec.fault_segments:
+            ax_map.plot(seg['lons'], seg['lats'], 'k-', linewidth=1.5)
+            all_lons.extend(seg['lons'])
+            all_lats.extend(seg['lats'])
 
         offsets = np.asarray(series.offset, dtype=float)
         finite = np.isfinite(offsets)
@@ -39,8 +44,8 @@ class MatplotlibBackend(PlotBackend):
             cbar2.set_label(f'offset ({opts.unit})', fontsize=opts.font_size)
 
         pad = max(4 * spec.perp_width_km / 111.19, 0.02)
-        ax_map.set_xlim(min(spec.fault_lons) - pad, max(spec.fault_lons) + pad)
-        ax_map.set_ylim(min(spec.fault_lats) - pad, max(spec.fault_lats) + pad)
+        ax_map.set_xlim(min(all_lons) - pad, max(all_lons) + pad)
+        ax_map.set_ylim(min(all_lats) - pad, max(all_lats) + pad)
         ax_map.set_xlabel('Longitude', fontsize=opts.font_size)
         ax_map.set_ylabel('Latitude', fontsize=opts.font_size)
         ax_map.set_title(opts.title, fontsize=opts.font_size + 2)

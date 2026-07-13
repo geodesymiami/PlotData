@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-"""Read fault traces from KMZ/KML, join multi-segment faults, write joint KMZ."""
+"""Read fault traces from KMZ/KML and write a homogenized (ordered) KMZ.
+
+The homogenized fault may contain multiple disconnected segments. Along-strike
+distance is computed by concatenating segment lengths in order (no gap penalty).
+"""
 
 import os
 import math
+import re
 import zipfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -76,32 +81,105 @@ def read_fault_kmz(path):
     return segments
 
 
-def parse_segment_spec(spec, num_segments):
-    """Parse --fault-segment value: 'all', '3', '2-8', '0,2,5', '0,3-5'."""
+def segment_label_number(name):
+    """Trailing integer in a placemark name, e.g. PFS3 -> 3. None if absent."""
+    if not name:
+        return None
+    m = re.search(r'(\d+)\s*$', str(name).strip())
+    return int(m.group(1)) if m else None
+
+
+def _parse_segment_spec_tokens(spec):
+    """Parse --fault-segment string into ordered integer tokens (labels or indices)."""
     spec = (spec or 'all').strip().lower()
     if spec == 'all':
-        return list(range(num_segments))
-    indices = []
+        return None
+    tokens = []
     for chunk in spec.split(','):
         chunk = chunk.strip()
         if not chunk:
             continue
         if '-' in chunk:
             lo, hi = chunk.split('-', 1)
-            indices.extend(range(int(lo), int(hi) + 1))
+            tokens.extend(range(int(lo), int(hi) + 1))
         else:
-            indices.append(int(chunk))
-    bad = [i for i in indices if i < 0 or i >= num_segments]
-    if bad:
-        raise ValueError(f'--fault-segment indices {bad} out of range 0-{num_segments - 1}')
+            tokens.append(int(chunk))
     # preserve order, drop duplicates
     seen = set()
     result = []
-    for i in indices:
-        if i not in seen:
-            result.append(i)
-            seen.add(i)
+    for t in tokens:
+        if t not in seen:
+            result.append(t)
+            seen.add(t)
     return result
+
+
+def resolve_segment_spec(spec, segments, segment_by='auto'):
+    """Resolve --fault-segment to KMZ segment indices in requested order.
+
+    segment_by:
+      auto  - use placemark label numbers (e.g. PFS3 -> 3) when every segment
+              has a unique trailing number and every token matches a label;
+              otherwise use 0-based KMZ read order indices.
+      label - require label-number resolution (PFS-style names).
+      index - 0-based index into segments as read from the KMZ file.
+    """
+    num_segments = len(segments)
+    tokens = _parse_segment_spec_tokens(spec)
+    if tokens is None:
+        return list(range(num_segments)), 'all'
+
+    labels = [segment_label_number(s.name) for s in segments]
+    has_labels = all(l is not None for l in labels) and len(set(labels)) == len(labels)
+    label_to_idx = {l: i for i, l in enumerate(labels)} if has_labels else {}
+
+    use_label = segment_by == 'label'
+    if segment_by == 'auto' and has_labels:
+        if all(t in label_to_idx for t in tokens) and 0 not in tokens:
+            use_label = True
+        else:
+            use_label = False
+
+    if use_label:
+        bad = [t for t in tokens if t not in label_to_idx]
+        if bad:
+            avail = sorted(label_to_idx)
+            raise ValueError(
+                f'--fault-segment label(s) {bad} not found; '
+                f'available segment labels: {avail}')
+        indices = [label_to_idx[t] for t in tokens]
+        names = [segments[i].name for i in indices]
+        mode = f'labels {tokens} -> {names}'
+        return indices, mode
+
+    if segment_by == 'label' and not has_labels:
+        raise ValueError(
+            '--fault-segment-by label requires unique trailing numbers in segment names')
+
+    bad = [i for i in tokens if i < 0 or i >= num_segments]
+    if bad:
+        raise ValueError(f'--fault-segment indices {bad} out of range 0-{num_segments - 1}')
+    names = [segments[i].name for i in tokens]
+    mode = f'KMZ indices {tokens} -> {names}'
+    return tokens, mode
+
+
+def parse_segment_spec(spec, num_segments, segments=None, segment_by='auto'):
+    """Parse --fault-segment value: 'all', '3', '2-8', '0,2,5', '0,3-5'.
+
+    When segments is provided, numbers refer to placemark label suffixes (PFS3 -> 3)
+    if segment_by is auto/label and names support it; otherwise 0-based KMZ indices.
+    """
+    if segments is not None:
+        indices, _ = resolve_segment_spec(spec, segments, segment_by=segment_by)
+        return indices
+    tokens = _parse_segment_spec_tokens(spec)
+    if tokens is None:
+        return list(range(num_segments))
+    bad = [i for i in tokens if i < 0 or i >= num_segments]
+    if bad:
+        raise ValueError(f'--fault-segment indices {bad} out of range 0-{num_segments - 1}')
+    return tokens
 
 
 def _endpoint(seg, which):
@@ -176,9 +254,13 @@ def join_segments(segments, gap_warn_km=1.0):
     return joined, report
 
 
-def write_fault_kmz(path, coords, name='joint_fault'):
+def _coords_to_kml_coordinates(coords):
+    return ' '.join(f'{lon:.10f},{lat:.10f},0' for lon, lat in coords)
+
+
+def write_fault_kmz(path, coords, name='fault'):
     """Write a single-LineString KMZ from (lon, lat) coords."""
-    coord_str = ' '.join(f'{lon:.10f},{lat:.10f},0' for lon, lat in coords)
+    coord_str = _coords_to_kml_coordinates(coords)
     kml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>
@@ -196,6 +278,180 @@ def write_fault_kmz(path, coords, name='joint_fault'):
 """
     with zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED) as zf:
         zf.writestr('doc.kml', kml)
+
+
+def write_fault_kmz_segments(path, segments, name='homogenized_fault'):
+    """Write a KMZ containing one Placemark per (possibly disconnected) segment.
+
+    segments: list of FaultSegment (coords are lon/lat tuples).
+    """
+    placemarks = []
+    for i, seg in enumerate(segments):
+        coord_str = _coords_to_kml_coordinates(seg.coords)
+        seg_name = seg.name or f'segment_{i}'
+        placemarks.append(f"""
+    <Placemark>
+      <name>{seg_name}</name>
+      <Style><LineStyle><color>ff0000ff</color><width>3</width></LineStyle></Style>
+      <LineString>
+        <tessellate>1</tessellate>
+        <coordinates>{coord_str}</coordinates>
+      </LineString>
+    </Placemark>""")
+    kml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>{name}</name>
+    {''.join(placemarks)}
+  </Document>
+</kml>
+"""
+    with zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr('doc.kml', kml)
+
+
+CONNECT_GAP_KM_DEFAULT = 0.3
+
+
+def _local_scale(lat0):
+    km_per_deg_lat = math.pi / 180.0 * 6371.0
+    km_per_deg_lon = km_per_deg_lat * math.cos(math.radians(lat0))
+    return km_per_deg_lat, km_per_deg_lon
+
+
+def closest_point_on_polyline(lat, lon, coords):
+    """Closest point on a (lon, lat) polyline to the query point.
+
+    Returns (dist_km, conn_lon, conn_lat, edge_i, t) where the closest point lies
+    on edge coords[edge_i] -> coords[edge_i + 1] at fraction t in [0, 1].
+    """
+    if len(coords) == 1:
+        lon0, lat0 = coords[0]
+        return haversine_km(lat, lon, lat0, lon0), lon0, lat0, 0, 0.0
+
+    best = None
+    for i in range(len(coords) - 1):
+        lon0, lat0 = coords[i]
+        lon1, lat1 = coords[i + 1]
+        mid_lat = (lat0 + lat1) / 2.0
+        km_lat, km_lon = _local_scale(mid_lat)
+        x0 = (lon0 - lon) * km_lon
+        y0 = (lat0 - lat) * km_lat
+        x1 = (lon1 - lon) * km_lon
+        y1 = (lat1 - lat) * km_lat
+        dx, dy = x1 - x0, y1 - y0
+        len2 = dx * dx + dy * dy
+        if len2 == 0:
+            t = 0.0
+            cx, cy = x0, y0
+        else:
+            t = max(0.0, min(1.0, -(x0 * dx + y0 * dy) / len2))
+            cx = x0 + t * dx
+            cy = y0 + t * dy
+        conn_lon = lon + cx / km_lon
+        conn_lat = lat + cy / km_lat
+        dist = haversine_km(lat, lon, conn_lat, conn_lon)
+        if best is None or dist < best[0]:
+            best = (dist, conn_lon, conn_lat, i, t)
+    return best
+
+
+def trim_polyline_from_connection(coords, conn_lon, conn_lat, edge_i, t, prev_lat, prev_lon):
+    """Return polyline from the connection point toward the segment endpoint farther from prev."""
+    coords = list(coords)
+    conn = (conn_lon, conn_lat)
+    if 1e-6 < t < 1.0 - 1e-6:
+        coords = coords[:edge_i + 1] + [conn] + coords[edge_i + 1:]
+        split_idx = edge_i + 1
+    elif t >= 1.0 - 1e-6:
+        split_idx = edge_i + 1
+    else:
+        split_idx = edge_i
+
+    d_start = haversine_km(prev_lat, prev_lon, coords[0][1], coords[0][0])
+    d_end = haversine_km(prev_lat, prev_lon, coords[-1][1], coords[-1][0])
+
+    if d_end >= d_start:
+        out = [conn]
+        for j in range(split_idx + 1, len(coords)):
+            if coords[j] != conn:
+                out.append(coords[j])
+        return out
+
+    out = [conn]
+    for j in range(split_idx - 1, -1, -1):
+        if coords[j] != conn:
+            out.append(coords[j])
+    return out
+
+
+def orient_segments_for_sequence(segments, connect_gap_km=CONNECT_GAP_KM_DEFAULT):
+    """Orient segments in the given order.
+
+    For each segment after the first, gap_to_prev_km is the distance from the
+    previous segment's endpoint to the **closest point anywhere** on the next
+    segment (not merely its start). Orientation is chosen to minimize that gap.
+
+    If gap <= connect_gap_km (300 m), the fault continues at that closest point
+    and the straight connector distance is included in cumulative along-strike km.
+    """
+    oriented = []
+    qc = []
+    cum = 0.0
+    prev_end_latlon = None
+
+    for order_index, seg in enumerate(segments):
+        coords_fwd = list(seg.coords)
+        coords_rev = list(reversed(seg.coords))
+        conn_lon = conn_lat = None
+
+        if prev_end_latlon is None:
+            chosen = coords_fwd
+            reversed_flag = False
+            gap = 0.0
+        else:
+            prev_lat, prev_lon = prev_end_latlon
+            best = None
+            for coords_cand, rev_flag in ((coords_fwd, False), (coords_rev, True)):
+                dist, clon, clat, edge_i, t = closest_point_on_polyline(
+                    prev_lat, prev_lon, coords_cand)
+                if best is None or dist < best[0]:
+                    best = (dist, coords_cand, rev_flag, clon, clat, edge_i, t)
+            gap, chosen, reversed_flag, conn_lon, conn_lat, edge_i, t = best
+
+        connected = (order_index > 0 and gap <= connect_gap_km)
+        if connected:
+            chosen = trim_polyline_from_connection(
+                chosen, conn_lon, conn_lat, edge_i, t,
+                prev_end_latlon[0], prev_end_latlon[1])
+
+        length = polyline_length_km(chosen)
+        start_lon, start_lat = chosen[0]
+        end_lon, end_lat = chosen[-1]
+        cum_end = cum + (gap if connected else 0.0) + length
+        qc.append({
+            'order_index': order_index,
+            'segment_index': None,
+            'name': seg.name,
+            'reversed': reversed_flag,
+            'connected': connected,
+            'gap_lat': conn_lat,
+            'gap_lon': conn_lon,
+            'start_lat': start_lat,
+            'start_lon': start_lon,
+            'end_lat': end_lat,
+            'end_lon': end_lon,
+            'length_km': length,
+            'cum_start_km': cum,
+            'cum_end_km': cum_end,
+            'gap_to_prev_km': gap,
+            'n_vertices': len(chosen),
+        })
+        oriented.append(FaultSegment(name=seg.name, coords=chosen))
+        cum = cum_end
+        prev_end_latlon = (end_lat, end_lon)
+
+    return oriented, qc, cum
 
 
 def write_join_report(path, report, source_kmz, joined_coords):
@@ -222,8 +478,74 @@ def write_join_report(path, report, source_kmz, joined_coords):
 
 
 def joint_output_paths(kmz_path, outdir=None):
-    """Return (joint_kmz_path, joint_txt_path) for a source KMZ."""
+    """Return (joint_kmz_path, qc_txt_path) for a source KMZ."""
     stem = os.path.splitext(os.path.basename(kmz_path))[0].rstrip('_')
     directory = outdir if outdir else os.path.dirname(os.path.abspath(kmz_path))
     return (os.path.join(directory, f'{stem}_joint.kmz'),
-            os.path.join(directory, f'{stem}_joint.txt'))
+            os.path.join(directory, f'{stem}_joint_qc.txt'))
+
+
+def homogenized_polylines(oriented_segments, qc_rows):
+    """Return a list of polylines (each is list of (lon,lat)) for plotting/sampling.
+
+    Consecutive segments with qc_rows[i]['connected']==True are merged into a
+    single polyline; when needed, a straight connector is inserted.
+    """
+    if not oriented_segments:
+        return []
+    polylines = []
+    current = list(oriented_segments[0].coords)
+    for seg, qc in zip(oriented_segments[1:], qc_rows[1:]):
+        if qc.get('connected'):
+            prev_lon, prev_lat = current[-1]
+            next_lon, next_lat = seg.coords[0]
+            if abs(prev_lon - next_lon) > 1e-8 or abs(prev_lat - next_lat) > 1e-8:
+                current.append((next_lon, next_lat))
+            current.extend(seg.coords[1:])
+        else:
+            polylines.append(current)
+            current = list(seg.coords)
+    polylines.append(current)
+    return polylines
+
+
+def write_segment_qc(path, source_kmz, qc_rows, total_length_km):
+    """Write a QC table for the homogenized (ordered) segments.
+
+    First line is the column names / explanation, as requested.
+    gap_to_prev_km is the distance from the previous segment end to the closest
+    point anywhere on this segment (gap_lat/gap_lon); connected=1 if <=300 m.
+    """
+    header = (
+        'order_index segment_index name reversed connected n_vertices length_km '
+        'cum_start_km cum_end_km gap_to_prev_km gap_lat gap_lon start_lat start_lon end_lat end_lon '
+        '[gap_to_prev_km = distance from prev end to closest point on this segment]'
+    )
+    lines = [header]
+    for row in qc_rows:
+        gap_lat = row.get('gap_lat')
+        gap_lon = row.get('gap_lon')
+        gap_lat_s = f'{gap_lat:.6f}' if gap_lat is not None else 'nan'
+        gap_lon_s = f'{gap_lon:.6f}' if gap_lon is not None else 'nan'
+        lines.append(
+            f"{int(row.get('order_index', -1) if row.get('order_index', -1) is not None else -1):d} "
+            f"{int(row.get('segment_index', -1) if row.get('segment_index', -1) is not None else -1):d} "
+            f"{row.get('name', '')} "
+            f"{1 if row.get('reversed') else 0:d} "
+            f"{1 if row.get('connected') else 0:d} "
+            f"{int(row.get('n_vertices', 0) if row.get('n_vertices', 0) is not None else 0):d} "
+            f"{row.get('length_km', 0.0):.3f} "
+            f"{row.get('cum_start_km', 0.0):.3f} "
+            f"{row.get('cum_end_km', 0.0):.3f} "
+            f"{row.get('gap_to_prev_km', 0.0):.1f} "
+            f"{gap_lat_s} "
+            f"{gap_lon_s} "
+            f"{row.get('start_lat', float('nan')):.6f} "
+            f"{row.get('start_lon', float('nan')):.6f} "
+            f"{row.get('end_lat', float('nan')):.6f} "
+            f"{row.get('end_lon', float('nan')):.6f}"
+        )
+    lines.append(f'# total_length_km {total_length_km:.3f}')
+    lines.append(f'# source_kmz {source_kmz}')
+    with open(path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(lines) + '\n')

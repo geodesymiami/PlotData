@@ -36,8 +36,14 @@ def create_parser():
     parser.add_argument('data_dir', nargs='*', help='1-4 inputs: S1_*.he5 file or mintpy/miaplpy directory')
 
     fault = parser.add_argument_group('Fault handling')
-    fault.add_argument('--dry-run', dest='dry_run', action='store_true', help='Join segments, write {stem}_joint.kmz + {stem}_joint.txt, then exit')
-    fault.add_argument('--fault-segment', dest='fault_segment', type=str, default='all', help='Segment selection: all, 3, 2-8, 0,2,5 (default: %(default)s)')
+    fault.add_argument('--dry-run', dest='dry_run', action='store_true', help='Write homogenized {stem}_joint.kmz + {stem}_joint_qc.txt, then exit')
+    fault.add_argument('--fault-segment', dest='fault_segment', type=str, default='all',
+                       help='Segments to use, in along-fault order: all, 3, 2-8, 1,2,4-11. '
+                            'Numbers match placemark labels (PFS3 -> 3) when names have unique '
+                            'suffixes; use --fault-segment-by index for 0-based KMZ read order.')
+    fault.add_argument('--fault-segment-by', dest='fault_segment_by', type=str, default='auto',
+                       choices=['auto', 'label', 'index'],
+                       help='How to interpret --fault-segment numbers (default: %(default)s)')
     fault.add_argument('--flip-fault', dest='flip_fault', action='store_true', help='Reverse along-fault direction (swaps left/right and along-km origin)')
 
     data = parser.add_argument_group('Data selection')
@@ -129,57 +135,62 @@ def cmd_line_parse(iargs=None):
 
 
 def _load_fault(inps):
-    """Read the KMZ and return one (lon, lat) polyline according to the options."""
+    """Read the KMZ and return a list of (lon, lat) segments in requested order."""
     from plotdata.fault_transect.kmz_fault import (
-        read_fault_kmz, join_segments, parse_segment_spec)
+        read_fault_kmz, resolve_segment_spec, orient_segments_for_sequence, homogenized_polylines)
 
     segments = read_fault_kmz(inps.fault_file)
-    indices = parse_segment_spec(inps.fault_segment, len(segments))
+    indices, seg_mode = resolve_segment_spec(
+        inps.fault_segment, segments, segment_by=inps.fault_segment_by)
     selected = [segments[i] for i in indices]
-
-    if len(selected) == 1:
-        coords = list(selected[0].coords)
-    elif inps.fault_segment.strip().lower() == 'all' and not inps.fault_file.endswith('_joint.kmz'):
-        raise SystemExit(
-            f'ERROR: {os.path.basename(inps.fault_file)} contains {len(segments)} segments. '
-            'Run with --dry-run first to create and inspect the joint KMZ, '
-            'or select segments with --fault-segment N / N-M.')
-    else:
-        coords, report = join_segments(selected)
-        for warning in report.warnings:
-            print(f'WARNING: {warning}')
+    # Fill segment_index for QC/debug
+    for seg, seg_idx in zip(selected, indices):
+        seg.name = seg.name or f'segment_{seg_idx}'
 
     if inps.flip_fault:
-        coords = list(reversed(coords))
-    return coords
+        selected = [type(s)(name=s.name, coords=list(reversed(s.coords))) for s in reversed(selected)]
+
+    oriented, qc_rows, total = orient_segments_for_sequence(selected)
+    for row, seg_idx in zip(qc_rows, indices):
+        row['segment_index'] = int(seg_idx)
+        if row['gap_to_prev_km'] > 0:
+            print(f"segment jump: {row['gap_to_prev_km']:.1f} km -> {row['name']}")
+    return homogenized_polylines(oriented, qc_rows)
 
 
 def _run_dry_run(inps):
     from plotdata.fault_transect.kmz_fault import (
-        read_fault_kmz, join_segments, parse_segment_spec,
-        write_fault_kmz, write_join_report, joint_output_paths)
+        read_fault_kmz, resolve_segment_spec, orient_segments_for_sequence,
+        write_fault_kmz_segments, write_segment_qc, joint_output_paths,
+        homogenized_polylines, FaultSegment)
 
     segments = read_fault_kmz(inps.fault_file)
-    indices = parse_segment_spec(inps.fault_segment, len(segments))
+    indices, seg_mode = resolve_segment_spec(
+        inps.fault_segment, segments, segment_by=inps.fault_segment_by)
     selected = [segments[i] for i in indices]
-    print(f'Read {len(segments)} segment(s) from {inps.fault_file}; using {len(selected)}')
+    print(f'Read {len(segments)} segment(s) from {inps.fault_file}; using {len(selected)} ({seg_mode})')
 
-    coords, report = join_segments(selected)
-    kmz_path, txt_path = joint_output_paths(inps.fault_file, inps.outdir)
+    if inps.flip_fault:
+        selected = [type(s)(name=s.name, coords=list(reversed(s.coords))) for s in reversed(selected)]
+
+    oriented, qc_rows, total = orient_segments_for_sequence(selected)
+    for row, seg_idx in zip(qc_rows, indices):
+        row['segment_index'] = int(seg_idx)
+
+    kmz_path, qc_path = joint_output_paths(inps.fault_file, inps.outdir)
     if inps.outdir:
         os.makedirs(inps.outdir, exist_ok=True)
 
     stem = os.path.splitext(os.path.basename(kmz_path))[0]
-    write_fault_kmz(kmz_path, coords, name=stem)
-    write_join_report(txt_path, report, inps.fault_file, coords)
+    polylines = homogenized_polylines(oriented, qc_rows)
+    merged = [FaultSegment(name=f'{stem}_{i:02d}', coords=poly) for i, poly in enumerate(polylines)]
+    write_fault_kmz_segments(kmz_path, merged, name=stem)
+    write_segment_qc(qc_path, inps.fault_file, qc_rows, total)
 
-    print(f'Joint fault KMZ:    {kmz_path}')
-    print(f'Join report:        {txt_path}')
-    print(f'Total fault length: {report.total_length_km:.3f} km '
-          f'({len(report.order)} segments, {len(coords)} vertices)')
-    for warning in report.warnings:
-        print(f'WARNING: {warning}')
-    print('Inspect the joint KMZ in Google Earth; if satisfied, rerun with it (no --dry-run).')
+    print(f'Homogenized fault KMZ: {kmz_path}')
+    print(f'QC report:            {qc_path}')
+    print(f'Total fault length:   {total:.3f} km ({len(oriented)} segments)')
+    print('Inspect the KMZ in Google Earth; if satisfied, rerun with it (no --dry-run).')
 
 
 def _select_profile_points(points, inps):
@@ -214,11 +225,11 @@ def _multi_period_stem(project, tag_string, plot_label, periods):
         (f'{project}_{tag_string}_{plot_label}_{label}' if tag_string else f'{project}_{plot_label}_{label}')
 
 
-def _process_input(inps, coords, data_input, command):
+def _process_input(inps, fault_segments, data_input, command):
     """Full pipeline for one data input: all periods, map + profile plots."""
     from plotdata.fault_transect.load_data import (
         resolve_input, default_output_dir, full_date_span, load_velocity_grid)
-    from plotdata.fault_transect.fault_sampling import sample_points
+    from plotdata.fault_transect.fault_sampling import sample_points_segments
     from plotdata.fault_transect.offset import compute_offset_series
     from plotdata.fault_transect.profiles import extract_profiles
     from plotdata.fault_transect.plot_api import PlotOptions, MapFigureSpec, ProfileFigureSpec
@@ -236,13 +247,12 @@ def _process_input(inps, coords, data_input, command):
 
     periods = inps.periods if inps.periods else [full_date_span(eos_file)]
 
-    points = sample_points(coords, inps.along_step, inps.along_start, inps.along_end)
+    points = sample_points_segments(fault_segments, inps.along_step, inps.along_start, inps.along_end)
     if not points:
         raise SystemExit('ERROR: no sampling points on the fault; check --along-* options')
     print(f'{project}: {len(points)} sampling points along {points[-1].along_km:.1f} km of fault')
 
-    fault_lons = [c[0] for c in coords]
-    fault_lats = [c[1] for c in coords]
+    fault_segments_xy = [{'lons': [c[0] for c in seg], 'lats': [c[1] for c in seg]} for seg in fault_segments]
 
     section_info = (f'fault={os.path.basename(inps.fault_file)} '
                     f'along-step={inps.along_step} perp-width={inps.perp_width} '
@@ -275,7 +285,7 @@ def _process_input(inps, coords, data_input, command):
             txt_path = os.path.join(out_dir, f'{stem}.txt')
             write_offset_txt(txt_path, series, section_info)
             map_specs.append(MapFigureSpec(data=grid.data, lats=grid.lats, lons=grid.lons,
-                                           fault_lons=fault_lons, fault_lats=fault_lats,
+                                           fault_segments=fault_segments_xy,
                                            offset_series=series, perp_width_km=inps.perp_width,
                                            options=make_opts(grid)))
             map_txts.append(txt_path)
@@ -377,10 +387,10 @@ def main(iargs=None):
         _run_dry_run(inps)
         return
 
-    coords = _load_fault(inps)
+    fault_segments = _load_fault(inps)
 
     for data_input in inps.data_dir:
-        _process_input(inps, coords, data_input, command)
+        _process_input(inps, fault_segments, data_input, command)
 
     if inps.upload:
         print('WARNING: --upload is not implemented yet; skipping upload.')
