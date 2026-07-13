@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Read fault traces from KMZ/KML and write a homogenized (ordered) KMZ.
 
-The homogenized fault may contain multiple disconnected segments. Along-strike
-distance is computed by concatenating segment lengths in order (no gap penalty).
+The homogenized fault contains one LineString per oriented segment (never merged).
+Along-strike distance runs to each segment end, includes the gap to the next
+segment start, then continues along the next segment.
 """
 
 import os
@@ -388,12 +389,17 @@ def trim_polyline_from_connection(coords, conn_lon, conn_lat, edge_i, t, prev_la
 def orient_segments_for_sequence(segments, connect_gap_km=CONNECT_GAP_KM_DEFAULT):
     """Orient segments in the given order.
 
-    For each segment after the first, gap_to_prev_km is the distance from the
-    previous segment's endpoint to the **closest point anywhere** on the next
-    segment (not merely its start). Orientation is chosen to minimize that gap.
+    Orientation (forward vs reverse) is chosen to minimize the distance from the
+    previous segment's end to the closest point anywhere on the next segment.
 
-    If gap <= connect_gap_km (300 m), the fault continues at that closest point
-    and the straight connector distance is included in cumulative along-strike km.
+    If that closest distance is <= connect_gap_km (300 m), the next segment is
+    trimmed to begin at that connection point (start may move) so adjacent traces
+    do not overlap. Segments are never merged into one LineString.
+
+    Along-strike distance always includes the gap from the previous segment's end
+    to the (possibly trimmed) start of the next segment, then the segment length.
+    gap_to_prev_km is that end-to-start distance; gap_lat/gap_lon are the closest
+    point used for orientation and trimming.
     """
     oriented = []
     qc = []
@@ -404,6 +410,7 @@ def orient_segments_for_sequence(segments, connect_gap_km=CONNECT_GAP_KM_DEFAULT
         coords_fwd = list(seg.coords)
         coords_rev = list(reversed(seg.coords))
         conn_lon = conn_lat = None
+        gap_closest = 0.0
 
         if prev_end_latlon is None:
             chosen = coords_fwd
@@ -417,24 +424,26 @@ def orient_segments_for_sequence(segments, connect_gap_km=CONNECT_GAP_KM_DEFAULT
                     prev_lat, prev_lon, coords_cand)
                 if best is None or dist < best[0]:
                     best = (dist, coords_cand, rev_flag, clon, clat, edge_i, t)
-            gap, chosen, reversed_flag, conn_lon, conn_lat, edge_i, t = best
+            gap_closest, chosen, reversed_flag, conn_lon, conn_lat, edge_i, t = best
 
-        connected = (order_index > 0 and gap <= connect_gap_km)
-        if connected:
-            chosen = trim_polyline_from_connection(
-                chosen, conn_lon, conn_lat, edge_i, t,
-                prev_end_latlon[0], prev_end_latlon[1])
+            if gap_closest <= connect_gap_km:
+                chosen = trim_polyline_from_connection(
+                    chosen, conn_lon, conn_lat, edge_i, t,
+                    prev_lat, prev_lon)
+
+            start_lon, start_lat = chosen[0]
+            gap = haversine_km(prev_lat, prev_lon, start_lat, start_lon)
 
         length = polyline_length_km(chosen)
         start_lon, start_lat = chosen[0]
         end_lon, end_lat = chosen[-1]
-        cum_end = cum + (gap if connected else 0.0) + length
+        cum_end = cum + gap + length
         qc.append({
             'order_index': order_index,
             'segment_index': None,
             'name': seg.name,
             'reversed': reversed_flag,
-            'connected': connected,
+            'trimmed': (order_index > 0 and gap_closest <= connect_gap_km),
             'gap_lat': conn_lat,
             'gap_lon': conn_lon,
             'start_lat': start_lat,
@@ -485,41 +494,27 @@ def joint_output_paths(kmz_path, outdir=None):
             os.path.join(directory, f'{stem}_joint_qc.txt'))
 
 
-def homogenized_polylines(oriented_segments, qc_rows):
-    """Return a list of polylines (each is list of (lon,lat)) for plotting/sampling.
+def homogenized_polylines(oriented_segments, qc_rows=None):
+    """Return one polyline per oriented segment (never merged).
 
-    Consecutive segments with qc_rows[i]['connected']==True are merged into a
-    single polyline; when needed, a straight connector is inserted.
+    qc_rows is accepted for API compatibility but is not used.
     """
-    if not oriented_segments:
-        return []
-    polylines = []
-    current = list(oriented_segments[0].coords)
-    for seg, qc in zip(oriented_segments[1:], qc_rows[1:]):
-        if qc.get('connected'):
-            prev_lon, prev_lat = current[-1]
-            next_lon, next_lat = seg.coords[0]
-            if abs(prev_lon - next_lon) > 1e-8 or abs(prev_lat - next_lat) > 1e-8:
-                current.append((next_lon, next_lat))
-            current.extend(seg.coords[1:])
-        else:
-            polylines.append(current)
-            current = list(seg.coords)
-    polylines.append(current)
-    return polylines
+    return [list(seg.coords) for seg in oriented_segments]
 
 
 def write_segment_qc(path, source_kmz, qc_rows, total_length_km):
     """Write a QC table for the homogenized (ordered) segments.
 
     First line is the column names / explanation, as requested.
-    gap_to_prev_km is the distance from the previous segment end to the closest
-    point anywhere on this segment (gap_lat/gap_lon); connected=1 if <=300 m.
+    gap_to_prev_km is the end-to-start distance to the (possibly trimmed) next
+    segment and is included in cum_start_km / cum_end_km. trimmed=1 when the
+    segment start was moved to the closest connection point (gap <= 300 m).
+    gap_lat/gap_lon are that closest point.
     """
     header = (
-        'order_index segment_index name reversed connected n_vertices length_km '
+        'order_index segment_index name reversed trimmed n_vertices length_km '
         'cum_start_km cum_end_km gap_to_prev_km gap_lat gap_lon start_lat start_lon end_lat end_lon '
-        '[gap_to_prev_km = distance from prev end to closest point on this segment]'
+        '[gap_to_prev_km = prev end to next start, included in along-km; trimmed=1 if start moved at <=300 m gap]'
     )
     lines = [header]
     for row in qc_rows:
@@ -532,7 +527,7 @@ def write_segment_qc(path, source_kmz, qc_rows, total_length_km):
             f"{int(row.get('segment_index', -1) if row.get('segment_index', -1) is not None else -1):d} "
             f"{row.get('name', '')} "
             f"{1 if row.get('reversed') else 0:d} "
-            f"{1 if row.get('connected') else 0:d} "
+            f"{1 if row.get('trimmed') else 0:d} "
             f"{int(row.get('n_vertices', 0) if row.get('n_vertices', 0) is not None else 0):d} "
             f"{row.get('length_km', 0.0):.3f} "
             f"{row.get('cum_start_km', 0.0):.3f} "

@@ -10,7 +10,7 @@ from plotdata.fault_transect.kmz_fault import (
     read_fault_kmz, join_segments, parse_segment_spec, resolve_segment_spec,
     write_fault_kmz, write_fault_kmz_segments, joint_output_paths, polyline_length_km,
     orient_segments_for_sequence, write_segment_qc, closest_point_on_polyline,
-    FaultSegment)
+    homogenized_polylines, FaultSegment)
 
 
 def make_kmz(path, segments):
@@ -121,7 +121,7 @@ class TestKmzFault(unittest.TestCase):
         make_kmz(path, [('A', [(15.0, 37.0), (15.1, 37.0)]),
                         ('B', [(15.3, 37.0), (15.4, 37.0)])])
         segments = read_fault_kmz(path)
-        oriented, qc, total = orient_segments_for_sequence(segments, connect_gap_km=0.3)
+        oriented, qc, total = orient_segments_for_sequence(segments)
         out_kmz = os.path.join(self.tmp.name, 'out_joint.kmz')
         out_qc = os.path.join(self.tmp.name, 'out_joint_qc.txt')
         write_fault_kmz_segments(out_kmz, oriented, name='out_joint')
@@ -131,36 +131,53 @@ class TestKmzFault(unittest.TestCase):
         with open(out_qc, encoding='utf-8') as f:
             first = f.readline()
         self.assertIn('order_index', first)
-        self.assertIn('connected', first)
+        self.assertIn('gap_to_prev_km', first)
+
+    def test_orient_includes_gaps_in_cumulative_km(self):
+        segments = [
+            FaultSegment('A', [(15.0, 37.0), (15.1, 37.0)]),
+            FaultSegment('B', [(15.3, 37.0), (15.4, 37.0)]),
+        ]
+        oriented, qc, total = orient_segments_for_sequence(segments)
+        self.assertAlmostEqual(qc[0]['cum_start_km'], 0.0)
+        self.assertAlmostEqual(qc[1]['cum_start_km'], qc[0]['cum_end_km'])
+        self.assertGreater(qc[1]['gap_to_prev_km'], 1.0)
+        self.assertAlmostEqual(
+            total, qc[1]['cum_end_km'])
+        self.assertEqual(len(homogenized_polylines(oriented)), 2)
 
     def test_polyline_length(self):
         # ~111.19 km per degree latitude
         length = polyline_length_km([(15.0, 37.0), (15.0, 38.0)])
         self.assertAlmostEqual(length, 111.19, delta=0.5)
 
-    def test_closest_point_gap_not_to_segment_start(self):
-        """Gap is measured to the closest point on the polyline, not its start."""
+    def test_trim_at_close_gap_no_overlap(self):
+        """When gap <= 300 m, next segment is trimmed at the connection point."""
         prev_end = (15.0, 37.0)
-        # Segment start is ~11 km east; a vertex ~0.29 km north of prev end is closest.
         seg_coords = [(15.1, 37.0), (15.0, 37.0026), (15.2, 37.0)]
-        dist, conn_lon, conn_lat, edge_i, t = closest_point_on_polyline(
+        _, conn_lon, conn_lat, _, _ = closest_point_on_polyline(
             prev_end[1], prev_end[0], seg_coords)
-        self.assertLess(dist, 0.35)
-        self.assertGreater(dist, 0.25)
-        self.assertAlmostEqual(conn_lon, 15.0, places=3)
-        self.assertAlmostEqual(conn_lat, 37.0026, places=3)
 
         segments = [
             FaultSegment('A', [(14.9, 37.0), prev_end]),
             FaultSegment('B', seg_coords),
         ]
         oriented, qc, _ = orient_segments_for_sequence(segments, connect_gap_km=0.3)
-        self.assertTrue(qc[1]['connected'])
+        self.assertTrue(qc[1]['trimmed'])
         self.assertLess(qc[1]['gap_to_prev_km'], 0.35)
-        self.assertGreater(qc[1]['gap_to_prev_km'], 0.25)
-        # Trimmed segment should begin at the connection point, not the original start.
         self.assertAlmostEqual(oriented[1].coords[0][0], conn_lon, places=3)
         self.assertAlmostEqual(oriented[1].coords[0][1], conn_lat, places=3)
+        self.assertEqual(len(homogenized_polylines(oriented)), 2)
+
+    def test_no_trim_when_gap_large(self):
+        prev_end = (15.0, 37.0)
+        segments = [
+            FaultSegment('A', [(14.9, 37.0), prev_end]),
+            FaultSegment('B', [(15.1, 37.0), (15.2, 37.0)]),
+        ]
+        oriented, qc, _ = orient_segments_for_sequence(segments, connect_gap_km=0.3)
+        self.assertFalse(qc[1]['trimmed'])
+        self.assertAlmostEqual(oriented[1].coords[0][0], 15.1, places=3)
 
 if __name__ == '__main__':
     unittest.main()

@@ -20,10 +20,10 @@ import argparse
 
 EXAMPLE = """example:
   plot_fault_transect.py PFS_Pernicana_faults_system_.kmz --dry-run
-  plot_fault_transect.py PFS_Pernicana_faults_system__joint.kmz EtnaSenA44/mintpy --period 20141020:20260626 --tag Pernicana --no-display
-  plot_fault_transect.py fault_joint.kmz EtnaSenA44/mintpy EtnaSenD124/mintpy --plot-type map --perp-width 0.5 --no-display
-  plot_fault_transect.py fault.kmz EtnaSenA44/mintpy --fault-segment 2-8 --plot-type profile --profile-count 10 --plot-layout subplot --cloud-profiles 2 --no-display
-  plot_fault_transect.py fault_joint.kmz EtnaSenA44/mintpy --plot-type profile --plot-layout stacked --period 20141020:20181231,20190101:20260626 --no-display
+  plot_fault_transect.py PFS_Pernicana_faults_system__joint.kmz EtnaSenA44/mintpy --period 20141020:20260626 --tag Pernicana
+  plot_fault_transect.py fault_joint.kmz EtnaSenA44/mintpy EtnaSenD124/mintpy --plot-type map --perp-width 0.5
+  plot_fault_transect.py fault.kmz EtnaSenA44/mintpy --fault-segment 2-8 --plot-type profile --profile-count 10 --plot-layout subplot --cloud-profiles 2
+  plot_fault_transect.py fault_joint.kmz EtnaSenA44/mintpy --plot-type profile --plot-layout stacked --period 20141020:20181231,20190101:20260626 --display
 """
 
 
@@ -56,6 +56,8 @@ def create_parser():
     geom.add_argument('--along-start', dest='along_start', type=float, default=0.0, help='Start distance along fault in km (default: %(default)s)')
     geom.add_argument('--along-end', dest='along_end', type=float, default=None, help='End distance along fault in km (default: fault end)')
     geom.add_argument('--perp-width', dest='perp_width', type=float, default=0.5, help='Search-zone width on each side of the fault in km (default: %(default)s)')
+    geom.add_argument('--perp-offset', dest='perp_offset', type=float, default=0.5,
+                      help='Gap excluded next to the fault before the search zone on each side, in km (default: %(default)s)')
     geom.add_argument('--sample-method', dest='sample_method', choices=['mean', 'median', 'nearest'], default='mean', help='Combining pixels in a search box (default: %(default)s)')
     geom.add_argument('--interpolation', dest='interpolation', choices=['nearest', 'linear', 'cubic'], default='nearest', help='Value extraction along profile lines (default: %(default)s)')
 
@@ -64,22 +66,35 @@ def create_parser():
     plot.add_argument('--reference-side', dest='reference_side', choices=['left', 'right'], default='left', help='Reference side of fault; offset = reference - other (default: %(default)s)')
     plot.add_argument('--plot-layout', dest='plot_layout', choices=['separate', 'subplot', 'stacked', '3d'], default='stacked', help='Profile arrangement (default: %(default)s)')
     plot.add_argument('--profile-spacing', dest='profile_spacing', type=float, default=None, help='Spacing between profiles in km (default: --along-step)')
-    plot.add_argument('--profile-length', dest='profile_length', type=float, default=10.0, help='Profile length across the fault in km (default: %(default)s)')
+    plot.add_argument('--profile-length', dest='profile_length', type=float, default=4.0, help='Profile length across the fault in km (default: %(default)s)')
     plot.add_argument('--profile-count', dest='profile_count', type=int, default=None, help='Fixed number of profiles (overrides --profile-spacing)')
     plot.add_argument('--cloud-profiles', dest='cloud_profiles', type=int, default=0, help='Adjacent profiles per side as thin gray lines (default: %(default)s)')
+    plot.add_argument('--profile-lines', dest='profile_lines', action='store_true',
+                      help='Connect profile samples with lines (default: dots only)')
     plot.add_argument('--stack-offset', dest='stack_offset', type=float, default=None, help='Vertical offset between stacked profiles (default: auto)')
     plot.add_argument('--subplot-cols', dest='subplot_cols', type=int, default=1, help='Columns for subplot layout (default: %(default)s)')
     plot.add_argument('--period-layout', dest='period_layout', choices=['auto', 'side-by-side', 'separate-page'], default='auto', help='Arrangement for multiple periods (default: %(default)s)')
 
     style = parser.add_argument_group('Plot parameters')
     style.add_argument('--vlim', dest='vlim', nargs=2, type=float, metavar=('VMIN', 'VMAX'), default=None, help='Velocity limits for the map background')
+    style.add_argument('--ylim', dest='ylim', nargs='*', type=float, default=None,
+                       metavar='YMIN YMAX',
+                       help='Value limits for offset map colors and profile y-axis: '
+                            'YMIN YMAX [YMIN2 YMAX2 ...]; one pair for all periods or one per period')
+    style.add_argument('--auto-colorscale', dest='auto_colorscale', action='store_true',
+                       help='Use one automatic symmetric colorscale across all periods')
     style.add_argument('--colormap', dest='colormap', default='viridis', help='Colormap (default: %(default)s)')
     style.add_argument('--font-size', dest='font_size', type=int, default=10, help='Font size (default: %(default)s)')
     style.add_argument('--dpi', dest='dpi', type=int, default=300, help='Figure DPI (default: %(default)s)')
 
     out = parser.add_argument_group('Output')
     out.add_argument('--save', dest='save', choices=['png', 'pdf'], default='png', help='Image format; images are always saved (default: %(default)s)')
-    out.add_argument('--no-display', dest='show_flag', action='store_false', default=True, help='Do not open interactive windows')
+    display = out.add_mutually_exclusive_group()
+    display.add_argument('--display', dest='show_flag', action='store_true',
+                         help='Open interactive figure windows (blocks until they are closed)')
+    display.add_argument('--no-display', dest='show_flag', action='store_false',
+                         help='Do not open interactive windows (default; figures are still saved)')
+    out.set_defaults(show_flag=False)
     out.add_argument('--outdir', dest='outdir', type=str, default=None, help='Output directory (default: <project>/transects_mintpy or transects_miaplpy)')
     out.add_argument('--tag', dest='tag_string', type=str, default='', help='Tag inserted into output filenames (default: none)')
     out.add_argument('--no-index', dest='no_index', action='store_true', help='Skip index.html generation')
@@ -93,17 +108,8 @@ def parse_periods(tokens):
 
     Returns list of (start, end) strings. Empty list means full span.
     """
-    periods = []
-    for token in tokens:
-        for chunk in token.split(','):
-            chunk = chunk.strip()
-            if not chunk:
-                continue
-            match = re.fullmatch(r'(\d{8}):(\d{8})', chunk)
-            if not match:
-                raise ValueError(f'Invalid --period "{chunk}": expected YYYYMMDD:YYYYMMDD')
-            periods.append((match.group(1), match.group(2)))
-    return periods
+    from plotdata.fault_transect.periods import parse_period_chunks, validate_and_adjust_periods
+    return validate_and_adjust_periods(parse_period_chunks(tokens))
 
 
 def build_basename(project, tag_string, plot_label, start_date, end_date):
@@ -112,6 +118,12 @@ def build_basename(project, tag_string, plot_label, start_date, end_date):
         return f'{project}_{tag_string}_{plot_label}_{start_date}_{end_date}'
     return f'{project}_{plot_label}_{start_date}_{end_date}'
 
+
+def format_map_title(tag_string, start_date, end_date):
+    """Map figure title: optional tag plus time period."""
+    tag = (tag_string or '').strip()
+    period = f'{start_date}:{end_date}'
+    return f'{tag}  {period}' if tag else period
 
 def cmd_line_parse(iargs=None):
     parser = create_parser()
@@ -161,8 +173,7 @@ def _load_fault(inps):
 def _run_dry_run(inps):
     from plotdata.fault_transect.kmz_fault import (
         read_fault_kmz, resolve_segment_spec, orient_segments_for_sequence,
-        write_fault_kmz_segments, write_segment_qc, joint_output_paths,
-        homogenized_polylines, FaultSegment)
+        write_fault_kmz_segments, write_segment_qc, joint_output_paths)
 
     segments = read_fault_kmz(inps.fault_file)
     indices, seg_mode = resolve_segment_spec(
@@ -182,9 +193,7 @@ def _run_dry_run(inps):
         os.makedirs(inps.outdir, exist_ok=True)
 
     stem = os.path.splitext(os.path.basename(kmz_path))[0]
-    polylines = homogenized_polylines(oriented, qc_rows)
-    merged = [FaultSegment(name=f'{stem}_{i:02d}', coords=poly) for i, poly in enumerate(polylines)]
-    write_fault_kmz_segments(kmz_path, merged, name=stem)
+    write_fault_kmz_segments(kmz_path, oriented, name=stem)
     write_segment_qc(qc_path, inps.fault_file, qc_rows, total)
 
     print(f'Homogenized fault KMZ: {kmz_path}')
@@ -246,6 +255,11 @@ def _process_input(inps, fault_segments, data_input, command):
     append_command_log(project_dir, command)
 
     periods = inps.periods if inps.periods else [full_date_span(eos_file)]
+    if inps.ylim is not None:
+        from plotdata.fault_transect.periods import parse_ylim_tokens
+        ylim_pairs = parse_ylim_tokens(inps.ylim, len(periods))
+    else:
+        ylim_pairs = None
 
     points = sample_points_segments(fault_segments, inps.along_step, inps.along_start, inps.along_end)
     if not points:
@@ -256,6 +270,7 @@ def _process_input(inps, fault_segments, data_input, command):
 
     section_info = (f'fault={os.path.basename(inps.fault_file)} '
                     f'along-step={inps.along_step} perp-width={inps.perp_width} '
+                    f'perp-offset={inps.perp_offset} '
                     f'sample-method={inps.sample_method} reference-side={inps.reference_side}')
     prof_info = section_info + f' profile-length={inps.profile_length} layout={inps.plot_layout}'
 
@@ -263,31 +278,60 @@ def _process_input(inps, fault_segments, data_input, command):
     index_entries = []
 
     # ---- load all periods first (needed for side-by-side figures)
-    grids = [load_velocity_grid(eos_file, project, source, s, e, work_dir, inps.mask_vmin)
-             for s, e in periods]
+    from plotdata.fault_transect.periods import consecutive_start_flags
+    consec_flags = consecutive_start_flags(periods)
+    grids = [load_velocity_grid(eos_file, project, source, s, e, work_dir, inps.mask_vmin,
+                                consecutive_start=consec_flags[i])
+             for i, (s, e) in enumerate(periods)]
     actual_periods = [(g.start_date, g.end_date) for g in grids]
     combine = _side_by_side(inps, len(grids))
 
-    def make_opts(grid):
+    all_series = []
+    if inps.plot_type in ('map', 'both'):
+        for grid in grids:
+            all_series.append(compute_offset_series(
+                grid.data, grid.lats, grid.lons, points,
+                inps.perp_width, inps.along_step,
+                inps.sample_method, inps.reference_side, grid.unit,
+                perp_offset_km=inps.perp_offset))
+
+    prof_bundles_data = []
+    if inps.plot_type in ('profile', 'both'):
+        for grid in grids:
+            bundle = extract_profiles(grid.data, grid.attr, points, inps.profile_length,
+                                      inps.interpolation, grid.unit)
+            main_indices = [i for i in _select_profile_points(points, inps)
+                            if bundle.get(i) is not None]
+            prof_bundles_data.append((bundle, main_indices))
+
+    from plotdata.fault_transect.limits import build_value_limits
+    value_lims = build_value_limits(
+        len(grids), ylim_pairs, inps.auto_colorscale,
+        all_series,
+        [b for b, _ in prof_bundles_data] if prof_bundles_data else None,
+        [m for _, m in prof_bundles_data] if prof_bundles_data else None)
+
+    def make_opts(grid, map_title=False, value_lim=None):
+        title = (format_map_title(inps.tag_string, grid.start_date, grid.end_date)
+                 if map_title else f'{project} {grid.start_date}:{grid.end_date}')
         return PlotOptions(colormap=inps.colormap,
                            vlim=tuple(inps.vlim) if inps.vlim else None,
+                           value_lim=value_lim,
                            font_size=inps.font_size, dpi=inps.dpi, unit=grid.unit,
-                           title=f'{project} {grid.start_date}:{grid.end_date}')
+                           title=title)
 
     # -------------------------------------------------------------- map plot
     if inps.plot_type in ('map', 'both'):
         map_specs, map_txts = [], []
-        for grid in grids:
-            series = compute_offset_series(grid.data, grid.lats, grid.lons, points,
-                                           inps.perp_width, inps.along_step,
-                                           inps.sample_method, inps.reference_side, grid.unit)
+        for grid, series, value_lim in zip(grids, all_series, value_lims):
             stem = build_basename(project, inps.tag_string, 'map', grid.start_date, grid.end_date)
             txt_path = os.path.join(out_dir, f'{stem}.txt')
             write_offset_txt(txt_path, series, section_info)
             map_specs.append(MapFigureSpec(data=grid.data, lats=grid.lats, lons=grid.lons,
                                            fault_segments=fault_segments_xy,
                                            offset_series=series, perp_width_km=inps.perp_width,
-                                           options=make_opts(grid)))
+                                           options=make_opts(grid, map_title=True,
+                                                             value_lim=value_lim)))
             map_txts.append(txt_path)
 
         if combine:
@@ -307,20 +351,25 @@ def _process_input(inps, fault_segments, data_input, command):
     # --------------------------------------------------------- profile plots
     if inps.plot_type in ('profile', 'both'):
         prof_specs, prof_bundles = [], []
-        for grid in grids:
-            bundle = extract_profiles(grid.data, grid.attr, points, inps.profile_length,
-                                      inps.interpolation, grid.unit)
-            main_indices = [i for i in _select_profile_points(points, inps)
-                            if bundle.get(i) is not None]
+        for grid_idx, grid in enumerate(grids):
+            if grid_idx < len(prof_bundles_data):
+                bundle, main_indices = prof_bundles_data[grid_idx]
+            else:
+                bundle = extract_profiles(grid.data, grid.attr, points, inps.profile_length,
+                                          inps.interpolation, grid.unit)
+                main_indices = [i for i in _select_profile_points(points, inps)
+                                if bundle.get(i) is not None]
             if not main_indices:
                 print(f'WARNING: no valid profiles for {project} '
                       f'{grid.start_date}_{grid.end_date}')
                 continue
+            value_lim = value_lims[grid_idx] if grid_idx < len(value_lims) else None
             prof_specs.append(ProfileFigureSpec(bundle=bundle, main_indices=main_indices,
                                                 cloud_profiles=inps.cloud_profiles,
                                                 stack_offset=inps.stack_offset,
                                                 subplot_cols=inps.subplot_cols,
-                                                options=make_opts(grid)))
+                                                connect_lines=inps.profile_lines,
+                                                options=make_opts(grid, value_lim=value_lim)))
             prof_bundles.append((bundle, main_indices, (grid.start_date, grid.end_date)))
 
         if prof_specs and inps.plot_layout == 'separate':
@@ -370,10 +419,15 @@ def _process_input(inps, fault_segments, data_input, command):
         write_index_html(out_dir, command, index_entries)
 
     if inps.show_flag:
+        print('Close all figure windows to finish.')
         backend.show()
     backend.close_all()
 
     return index_entries
+
+
+def _print_done():
+    print('Done.')
 
 
 def main(iargs=None):
@@ -385,6 +439,7 @@ def main(iargs=None):
 
     if inps.dry_run:
         _run_dry_run(inps)
+        _print_done()
         return
 
     fault_segments = _load_fault(inps)
@@ -394,6 +449,8 @@ def main(iargs=None):
 
     if inps.upload:
         print('WARNING: --upload is not implemented yet; skipping upload.')
+
+    _print_done()
 
 
 if __name__ == '__main__':

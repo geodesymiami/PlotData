@@ -21,7 +21,8 @@ class OffsetSeries:
 
 
 def compute_offset_series(data, lats, lons, points, perp_width_km, along_step_km,
-                          sample_method='mean', reference_side='left', unit=''):
+                          sample_method='mean', reference_side='left', unit='',
+                          perp_offset_km=0.5):
     """Compute the across-fault offset at every sampling point.
 
     offset = value(reference side) - value(other side); NaN when either side
@@ -31,8 +32,10 @@ def compute_offset_series(data, lats, lons, points, perp_width_km, along_step_km
     half_along = along_step_km / 2.0
 
     for point in points:
-        left = sample_side_box(data, lats, lons, point, 'left', half_along, perp_width_km, sample_method)
-        right = sample_side_box(data, lats, lons, point, 'right', half_along, perp_width_km, sample_method)
+        left = sample_side_box(data, lats, lons, point, 'left', half_along, perp_width_km,
+                               sample_method, perp_offset_km=perp_offset_km)
+        right = sample_side_box(data, lats, lons, point, 'right', half_along, perp_width_km,
+                                sample_method, perp_offset_km=perp_offset_km)
 
         if reference_side == 'left':
             offset = left.value - right.value

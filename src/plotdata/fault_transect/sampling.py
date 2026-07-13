@@ -29,12 +29,13 @@ def grid_latlon_vectors(attr):
     return lats, lons
 
 
-def sample_side_box(data, lats, lons, point, side, half_along_km, perp_width_km, method='mean'):
+def sample_side_box(data, lats, lons, point, side, half_along_km, perp_width_km,
+                    method='mean', perp_offset_km=0.0):
     """Combine pixels in the search box on one side of the fault at a sample point.
 
-    The box extends +-half_along_km along the fault tangent and from the fault
-    trace out to perp_width_km on the requested side ('left' or 'right', where
-    left is the counterclockwise side of the tangent in map view).
+    The box extends +-half_along_km along the fault tangent and from perp_offset_km
+    to perp_offset_km + perp_width_km outward on the requested side ('left' or
+    'right', where left is the counterclockwise side of the tangent in map view).
     """
     lat_c, lon_c = point.lat, point.lon
     te, tn = point.tangent
@@ -42,7 +43,7 @@ def sample_side_box(data, lats, lons, point, side, half_along_km, perp_width_km,
     sign = 1.0 if side == 'left' else -1.0
 
     # subwindow around the point to keep the search cheap
-    margin_km = half_along_km + perp_width_km + 0.5
+    margin_km = half_along_km + perp_offset_km + perp_width_km + 0.5
     km_per_deg = 111.19
     dlat = margin_km / km_per_deg
     dlon = margin_km / (km_per_deg * max(np.cos(np.radians(lat_c)), 0.01))
@@ -61,7 +62,9 @@ def sample_side_box(data, lats, lons, point, side, half_along_km, perp_width_km,
     across = (east * ne + north * nn) * sign     # >0 on requested side
 
     values = sub.ravel()
-    in_box = (np.abs(along) <= half_along_km) & (across > 0) & (across <= perp_width_km)
+    in_box = ((np.abs(along) <= half_along_km)
+              & (across > perp_offset_km)
+              & (across <= perp_offset_km + perp_width_km))
     valid = in_box & np.isfinite(values)
     if not np.any(valid):
         return BoxSample(np.nan, 0, np.nan, np.nan)

@@ -6,7 +6,7 @@ import unittest
 import numpy as np
 
 from plotdata.fault_transect.fault_sampling import (
-    sample_points, cumulative_distance_km, offset_latlon, local_east_north_km)
+    sample_points, sample_points_segments, cumulative_distance_km, offset_latlon, local_east_north_km)
 
 
 class TestFaultSampling(unittest.TestCase):
@@ -53,6 +53,13 @@ class TestFaultSampling(unittest.TestCase):
         east, north = local_east_north_km(37.0, 15.0, [lat], [lon])
         self.assertAlmostEqual(east[0], 1.0, places=4)
         self.assertAlmostEqual(north[0], 2.0, places=4)
+
+    def test_sample_points_segments_includes_gaps(self):
+        seg_a = [(15.0, 37.0), (15.1, 37.0)]   # ~8.8 km
+        seg_b = [(15.3, 37.0), (15.4, 37.0)]   # ~8.8 km, ~17 km gap from A end
+        points = sample_points_segments([seg_a, seg_b], along_step_km=10.0)
+        along = [p.along_km for p in points]
+        self.assertGreater(along[-1], 25.0)  # both segments + gap
 
 
 if __name__ == '__main__':

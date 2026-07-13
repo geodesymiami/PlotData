@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 class PlotOptions:
     colormap: str = 'viridis'
     vlim: tuple = None            # (vmin, vmax) or None
+    value_lim: tuple = None       # (vmin, vmax) for offset map colors and profile y-axis
     font_size: int = 10
     dpi: int = 300
     unit: str = 'cm/yr'
@@ -26,6 +27,14 @@ class MapFigureSpec:
     options: PlotOptions = field(default_factory=PlotOptions)
 
 
+def profile_axis_half_km(profile_length_km, padding_frac=0.1):
+    """Half-width of the profile plot x-axis in km.
+
+    Span is the profile length plus ``padding_frac`` (default 10%) total margin.
+    """
+    return (profile_length_km / 2.0) * (1.0 + padding_frac)
+
+
 @dataclass
 class ProfileFigureSpec:
     """Data for profile figures in any layout."""
@@ -34,4 +43,6 @@ class ProfileFigureSpec:
     cloud_profiles: int = 0       # adjacent profiles per side, gray thin lines
     stack_offset: float = None    # None -> auto
     subplot_cols: int = 1
+    connect_lines: bool = False   # if True, connect profile samples with lines
+    axis_half_km: float = None      # None -> derived from bundle.profile_length_km
     options: PlotOptions = field(default_factory=PlotOptions)

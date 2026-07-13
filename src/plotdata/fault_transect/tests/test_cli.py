@@ -4,7 +4,7 @@
 import unittest
 
 from plotdata.cli.plot_fault_transect import (
-    parse_periods, build_basename, cmd_line_parse, _side_by_side)
+    parse_periods, build_basename, format_map_title, cmd_line_parse, _side_by_side)
 from plotdata.fault_transect.load_data import default_output_dir
 
 
@@ -38,6 +38,11 @@ class TestNaming(unittest.TestCase):
         self.assertEqual(build_basename('Etna', '', 'map', '20141020', '20260626'),
                          'Etna_map_20141020_20260626')
 
+    def test_map_title(self):
+        self.assertEqual(format_map_title('Pernicana', '20141020', '20260626'),
+                         'Pernicana  20141020:20260626')
+        self.assertEqual(format_map_title('', '20141020', '20260626'),
+                         '20141020:20260626')
 
 class TestCmdLineParse(unittest.TestCase):
 
@@ -51,6 +56,7 @@ class TestCmdLineParse(unittest.TestCase):
         self.assertEqual(inps.plot_layout, 'stacked')
         self.assertEqual(inps.save, 'png')
         self.assertEqual(inps.profile_spacing, inps.along_step)  # default follows along-step
+        self.assertFalse(inps.show_flag)
         self.assertFalse(inps.upload)
 
     def test_dry_run_without_data(self):

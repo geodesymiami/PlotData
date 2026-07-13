@@ -69,7 +69,8 @@ def full_date_span(eos_file):
     return attr['START_DATE'], attr['END_DATE']
 
 
-def load_velocity_grid(eos_file, project, source, start_date, end_date, work_dir, mask_thresh=0.55):
+def load_velocity_grid(eos_file, project, source, start_date, end_date, work_dir,
+                       mask_thresh=0.55, consecutive_start=False):
     """timeseries2velocity for the period, mask by temporal coherence, return grid.
 
     Follows the plot_data pipeline (ProcessData._process_data) without
@@ -81,6 +82,9 @@ def load_velocity_grid(eos_file, project, source, start_date, end_date, work_dir
     from plotdata.helper_functions import find_nearest_start_end_date
 
     os.makedirs(work_dir, exist_ok=True)
+    if consecutive_start:
+        from plotdata.fault_transect.periods import snap_consecutive_start
+        start_date = snap_consecutive_start(eos_file, start_date)
     start_date, end_date = find_nearest_start_end_date(eos_file, start_date, end_date)
 
     vel_file = os.path.join(work_dir, f'velocity_{start_date}_{end_date}.h5')

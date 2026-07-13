@@ -57,7 +57,8 @@ class TestSampling(unittest.TestCase):
         # reference = left = north (2.0); other = south (-1.0) -> offset = 3.0
         series = compute_offset_series(self.data, self.lats, self.lons, self.points,
                                        perp_width_km=2.0, along_step_km=2.0,
-                                       sample_method='mean', reference_side='left')
+                                       sample_method='mean', reference_side='left',
+                                       perp_offset_km=0.0)
         finite = [v for v in series.offset if np.isfinite(v)]
         self.assertGreater(len(finite), 0)
         for value in finite:
@@ -66,10 +67,19 @@ class TestSampling(unittest.TestCase):
     def test_offset_series_reference_right(self):
         series = compute_offset_series(self.data, self.lats, self.lons, self.points,
                                        perp_width_km=2.0, along_step_km=2.0,
-                                       sample_method='mean', reference_side='right')
+                                       sample_method='mean', reference_side='right',
+                                       perp_offset_km=0.0)
         finite = [v for v in series.offset if np.isfinite(v)]
         for value in finite:
             self.assertAlmostEqual(value, -3.0, places=6)
+
+    def test_perp_offset_parameter(self):
+        point = self.points[len(self.points) // 2]
+        result = sample_side_box(self.data, self.lats, self.lons, point, 'left',
+                                 half_along_km=1.0, perp_width_km=2.0, method='mean',
+                                 perp_offset_km=0.5)
+        self.assertAlmostEqual(result.value, 2.0, places=6)
+        self.assertGreater(result.count, 0)
 
     def test_grid_latlon_vectors(self):
         attr = {'Y_FIRST': '37.05', 'Y_STEP': '-0.001', 'X_FIRST': '14.95',
