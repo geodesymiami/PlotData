@@ -6,7 +6,8 @@ import unittest
 import numpy as np
 
 from plotdata.fault_transect.offset import OffsetSeries
-from plotdata.fault_transect.limits import build_offset_color_limits, global_symmetric_limit
+from plotdata.fault_transect.limits import (
+    build_offset_color_limits, global_symmetric_limit, shared_map_color_limits)
 
 
 class TestLimits(unittest.TestCase):
@@ -19,6 +20,14 @@ class TestLimits(unittest.TestCase):
     def test_build_offset_color_limits_from_vlim(self):
         lims = build_offset_color_limits(2, (-4.0, 4.0), False, [])
         self.assertEqual(lims, [(-4.0, 4.0), (-4.0, 4.0)])
+
+    def test_build_offset_color_limits_asymmetric_vlim(self):
+        lims = build_offset_color_limits(2, (0.0, 5.0), False, [])
+        self.assertEqual(lims, [(0.0, 5.0), (0.0, 5.0)])
+
+    def test_shared_map_color_limits_asymmetric(self):
+        self.assertEqual(shared_map_color_limits([(0.0, 5.0), (0.0, 5.0)]), (0.0, 5.0))
+        self.assertIsNone(shared_map_color_limits([None, None]))
 
     def test_build_offset_color_limits_auto_colorscale(self):
         s1 = OffsetSeries(offset=[1.0, -2.0])

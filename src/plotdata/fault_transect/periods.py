@@ -3,6 +3,20 @@
 
 import re
 
+
+def format_date_display(date_yyyymmdd):
+    """Format YYYYMMDD for display as YYYY-MM-DD."""
+    text = str(date_yyyymmdd)
+    if len(text) != 8 or not text.isdigit():
+        return text
+    return f'{text[:4]}-{text[4:6]}-{text[6:8]}'
+
+
+def format_period_display(start_date, end_date):
+    """Format a period range for plot labels (no tag/project prefix)."""
+    return f'{format_date_display(start_date)} - {format_date_display(end_date)}'
+
+
 def parse_period_chunks(tokens):
     """Parse --period tokens into list of (start, end) YYYYMMDD strings."""
     periods = []
@@ -103,9 +117,10 @@ def snap_period_dates(eos_file, start_date, end_date, *, consecutive_start=False
     end_date = snap_end_date(date_list, end_date)
 
     print('###############################################')
-    print(' Period of data:  ', date_list[0], date_list[-1])
-    print(' Period requested:', req_start, req_end)
-    print(' Period used:     ', start_date, end_date)
+    print(' Period of data:  ', format_date_display(date_list[0]),
+          format_date_display(date_list[-1]))
+    print(' Period requested:', format_date_display(req_start), format_date_display(req_end))
+    print(' Period used:     ', format_date_display(start_date), format_date_display(end_date))
     print('###############################################')
     return start_date, end_date
 

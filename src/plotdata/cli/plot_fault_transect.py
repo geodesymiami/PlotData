@@ -21,7 +21,7 @@ import argparse
 EXAMPLE = """example:
   plot_fault_transect.py PFS_Pernicana_faults_system_.kmz EtnaSenA44/mintpy --fault-segment 1,2,4,5,6,7,8,9,10,11 --period 20141001:20181224,20181225:20201224,20211225:20260701
   plot_fault_transect.py PFS_Pernicana_faults_system__joint.kmz EtnaSenA44/mintpy --period 20141020:20260626 --tag Pernicana
-  plot_fault_transect.py fault_joint.kmz EtnaSenA44/mintpy EtnaSenD124/mintpy --plot-type map --perp-width 0.5
+  plot_fault_transect.py FiandacaFault_FA.kmz EtnaSenA44/mintpy --map-stack-axis lon --period 20141001:20181222,20181228:20201225,20201225:20260701 --vlim -2 2
   plot_fault_transect.py fault.kmz EtnaSenA44/mintpy --fault-segment 2-8 --plot-type profile --profile-count 10 --plot-layout subplot --cloud-profiles 2
   plot_fault_transect.py fault_joint.kmz EtnaSenA44/mintpy --plot-type profile --plot-layout stacked --period 20141020:20181231,20190101:20260626 --display
 """
@@ -70,7 +70,8 @@ def create_parser():
     plot.add_argument('--cloud-profiles', dest='cloud_profiles', type=int, default=0, help='Adjacent profiles per side as thin gray lines (default: %(default)s)')
     plot.add_argument('--profile-lines', dest='profile_lines', action='store_true',
                       help='Connect profile samples with lines (default: dots only)')
-    plot.add_argument('--stack-offset', dest='stack_offset', type=float, default=None, help='Vertical offset between stacked profiles (default: auto)')
+    plot.add_argument('--stack-offset', dest='stack_offset', type=float, default=None,
+                      help='Vertical step between profiles in stacked profile layout (default: auto)')
     plot.add_argument('--subplot-cols', dest='subplot_cols', type=int, default=1, help='Columns for subplot layout (default: %(default)s)')
     plot.add_argument('--period-layout', dest='period_layout', choices=['auto', 'side-by-side', 'separate-page'], default='auto', help='Arrangement for multiple periods (default: %(default)s)')
 
@@ -91,6 +92,16 @@ def create_parser():
                        choices=['upper-left', 'upper-right', 'lower-left', 'lower-right'],
                        default='upper-right',
                        help='Map title corner (default: %(default)s)')
+    style.add_argument('--title-offset', dest='title_offset', nargs=2, type=float, default=None,
+                       metavar=('LON_DEG', 'LAT_DEG'),
+                       help='Nudge map title from its corner: east and north in deg (default: 0 0)')
+    style.add_argument('--map-stack-axis', dest='map_stack_axis', choices=['lat', 'lon'],
+                       default='lat',
+                       help='Axis for stacked multi-period maps: lat (vertical, period 1 top) or '
+                            'lon (horizontal, period 1 left)')
+    style.add_argument('--map-stack-offset', dest='map_stack_offset', type=float, default=None,
+                       help='Step in deg along --map-stack-axis between stacked map periods '
+                            '(default: auto)')
 
     out = parser.add_argument_group('Output')
     out.add_argument('--save', dest='save', choices=['png', 'pdf'], default='png', help='Image format; images are always saved (default: %(default)s)')
@@ -101,14 +112,14 @@ def create_parser():
                          help='Do not open interactive windows (default; figures are still saved)')
     out.set_defaults(show_flag=False)
     out.add_argument('--outdir', dest='outdir', type=str, default=None, help='Output directory (default: <project>/transects_mintpy or transects_miaplpy)')
-    out.add_argument('--tag', dest='tag_string', type=str, default='', help='Tag inserted into output filenames (default: none)')
+    out.add_argument('--tag', dest='tag_string', type=str, default='',
+                     help='Tag in output filenames (default: derived from fault KMZ name)')
     out.add_argument('--no-index', dest='no_index', action='store_true', help='Skip index.html generation')
-    out.add_argument('--update', dest='update', action='store_true',
-                     help='Skip joint KMZ, data txt, and figures when each is newer than its inputs '
-                          '(source KMZ for joint; HDFEOS5 + fault KMZ for txt; txt for figures)')
+    out.add_argument('--force', dest='force', action='store_true',
+                     help='Recompute velocity grids and txt even when cached outputs are '
+                          'newer than inputs (default: skip each step when up to date)')
     out.add_argument('--plots-only', dest='plots_only', action='store_true',
-                     help='Rebuild figures from existing .txt only (no HDFEOS5). Mostly redundant with '
-                          '--update except when restyling figures that would otherwise be skipped.')
+                     help='Build figures from existing txt only; do not read HDFEOS5 or rewrite txt')
     out.add_argument('--upload', dest='upload', action='store_true', default=False, help='Upload products (not implemented yet)')
 
     return parser
@@ -123,18 +134,36 @@ def parse_periods(tokens):
     return validate_and_adjust_periods(parse_period_chunks(tokens))
 
 
-def build_basename(project, tag_string, plot_label, start_date, end_date):
-    tag_string = (tag_string or '').strip()
-    if tag_string:
-        return f'{project}_{tag_string}_{plot_label}_{start_date}_{end_date}'
-    return f'{project}_{plot_label}_{start_date}_{end_date}'
-
-
 def format_map_title(tag_string, start_date, end_date):
-    """Map figure title: optional tag plus time period."""
-    tag = (tag_string or '').strip()
-    period = f'{start_date}:{end_date}'
-    return f'{tag}  {period}' if tag else period
+    """Deprecated: use format_period_display for labels and tag_string for titles."""
+    from plotdata.fault_transect.periods import format_period_display
+    return format_period_display(start_date, end_date)
+
+
+def make_plot_options(inps, grid, *, vlim=None):
+    """Build PlotOptions with fault tag title and formatted period label."""
+    from plotdata.fault_transect.naming import format_fault_plot_title
+    from plotdata.fault_transect.periods import format_period_display
+    from plotdata.fault_transect.plot_api import PlotOptions
+
+    title_off = inps.title_offset if inps.title_offset is not None else (0.0, 0.0)
+    cmap_vlist = tuple(inps.cmap_vlist) if inps.cmap_vlist else None
+    return PlotOptions(
+        colormap=inps.colormap,
+        cmap_vlist=cmap_vlist,
+        vlim=vlim,
+        font_size=inps.font_size,
+        dpi=inps.dpi,
+        unit=grid.unit,
+        title=format_fault_plot_title(inps.tag_string),
+        period_label=format_period_display(grid.start_date, grid.end_date),
+        title_position=inps.title_position,
+        title_offset_lon=title_off[0],
+        title_offset_lat=title_off[1],
+        map_stack_axis=inps.map_stack_axis,
+        map_stack_offset=inps.map_stack_offset,
+    )
+
 
 def cmd_line_parse(iargs=None):
     parser = create_parser()
@@ -158,8 +187,47 @@ def cmd_line_parse(iargs=None):
         parser.error(str(exc))
     if inps.vlim is not None and inps.vlim[0] >= inps.vlim[1]:
         parser.error('--vlim VMIN must be less than VMAX')
+    if inps.map_stack_offset is not None and inps.map_stack_offset <= 0:
+        parser.error('--map-stack-offset must be positive')
+
+    from plotdata.fault_transect.naming import resolve_output_tag
+    inps.tag_string = resolve_output_tag(inps.fault_file, inps.tag_string)
+
+    inps.offset_summaries = []
+    if inps.title_offset is not None:
+        inps.offset_summaries.append({
+            'kind': 'title_offset',
+            'lon_deg': inps.title_offset[0],
+            'lat_deg': inps.title_offset[1],
+        })
 
     return inps
+
+
+def _fault_lat_bounds(fault_segments_xy):
+    lats = [lat for seg in fault_segments_xy for lat in seg['lats']]
+    return min(lats), max(lats)
+
+
+def _record_map_stack_summary(inps, project, n_periods, step_deg, manual):
+    inps.offset_summaries.append({
+        'kind': 'map_stack',
+        'project': project,
+        'n_periods': n_periods,
+        'axis': inps.map_stack_axis,
+        'step_deg': step_deg,
+        'source': 'manual' if manual is not None else 'auto',
+    })
+
+
+def _record_profile_stack_summary(inps, project, stack_step, unit, manual):
+    inps.offset_summaries.append({
+        'kind': 'profile_stack',
+        'project': project,
+        'stack_step': stack_step,
+        'unit': unit,
+        'source': 'manual' if manual else 'auto',
+    })
 
 
 def _fault_cache_inputs(inps):
@@ -184,7 +252,7 @@ def _require_plots_only_cache(txt_path, eos_file, bracket_info, *fault_paths):
 
 
 def _load_map_series_from_cache(inps, txt_path, eos_file, bracket_info):
-    from plotdata.fault_transect.cache import cache_is_fresh, parse_txt_header
+    from plotdata.fault_transect.cache import txt_cache_hit
     from plotdata.fault_transect.export import read_offset_txt
 
     fault_paths = _fault_cache_inputs(inps)
@@ -193,17 +261,17 @@ def _load_map_series_from_cache(inps, txt_path, eos_file, bracket_info):
         series, _ = read_offset_txt(txt_path)
         print(f'Using cached map data from {txt_path}')
         return series
-    if inps.update and txt_path and cache_is_fresh(txt_path, eos_file, *fault_paths):
-        _, bracket = parse_txt_header(txt_path)
-        if bracket == bracket_info:
-            series, _ = read_offset_txt(txt_path)
-            print(f'Using cached map data from {txt_path}')
-            return series
+    if inps.force:
+        return None
+    if txt_path and txt_cache_hit(txt_path, eos_file, bracket_info, *fault_paths):
+        series, _ = read_offset_txt(txt_path)
+        print(f'Using cached map data from {txt_path}')
+        return series
     return None
 
 
 def _load_profiles_from_cache(inps, txt_path, eos_file, bracket_info):
-    from plotdata.fault_transect.cache import cache_is_fresh, parse_txt_header
+    from plotdata.fault_transect.cache import txt_cache_hit
     from plotdata.fault_transect.export import read_profiles_txt
 
     fault_paths = _fault_cache_inputs(inps)
@@ -212,12 +280,12 @@ def _load_profiles_from_cache(inps, txt_path, eos_file, bracket_info):
         bundle, main_indices, _ = read_profiles_txt(txt_path)
         print(f'Using cached profile data from {txt_path}')
         return bundle, main_indices
-    if inps.update and txt_path and cache_is_fresh(txt_path, eos_file, *fault_paths):
-        _, bracket = parse_txt_header(txt_path)
-        if bracket == bracket_info:
-            bundle, main_indices, _ = read_profiles_txt(txt_path)
-            print(f'Using cached profile data from {txt_path}')
-            return bundle, main_indices
+    if inps.force:
+        return None, None
+    if txt_path and txt_cache_hit(txt_path, eos_file, bracket_info, *fault_paths):
+        bundle, main_indices, _ = read_profiles_txt(txt_path)
+        print(f'Using cached profile data from {txt_path}')
+        return bundle, main_indices
     return None, None
 
 
@@ -247,10 +315,8 @@ def _side_by_side(inps, num_periods):
 
 
 def _multi_period_stem(project, tag_string, plot_label, periods):
-    label = '_'.join(f'{s}-{e}' for s, e in periods)
-    return build_basename(project, tag_string, plot_label, periods[0][0], periods[-1][1]) \
-        if len(periods) == 1 else \
-        (f'{project}_{tag_string}_{plot_label}_{label}' if tag_string else f'{project}_{plot_label}_{label}')
+    from plotdata.fault_transect.naming import multi_period_stem
+    return multi_period_stem(project, tag_string, plot_label, periods)
 
 
 def _dates_from_product_txt(path):
@@ -279,8 +345,10 @@ def _process_input(inps, fault_segments, data_input, command):
     from plotdata.fault_transect.backends import get_backend
     from plotdata.fault_transect.export import write_offset_txt, write_profiles_txt
     from plotdata.fault_transect.log_io import append_command_log
+    from plotdata.fault_transect.naming import MAP_LABEL, PROFILE_LABEL, build_basename
     from plotdata.fault_transect.cache import (
-        cache_is_fresh, figure_is_fresh, combined_figure_is_fresh, find_cached_txt,
+        should_write_txt, figure_is_fresh, combined_figure_is_fresh, write_figure_style,
+        map_figure_style_key, profile_figure_style_key, find_cached_txt,
         discover_map_periods, map_period_bracket, profile_period_bracket)
 
     eos_file, project, source = resolve_input(data_input)
@@ -325,8 +393,8 @@ def _process_input(inps, fault_segments, data_input, command):
     for i, (start, end) in enumerate(periods):
         map_bracket = map_period_bracket(inps, start, end)
         prof_bracket = profile_period_bracket(inps, start, end)
-        map_txt = find_cached_txt(out_dir, project, inps.tag_string, 'map', start, end, map_bracket)
-        prof_label = f'profiles_{inps.plot_layout}'
+        map_txt = find_cached_txt(out_dir, project, inps.tag_string, MAP_LABEL, start, end, map_bracket)
+        prof_label = PROFILE_LABEL
         prof_txt = find_cached_txt(out_dir, project, inps.tag_string, prof_label, start, end, prof_bracket)
 
         grid = None
@@ -338,7 +406,8 @@ def _process_input(inps, fault_segments, data_input, command):
                         f'ERROR: --plots-only requires map txt for period {start}:{end}')
                 grid = load_velocity_grid(eos_file, project, source, start, end, work_dir,
                                           inps.mask_vmin, consecutive_start=consec_flags[i],
-                                          gap_start=gap_flags[i])
+                                          gap_start=gap_flags[i], force=inps.force,
+                                          tag_string=inps.tag_string)
                 series = compute_offset_series(
                     grid.data, grid.lats, grid.lons, points,
                     inps.perp_width, inps.along_step,
@@ -357,7 +426,8 @@ def _process_input(inps, fault_segments, data_input, command):
         else:
             grid = load_velocity_grid(eos_file, project, source, start, end, work_dir,
                                       inps.mask_vmin, consecutive_start=consec_flags[i],
-                                      gap_start=gap_flags[i])
+                                      gap_start=gap_flags[i], force=inps.force,
+                                      tag_string=inps.tag_string)
         grids.append(grid)
 
         if inps.plot_type in ('profile', 'both'):
@@ -370,7 +440,8 @@ def _process_input(inps, fault_segments, data_input, command):
                 if grid.data is None:
                     grid = load_velocity_grid(eos_file, project, source, start, end, work_dir,
                                               inps.mask_vmin, consecutive_start=consec_flags[i],
-                                              gap_start=gap_flags[i])
+                                              gap_start=gap_flags[i],
+                                              tag_string=inps.tag_string)
                     grids[-1] = grid
                 bundle = extract_profiles(grid.data, grid.attr, points, inps.profile_length,
                                           inps.interpolation, grid.unit)
@@ -388,55 +459,61 @@ def _process_input(inps, fault_segments, data_input, command):
         inps.auto_colorscale,
         all_series)
 
-    def make_opts(grid, map_title=False, vlim=None):
-        title = (format_map_title(inps.tag_string, grid.start_date, grid.end_date)
-                 if map_title else f'{project} {grid.start_date}:{grid.end_date}')
-        cmap_vlist = tuple(inps.cmap_vlist) if inps.cmap_vlist else None
-        return PlotOptions(colormap=inps.colormap, cmap_vlist=cmap_vlist,
-                           vlim=vlim,
-                           font_size=inps.font_size, dpi=inps.dpi, unit=grid.unit,
-                           title=title,
-                           title_position=inps.title_position)
-
     # -------------------------------------------------------------- map plot
     if inps.plot_type in ('map', 'both'):
         map_specs, map_txts = [], []
         for grid, series, color_lim, (start, end) in zip(
                 grids, all_series, color_lims, periods):
             map_bracket = map_period_bracket(inps, start, end)
-            stem = build_basename(project, inps.tag_string, 'map', grid.start_date, grid.end_date)
-            txt_path = find_cached_txt(out_dir, project, inps.tag_string, 'map', start, end, map_bracket)
+            stem = build_basename(project, inps.tag_string, MAP_LABEL, grid.start_date, grid.end_date)
+            txt_path = find_cached_txt(out_dir, project, inps.tag_string, MAP_LABEL, start, end, map_bracket)
             if txt_path is None:
                 txt_path = os.path.join(out_dir, f'{stem}.txt')
-            if not (inps.update or inps.plots_only) or not cache_is_fresh(
-                    txt_path, eos_file, *fault_paths):
+            if should_write_txt(inps, txt_path, eos_file, map_bracket, *fault_paths):
                 write_offset_txt(txt_path, series, map_bracket)
             map_specs.append(MapFigureSpec(data=grid.data, lats=grid.lats, lons=grid.lons,
                                            fault_segments=fault_segments_xy,
                                            offset_series=series, perp_width_km=inps.perp_width,
-                                           options=make_opts(grid, map_title=True,
+                                           options=make_plot_options(inps, grid,
                                                              vlim=color_lim)))
             map_txts.append(txt_path)
 
+        map_style = map_figure_style_key(inps, color_lims, len(map_specs))
         if combine:
-            stem = _multi_period_stem(project, inps.tag_string, 'map', actual_periods)
+            stem = _multi_period_stem(project, inps.tag_string, MAP_LABEL, actual_periods)
             img_path = os.path.join(out_dir, f'{stem}.{inps.save}')
-            if combined_figure_is_fresh(img_path, map_txts, inps.update,
-                                        eos_file, *fault_paths):
+            if len(map_specs) > 1:
+                from plotdata.fault_transect.plot_api import compute_map_stack_step
+                lat_min, lat_max = _fault_lat_bounds(fault_segments_xy)
+                lons = [lon for seg in fault_segments_xy for lon in seg['lons']]
+                lon_min, lon_max = min(lons), max(lons)
+                stack_step = compute_map_stack_step(
+                    inps.map_stack_axis, inps.perp_width,
+                    lon_min, lon_max, lat_min, lat_max, inps.map_stack_offset)
+                _record_map_stack_summary(
+                    inps, project, len(map_specs), stack_step, inps.map_stack_offset)
+            if (not inps.plots_only
+                    and combined_figure_is_fresh(img_path, map_txts, map_style,
+                                                 eos_file, *fault_paths)):
                 print(f'Skipping figure (up to date): {img_path}')
             else:
                 backend.render_map_figure(map_specs, img_path)
+                write_figure_style(img_path, map_style)
                 print(f'Figure saved to {img_path}')
             index_entries.append({'group': f'{project} map', 'image': img_path, 'txt': map_txts})
         else:
             for spec, txt_path, grid in zip(map_specs, map_txts, grids):
-                stem = build_basename(project, inps.tag_string, 'map',
+                stem = build_basename(project, inps.tag_string, MAP_LABEL,
                                       grid.start_date, grid.end_date)
                 img_path = os.path.join(out_dir, f'{stem}.{inps.save}')
-                if figure_is_fresh(img_path, txt_path, inps.update, eos_file, *fault_paths):
+                period_style = map_figure_style_key(inps, [spec.options.vlim], 1)
+                if (not inps.plots_only
+                        and figure_is_fresh(img_path, txt_path, period_style,
+                                            eos_file, *fault_paths)):
                     print(f'Skipping figure (up to date): {img_path}')
                 else:
                     backend.render_map_figure([spec], img_path)
+                    write_figure_style(img_path, period_style)
                     print(f'Figure saved to {img_path}')
                 index_entries.append({'group': f'{project} map', 'image': img_path, 'txt': txt_path})
 
@@ -460,25 +537,28 @@ def _process_input(inps, fault_segments, data_input, command):
                                                 stack_offset=inps.stack_offset,
                                                 subplot_cols=inps.subplot_cols,
                                                 connect_lines=inps.profile_lines,
-                                                options=make_opts(grid)))
+                                                options=make_plot_options(inps, grid)))
             prof_bundles.append((bundle, main_indices, grid, periods[grid_idx]))
 
+        prof_style = profile_figure_style_key(inps, inps.plot_layout, len(prof_specs))
         if prof_specs and inps.plot_layout == 'separate':
             for spec, (bundle, main_indices, grid, (req_start, req_end)) in zip(prof_specs, prof_bundles):
                 prof_bracket = profile_period_bracket(inps, req_start, req_end)
-                stem = build_basename(project, inps.tag_string, 'profile{nn}',
+                stem = build_basename(project, inps.tag_string, f'{PROFILE_LABEL}_{{nn}}',
                                       grid.start_date, grid.end_date)
                 template = os.path.join(out_dir, f'{stem}.{inps.save}')
                 need_render = False
                 planned = []
+                sep_style = profile_figure_style_key(inps, 'separate', 1)
                 for nn, idx in enumerate(spec.main_indices):
                     img_path = template.replace('{nn}', f'{nn:02d}')
                     txt_path = os.path.splitext(img_path)[0] + '.txt'
-                    if not (inps.update or inps.plots_only) or not cache_is_fresh(
-                            txt_path, eos_file, *fault_paths):
+                    if should_write_txt(inps, txt_path, eos_file, prof_bracket, *fault_paths):
                         write_profiles_txt(txt_path, bundle, [main_indices[nn]],
                                            inps.cloud_profiles, prof_bracket)
-                    if figure_is_fresh(img_path, txt_path, inps.update, eos_file, *fault_paths):
+                    if (not inps.plots_only
+                            and figure_is_fresh(img_path, txt_path, sep_style,
+                                                eos_file, *fault_paths)):
                         print(f'Skipping figure (up to date): {img_path}')
                     else:
                         need_render = True
@@ -486,60 +566,73 @@ def _process_input(inps, fault_segments, data_input, command):
                 if need_render:
                     written = backend.render_profiles_separate(spec, template)
                     for img_path in written:
+                        write_figure_style(img_path, sep_style)
                         print(f'Figure saved to {img_path}')
                 for img_path, txt_path in planned:
                     index_entries.append({'group': f'{project} profiles {req_start}_{req_end}',
                                           'image': img_path, 'txt': txt_path})
         elif prof_specs:
+            if inps.plot_layout == 'stacked':
+                from plotdata.fault_transect.profiles import auto_stack_offset
+                step = (inps.stack_offset if inps.stack_offset is not None
+                        else auto_stack_offset(prof_specs[0].bundle))
+                _record_profile_stack_summary(
+                    inps, project, step, prof_specs[0].options.unit,
+                    inps.stack_offset is not None)
             render = (backend.render_profiles_subplot if inps.plot_layout == 'subplot'
                       else backend.render_profiles_stacked)
             txt_paths = []
             for bundle, main_indices, grid, (req_start, req_end) in prof_bundles:
                 prof_bracket = profile_period_bracket(inps, req_start, req_end)
-                prof_label = f'profiles_{inps.plot_layout}'
+                prof_label = PROFILE_LABEL
                 txt_path = find_cached_txt(out_dir, project, inps.tag_string, prof_label,
                                            req_start, req_end, prof_bracket)
                 if txt_path is None:
                     stem = build_basename(project, inps.tag_string, prof_label,
                                           grid.start_date, grid.end_date)
                     txt_path = os.path.join(out_dir, f'{stem}.txt')
-                if not (inps.update or inps.plots_only) or not cache_is_fresh(
-                        txt_path, eos_file, *fault_paths):
+                if should_write_txt(inps, txt_path, eos_file, prof_bracket, *fault_paths):
                     write_profiles_txt(txt_path, bundle, main_indices, inps.cloud_profiles,
                                        prof_bracket)
                 txt_paths.append(txt_path)
 
             if combine:
                 bundle_periods = [p for _, _, _, p in prof_bundles]
-                stem = _multi_period_stem(project, inps.tag_string,
-                                          f'profiles_{inps.plot_layout}', bundle_periods)
+                stem = _multi_period_stem(project, inps.tag_string, PROFILE_LABEL, bundle_periods)
                 img_path = os.path.join(out_dir, f'{stem}.{inps.save}')
-                if combined_figure_is_fresh(img_path, txt_paths, inps.update,
-                                            eos_file, *fault_paths):
+                if (not inps.plots_only
+                        and combined_figure_is_fresh(img_path, txt_paths, prof_style,
+                                                     eos_file, *fault_paths)):
                     print(f'Skipping figure (up to date): {img_path}')
                 else:
                     render(prof_specs, img_path)
+                    write_figure_style(img_path, prof_style)
                     print(f'Figure saved to {img_path}')
                 index_entries.append({'group': f'{project} profiles',
                                       'image': img_path, 'txt': txt_paths})
             else:
                 for spec, txt_path, (_, _, grid, (req_start, req_end)) in zip(
                         prof_specs, txt_paths, prof_bundles):
-                    stem = build_basename(project, inps.tag_string,
-                                          f'profiles_{inps.plot_layout}',
+                    stem = build_basename(project, inps.tag_string, PROFILE_LABEL,
                                           grid.start_date, grid.end_date)
                     img_path = os.path.join(out_dir, f'{stem}.{inps.save}')
-                    if figure_is_fresh(img_path, txt_path, inps.update, eos_file, *fault_paths):
+                    one_style = profile_figure_style_key(inps, inps.plot_layout, 1)
+                    if (not inps.plots_only
+                            and figure_is_fresh(img_path, txt_path, one_style,
+                                                eos_file, *fault_paths)):
                         print(f'Skipping figure (up to date): {img_path}')
                     else:
                         render([spec], img_path)
+                        write_figure_style(img_path, one_style)
                         print(f'Figure saved to {img_path}')
                     index_entries.append({'group': f'{project} profiles',
                                           'image': img_path, 'txt': txt_path})
 
     if not inps.no_index and index_entries:
         from plotdata.fault_transect.html_index import write_index_html
-        write_index_html(out_dir, command, index_entries)
+        from plotdata.fault_transect.naming import index_html_stem
+        stem = index_html_stem(project, inps.tag_string)
+        write_index_html(out_dir, command, index_entries, stem)
 
     if inps.show_flag:
         print('Close all figure windows to finish.')
@@ -570,6 +663,9 @@ def main(iargs=None):
 
     if inps.upload:
         print('WARNING: --upload is not implemented yet; skipping upload.')
+
+    from plotdata.fault_transect.plot_api import print_offset_summaries
+    print_offset_summaries(getattr(inps, 'offset_summaries', []))
 
     _print_done()
 

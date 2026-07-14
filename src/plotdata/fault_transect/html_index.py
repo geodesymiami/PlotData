@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""Generate index.html listing all produced figures and data files."""
+"""Generate HTML index pages listing produced figures and data files."""
 
 import os
 import html
+import shutil
 from datetime import datetime
 
 _PAGE = """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>plot_fault_transect results</title>
+<title>{title}</title>
 <style>
   body {{ font-family: sans-serif; margin: 2em; color: #222; }}
   h1 {{ font-size: 1.4em; }}
@@ -23,7 +24,7 @@ _PAGE = """<!DOCTYPE html>
 </style>
 </head>
 <body>
-<h1>plot_fault_transect results</h1>
+<h1>{heading}</h1>
 <p class="cmd">{command}</p>
 <p>Generated: {timestamp}</p>
 {sections}
@@ -32,11 +33,10 @@ _PAGE = """<!DOCTYPE html>
 """
 
 
-def write_index_html(out_dir, command, entries):
-    """entries: list of dicts with keys: group (section title), image, txt.
+def build_index_html(out_dir, command, entries, *, title=None):
+    """Return HTML string for an index page.
 
-    'txt' may be a single path or a list of paths. Paths are made relative to
-    out_dir. Returns the index.html path.
+    ``entries``: list of dicts with keys ``group``, ``image``, ``txt``.
     """
     groups = {}
     for entry in entries:
@@ -59,11 +59,25 @@ def write_index_html(out_dir, command, entries):
             cards.append(card)
         sections.append(f'<h2>{html.escape(group)}</h2>\n' + '\n'.join(cards))
 
-    page = _PAGE.format(command=html.escape(command),
+    heading = title or 'plot_fault_transect results'
+    return _PAGE.format(title=html.escape(heading),
+                        heading=html.escape(heading),
+                        command=html.escape(command),
                         timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                         sections='\n'.join(sections))
-    path = os.path.join(out_dir, 'index.html')
-    with open(path, 'w', encoding='utf-8') as f:
-        f.write(page)
-    print(f'Index written to {path}')
-    return path
+
+
+def write_index_html(out_dir, command, entries, named_stem):
+    """Write ``{named_stem}.html`` and a copy as ``index.html``.
+
+    Returns ``(named_path, index_path)``.
+    """
+    page = build_index_html(out_dir, command, entries, title=named_stem)
+    named_path = os.path.join(out_dir, f'{named_stem}.html')
+    index_path = os.path.join(out_dir, 'index.html')
+    with open(named_path, 'w', encoding='utf-8') as handle:
+        handle.write(page)
+    shutil.copy2(named_path, index_path)
+    print(f'Index written to {named_path}')
+    print(f'Index written to {index_path}')
+    return named_path, index_path

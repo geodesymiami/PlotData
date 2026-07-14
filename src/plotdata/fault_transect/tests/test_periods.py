@@ -4,12 +4,21 @@
 import unittest
 
 from plotdata.fault_transect.periods import (
-    consecutive_start_flags, gap_start_flags, is_consecutive_boundary,
+    consecutive_start_flags, format_date_display, format_period_display,
+    gap_start_flags, is_consecutive_boundary,
     parse_period_chunks, snap_end_date, snap_first_period_start, snap_gap_start,
     validate_and_adjust_periods)
 
 
 class TestPeriods(unittest.TestCase):
+
+    def test_format_date_display(self):
+        self.assertEqual(format_date_display('20141020'), '2014-10-20')
+        self.assertEqual(format_date_display('bad'), 'bad')
+
+    def test_format_period_display(self):
+        self.assertEqual(format_period_display('20141020', '20260626'),
+                         '2014-10-20 - 2026-06-26')
 
     def test_valid_gap_periods_unchanged(self):
         periods = [('20141001', '20181224'), ('20181225', '20201224')]

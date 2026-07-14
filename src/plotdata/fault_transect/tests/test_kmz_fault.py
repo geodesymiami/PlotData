@@ -210,7 +210,7 @@ class TestKmzFault(unittest.TestCase):
                         ('B', [(15.2, 37.0), (15.3, 37.0)])])
         inps = type('Inps', (), {
             'fault_file': path, 'fault_segment': '0', 'fault_segment_by': 'index',
-            'flip_fault': False, 'outdir': self.tmp.name, 'update': False})()
+            'flip_fault': False, 'outdir': self.tmp.name, 'force': False})()
         polylines, source, cache_paths = prepare_fault_geometry(inps)
         self.assertEqual(len(polylines), 1)
         self.assertEqual(cache_paths, (source,))
@@ -222,27 +222,41 @@ class TestKmzFault(unittest.TestCase):
                         ('B', [(15.1, 37.0), (15.2, 37.0)])])
         inps = type('Inps', (), {
             'fault_file': path, 'fault_segment': 'all', 'fault_segment_by': 'auto',
-            'flip_fault': False, 'outdir': self.tmp.name, 'update': False})()
+            'flip_fault': False, 'outdir': self.tmp.name, 'force': False})()
         polylines, source, cache_paths = prepare_fault_geometry(inps)
         joint = os.path.join(self.tmp.name, 'fault_joint.kmz')
         self.assertTrue(os.path.isfile(joint))
         self.assertEqual(len(polylines), 2)
         self.assertEqual(cache_paths, (source, joint))
 
-    def test_prepare_fault_geometry_update_skips_joint_rewrite(self):
+    def test_prepare_fault_geometry_skips_joint_rewrite_when_fresh(self):
         path = os.path.join(self.tmp.name, 'fault.kmz')
         make_kmz(path, [('A', [(15.0, 37.0), (15.1, 37.0)]),
                         ('B', [(15.1, 37.0), (15.2, 37.0)])])
         inps = type('Inps', (), {
             'fault_file': path, 'fault_segment': 'all', 'fault_segment_by': 'auto',
-            'flip_fault': False, 'outdir': self.tmp.name, 'update': False})()
+            'flip_fault': False, 'outdir': self.tmp.name, 'force': False})()
         prepare_fault_geometry(inps)
         joint = os.path.join(self.tmp.name, 'fault_joint.kmz')
         mtime = os.path.getmtime(joint)
         time.sleep(0.02)
-        inps.update = True
         prepare_fault_geometry(inps)
         self.assertAlmostEqual(os.path.getmtime(joint), mtime, places=0)
+
+    def test_prepare_fault_geometry_force_rewrites_joint(self):
+        path = os.path.join(self.tmp.name, 'fault.kmz')
+        make_kmz(path, [('A', [(15.0, 37.0), (15.1, 37.0)]),
+                        ('B', [(15.1, 37.0), (15.2, 37.0)])])
+        inps = type('Inps', (), {
+            'fault_file': path, 'fault_segment': 'all', 'fault_segment_by': 'auto',
+            'flip_fault': False, 'outdir': self.tmp.name, 'force': False})()
+        prepare_fault_geometry(inps)
+        joint = os.path.join(self.tmp.name, 'fault_joint.kmz')
+        mtime = os.path.getmtime(joint)
+        time.sleep(0.02)
+        inps.force = True
+        prepare_fault_geometry(inps)
+        self.assertGreater(os.path.getmtime(joint), mtime)
 
 if __name__ == '__main__':
     unittest.main()

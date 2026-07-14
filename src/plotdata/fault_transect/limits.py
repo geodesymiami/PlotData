@@ -31,3 +31,14 @@ def build_offset_color_limits(num_periods, vlim, auto_colorscale, offset_series_
         return [lim] * num_periods
 
     return [None] * num_periods
+
+
+def shared_map_color_limits(period_limits):
+    """Merge explicit per-period (vmin, vmax) for one multi-period map colorbar.
+
+    Returns (vmin, vmax) when any period limit is set, else None (caller uses auto).
+    """
+    defined = [lim for lim in period_limits if lim is not None]
+    if not defined:
+        return None
+    return min(lim[0] for lim in defined), max(lim[1] for lim in defined)

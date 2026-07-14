@@ -7,8 +7,9 @@ import time
 import unittest
 
 from plotdata.fault_transect.cache import (
-    cache_is_fresh, combined_figure_is_fresh, figure_is_fresh, map_period_bracket,
-    parse_txt_header)
+    cache_is_fresh, combined_figure_is_fresh, figure_is_fresh, figure_style_matches,
+    map_period_bracket, parse_txt_header, should_write_txt, txt_cache_hit,
+    write_figure_style)
 from plotdata.fault_transect.export import read_offset_txt, write_offset_txt
 from plotdata.fault_transect.offset import OffsetSeries
 
@@ -26,6 +27,11 @@ class _Inps:
     profile_length = 4.0
     plot_layout = 'stacked'
     cloud_profiles = 0
+
+
+class _FreshnessInps:
+    force = False
+    plots_only = False
 
 
 class TestCache(unittest.TestCase):
@@ -54,7 +60,36 @@ class TestCache(unittest.TestCase):
         open(self.cache, 'w').close()
         self.assertTrue(cache_is_fresh(self.cache, self.he5, self.kmz))
 
-    def test_figure_fresh_requires_txt_fresh(self):
+    def _sample_series(self):
+        series = OffsetSeries(reference_side='left', unit='cm/yr')
+        series.along_km = [0.0]
+        series.lat = [37.0]
+        series.lon = [15.0]
+        series.left_val = [1.0]
+        series.right_val = [0.5]
+        series.offset = [0.5]
+        return series
+
+    def test_txt_cache_hit_requires_matching_bracket(self):
+        bracket = map_period_bracket(_Inps, '20141001', '20181224')
+        write_offset_txt(self.cache, self._sample_series(), bracket)
+        self.assertTrue(txt_cache_hit(self.cache, self.he5, bracket, self.kmz))
+        self.assertFalse(txt_cache_hit(self.cache, self.he5, bracket + ' x', self.kmz))
+
+    def test_should_write_txt_skips_when_fresh(self):
+        bracket = map_period_bracket(_Inps, '20141001', '20181224')
+        write_offset_txt(self.cache, self._sample_series(), bracket)
+        inps = _FreshnessInps()
+        self.assertFalse(should_write_txt(inps, self.cache, self.he5, bracket, self.kmz))
+
+    def test_should_write_txt_when_force(self):
+        bracket = map_period_bracket(_Inps, '20141001', '20181224')
+        write_offset_txt(self.cache, self._sample_series(), bracket)
+        inps = _FreshnessInps()
+        inps.force = True
+        self.assertTrue(should_write_txt(inps, self.cache, self.he5, bracket, self.kmz))
+
+    def test_figure_fresh_requires_style_sidecar(self):
         txt = os.path.join(self.tmp.name, 'a.txt')
         img = os.path.join(self.tmp.name, 'a.png')
         open(self.he5, 'w').close()
@@ -62,7 +97,11 @@ class TestCache(unittest.TestCase):
         open(txt, 'w').close()
         time.sleep(0.02)
         open(img, 'w').close()
-        self.assertTrue(figure_is_fresh(img, txt, True, self.he5, self.kmz))
+        style = 'cmap=jet|dpi=300'
+        self.assertFalse(figure_is_fresh(img, txt, style, self.he5, self.kmz))
+        write_figure_style(img, style)
+        self.assertTrue(figure_is_fresh(img, txt, style, self.he5, self.kmz))
+        self.assertFalse(figure_is_fresh(img, txt, 'cmap=viridis|dpi=300', self.he5, self.kmz))
 
     def test_combined_figure_requires_all_txts_fresh(self):
         txt1 = os.path.join(self.tmp.name, 'a.txt')
@@ -74,10 +113,12 @@ class TestCache(unittest.TestCase):
         open(txt2, 'w').close()
         time.sleep(0.02)
         open(img, 'w').close()
-        self.assertTrue(combined_figure_is_fresh(img, [txt1, txt2], True, self.he5, self.kmz))
+        style = 'map-style'
+        write_figure_style(img, style)
+        self.assertTrue(combined_figure_is_fresh(img, [txt1, txt2], style, self.he5, self.kmz))
         time.sleep(0.02)
         open(self.he5, 'w').close()
-        self.assertFalse(combined_figure_is_fresh(img, [txt1, txt2], True, self.he5, self.kmz))
+        self.assertFalse(combined_figure_is_fresh(img, [txt1, txt2], style, self.he5, self.kmz))
 
     def test_map_bracket_includes_segment_options(self):
         bracket = map_period_bracket(_Inps, '20141001', '20181224')
@@ -101,6 +142,13 @@ class TestCache(unittest.TestCase):
         self.assertAlmostEqual(loaded.offset[1], 1.0)
         _, parsed = parse_txt_header(path)
         self.assertEqual(parsed, bracket)
+
+    def test_figure_style_matches(self):
+        img = os.path.join(self.tmp.name, 'fig.png')
+        open(img, 'w').close()
+        write_figure_style(img, 'style-a')
+        self.assertTrue(figure_style_matches(img, 'style-a'))
+        self.assertFalse(figure_style_matches(img, 'style-b'))
 
 
 if __name__ == '__main__':

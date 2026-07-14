@@ -70,7 +70,8 @@ def full_date_span(eos_file):
 
 
 def load_velocity_grid(eos_file, project, source, start_date, end_date, work_dir,
-                       mask_thresh=0.55, consecutive_start=False, gap_start=False):
+                       mask_thresh=0.55, consecutive_start=False, gap_start=False,
+                       force=False, tag_string=''):
     """timeseries2velocity for the period, mask by temporal coherence, return grid.
 
     Follows the plot_data pipeline (ProcessData._process_data) without
@@ -80,15 +81,23 @@ def load_velocity_grid(eos_file, project, source, start_date, end_date, work_dir
     from mintpy.utils import readfile
     from mintpy.cli import timeseries2velocity as ts2v
     from plotdata.fault_transect.periods import snap_period_dates
+    from plotdata.fault_transect.cache import cache_is_fresh
 
     os.makedirs(work_dir, exist_ok=True)
+    tag_string = (tag_string or '').strip()
+    if not tag_string:
+        raise ValueError('fault tag is required for velocity cache filenames')
     start_date, end_date = snap_period_dates(
         eos_file, start_date, end_date,
         consecutive_start=consecutive_start, gap_start=gap_start)
 
-    vel_file = os.path.join(work_dir, f'velocity_{start_date}_{end_date}.h5')
-    cmd = f'{eos_file} --start-date {start_date} --end-date {end_date} --output {vel_file}'
-    ts2v.main(cmd.split())
+    vel_file = os.path.join(work_dir,
+                            f'velocity_{tag_string}_{start_date}_{end_date}.h5')
+    if not force and cache_is_fresh(vel_file, eos_file):
+        print(f'Using cached velocity grid: {vel_file}')
+    else:
+        cmd = f'{eos_file} --start-date {start_date} --end-date {end_date} --output {vel_file}'
+        ts2v.main(cmd.split())
 
     data, attr = readfile.read(vel_file)
     if 'Y_FIRST' not in attr:

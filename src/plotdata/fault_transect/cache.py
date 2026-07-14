@@ -27,15 +27,117 @@ def cache_is_fresh(cache_path, *input_paths):
     return True
 
 
-def figure_is_fresh(img_path, txt_path, update_mode, *input_paths):
-    """MintPy-style skip: txt fresh vs inputs and image not older than txt."""
-    if not update_mode:
+def txt_cache_hit(txt_path, eos_file, bracket_info, *fault_paths):
+    """True when txt exists, is newer than data inputs, and bracket metadata matches."""
+    if not txt_path or not os.path.isfile(txt_path):
         return False
-    if not cache_is_fresh(txt_path, *input_paths):
+    if not cache_is_fresh(txt_path, eos_file, *fault_paths):
+        return False
+    try:
+        _, bracket = parse_txt_header(txt_path)
+    except ValueError:
+        return False
+    return bracket == bracket_info
+
+
+def should_write_txt(inps, txt_path, eos_file, bracket_info, *fault_paths):
+    """True when a data txt should be (re)written."""
+    if inps.plots_only:
+        return False
+    if inps.force:
+        return True
+    return not txt_cache_hit(txt_path, eos_file, bracket_info, *fault_paths)
+
+
+def figure_style_path(img_path):
+    return f'{img_path}.style'
+
+
+def _style_repr(value):
+    if value is None:
+        return 'None'
+    if isinstance(value, (tuple, list)):
+        return '[' + ','.join(_style_repr(v) for v in value) + ']'
+    return str(value)
+
+
+def map_figure_style_key(inps, color_lims, n_periods):
+    """Fingerprint of map figure styling (not data-processing options)."""
+    title_off = inps.title_offset if inps.title_offset is not None else (0.0, 0.0)
+    return '|'.join([
+        f'cmap={inps.colormap}',
+        f'cmap_vlist={_style_repr(inps.cmap_vlist)}',
+        f'vlim={_style_repr(inps.vlim)}',
+        f'auto_cs={inps.auto_colorscale}',
+        f'color_lims={_style_repr(color_lims)}',
+        f'font={inps.font_size}',
+        f'dpi={inps.dpi}',
+        f'save={inps.save}',
+        f'title_pos={inps.title_position}',
+        f'title_off={_style_repr(title_off)}',
+        f'map_stack={inps.map_stack_offset}',
+        f'map_stack_axis={inps.map_stack_axis}',
+        f'n_periods={n_periods}',
+        f'tag={inps.tag_string}',
+    ])
+
+
+def profile_figure_style_key(inps, plot_layout, n_periods):
+    title_off = inps.title_offset if inps.title_offset is not None else (0.0, 0.0)
+    return '|'.join([
+        f'layout={plot_layout}',
+        f'cmap={inps.colormap}',
+        f'font={inps.font_size}',
+        f'dpi={inps.dpi}',
+        f'save={inps.save}',
+        f'stack={inps.stack_offset}',
+        f'subplot_cols={inps.subplot_cols}',
+        f'profile_lines={inps.profile_lines}',
+        f'cloud={inps.cloud_profiles}',
+        f'title_pos={inps.title_position}',
+        f'title_off={_style_repr(title_off)}',
+        f'n_periods={n_periods}',
+        f'tag={inps.tag_string}',
+    ])
+
+
+def write_figure_style(img_path, style_key):
+    with open(figure_style_path(img_path), 'w', encoding='utf-8') as handle:
+        handle.write(style_key)
+
+
+def figure_style_matches(img_path, style_key):
+    style_path = figure_style_path(img_path)
+    if not os.path.isfile(style_path):
+        return False
+    with open(style_path, encoding='utf-8') as handle:
+        return handle.read().strip() == style_key
+
+
+def figure_is_fresh(img_path, txt_path, style_key, *data_input_paths):
+    """True when txt is input-fresh, image is not older than txt, and plot style unchanged."""
+    if not cache_is_fresh(txt_path, *data_input_paths):
         return False
     if not img_path or not os.path.isfile(img_path):
         return False
-    return os.path.getmtime(img_path) >= os.path.getmtime(txt_path)
+    if os.path.getmtime(img_path) < os.path.getmtime(txt_path):
+        return False
+    return figure_style_matches(img_path, style_key)
+
+
+def combined_figure_is_fresh(img_path, txt_paths, style_key, *data_input_paths):
+    """True when every txt is input-fresh and the image matches style and txt ages."""
+    if not txt_paths:
+        return False
+    for txt_path in txt_paths:
+        if not cache_is_fresh(txt_path, *data_input_paths):
+            return False
+    if not img_path or not os.path.isfile(img_path):
+        return False
+    newest_txt = max(os.path.getmtime(p) for p in txt_paths)
+    if os.path.getmtime(img_path) < newest_txt:
+        return False
+    return figure_style_matches(img_path, style_key)
 
 
 def map_period_bracket(inps, start, end):
@@ -56,26 +158,26 @@ def profile_period_bracket(inps, start, end):
             f'cloud-profiles={inps.cloud_profiles}')
 
 
-def combined_figure_is_fresh(img_path, txt_paths, update_mode, *input_paths):
-    """True when every txt is input-fresh and the image is not older than the newest txt."""
-    if not update_mode:
-        return False
-    if not txt_paths:
-        return False
-    for txt_path in txt_paths:
-        if not cache_is_fresh(txt_path, *input_paths):
-            return False
-    if not img_path or not os.path.isfile(img_path):
-        return False
-    newest_txt = max(os.path.getmtime(p) for p in txt_paths)
-    return os.path.getmtime(img_path) >= newest_txt
-
-
 def _basename_candidates(project, tag_string, label, start, end):
     tag_string = (tag_string or '').strip()
     if tag_string:
         yield f'{project}_{tag_string}_{label}_{start}_{end}'
     yield f'{project}_{label}_{start}_{end}'
+
+
+def _cached_txt_glob_patterns(out_dir, project, tag_string, label):
+    """Glob patterns for txt lookup (tagged names first, then legacy)."""
+    tag_string = (tag_string or '').strip()
+    patterns = []
+    if tag_string:
+        patterns.append(os.path.join(out_dir, f'{project}_{tag_string}_{label}_*.txt'))
+    patterns.append(os.path.join(out_dir, f'{project}_{label}_*.txt'))
+    if label == 'profile':
+        for legacy in ('profiles_stacked', 'profiles_subplot', 'profiles_separate'):
+            if tag_string:
+                patterns.insert(0, os.path.join(out_dir, f'{project}_{tag_string}_{legacy}_*.txt'))
+            patterns.append(os.path.join(out_dir, f'{project}_{legacy}_*.txt'))
+    return patterns
 
 
 def find_cached_txt(out_dir, project, tag_string, label, start, end, bracket_info):
@@ -91,11 +193,7 @@ def find_cached_txt(out_dir, project, tag_string, label, start, end, bracket_inf
         if bracket == bracket_info:
             return path
 
-    patterns = [os.path.join(out_dir, f'{project}_{label}_*.txt')]
-    tag_string = (tag_string or '').strip()
-    if tag_string:
-        patterns.insert(0, os.path.join(out_dir, f'{project}_{tag_string}_{label}_*.txt'))
-    for pattern in patterns:
+    for pattern in _cached_txt_glob_patterns(out_dir, project, tag_string, label):
         for path in sorted(glob.glob(pattern)):
             try:
                 _, bracket = parse_txt_header(path)

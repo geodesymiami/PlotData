@@ -543,7 +543,7 @@ def prepare_fault_geometry(inps):
     """Read, orient if needed, optionally write joint KMZ; return polylines + cache paths.
 
     Returns (polylines, source_kmz, cache_paths) where ``cache_paths`` lists KMZ
-    files used for ``--update`` freshness checks on data txt and figures.
+    files used for freshness checks on data txt and figures.
     """
     from plotdata.fault_transect.cache import cache_is_fresh
 
@@ -580,7 +580,8 @@ def prepare_fault_geometry(inps):
         os.makedirs(joint_dir, exist_ok=True)
 
     write_joint = True
-    if inps.update and os.path.isfile(joint_kmz) and cache_is_fresh(joint_kmz, source_kmz):
+    if not getattr(inps, 'force', False) and os.path.isfile(joint_kmz) and cache_is_fresh(
+            joint_kmz, source_kmz):
         print(f'Using existing joint fault KMZ: {joint_kmz}')
         write_joint = False
 

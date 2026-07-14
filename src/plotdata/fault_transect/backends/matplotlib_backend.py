@@ -5,7 +5,9 @@ import numpy as np
 
 from plotdata.fault_transect.backends.base import PlotBackend
 from plotdata.fault_transect.plot_api import (
-    profile_axis_half_km, title_coords, map_view_lat_pad, stacked_map_ytick_pairs)
+    profile_axis_half_km, title_coords, map_view_lat_pad, map_view_lon_pad,
+    compute_map_stack_step, stacked_map_axis_offset, stacked_map_ytick_pairs,
+    stacked_map_xtick_pairs)
 from plotdata.fault_transect.profiles import auto_stack_offset
 
 
@@ -36,16 +38,31 @@ class MatplotlibBackend(PlotBackend):
             lats.extend(seg['lats'])
         return min(lons), max(lons), min(lats), max(lats)
 
-    def _map_lat_stack_step(self, map_specs):
-        """Latitude shift between stacked period copies, derived from fault extent."""
-        perp_km = map_specs[0].perp_width_km
-        _, _, lat_min, lat_max = self._fault_geographic_bounds(map_specs[0])
-        pad = map_view_lat_pad(perp_km, lat_min, lat_max)
-        lat_span = lat_max - lat_min
-        return lat_span + max(pad, 0.15 * lat_span, 0.02)
+    def _map_stack_step(self, map_specs):
+        """Stack step between period copies along map_stack_axis."""
+        spec = map_specs[0]
+        perp_km = spec.perp_width_km
+        manual = spec.options.map_stack_offset
+        axis = spec.options.map_stack_axis or 'lat'
+        lon_min, lon_max, lat_min, lat_max = self._fault_geographic_bounds(spec)
+        return compute_map_stack_step(
+            axis, perp_km, lon_min, lon_max, lat_min, lat_max, manual)
+
+    def _stacked_longitude_xticks(self, ax_map, lon_min, lon_max, pad, lon_step, n_periods):
+        """X-axis ticks for the first (left) period only — true longitudes."""
+        from matplotlib.ticker import FixedFormatter, FixedLocator, NullLocator
+
+        pairs = stacked_map_xtick_pairs(lon_min, lon_max, pad, lon_step, n_periods)
+        if not pairs:
+            return
+        tick_locs = [loc for loc, _ in pairs]
+        tick_labels = [f'{true_lon:.2f}' for _, true_lon in pairs]
+        ax_map.xaxis.set_major_locator(FixedLocator(tick_locs))
+        ax_map.xaxis.set_major_formatter(FixedFormatter(tick_labels))
+        ax_map.xaxis.set_minor_locator(NullLocator())
 
     def _stacked_latitude_yticks(self, ax_map, lat_min, lat_max, pad, lat_step, n_periods):
-        """Y-axis ticks for bottom strip only — identical to a single-period map."""
+        """Y-axis ticks for the first (top) period only — true latitudes."""
         from matplotlib.ticker import FixedFormatter, FixedLocator, NullLocator
 
         pairs = stacked_map_ytick_pairs(lat_min, lat_max, pad, lat_step, n_periods)
@@ -59,9 +76,14 @@ class MatplotlibBackend(PlotBackend):
 
     def _shared_map_vlim(self, map_specs):
         """One colorscale for all periods in a combined map figure."""
+        from plotdata.fault_transect.limits import shared_map_color_limits
+
+        explicit = shared_map_color_limits([spec.options.vlim for spec in map_specs])
+        if explicit is not None:
+            return explicit
         vmin, vmax = None, None
         for spec in map_specs:
-            lo, hi = self._offset_norm_limits(spec.offset_series, spec.options.vlim)
+            lo, hi = self._offset_norm_limits(spec.offset_series, None)
             vmin = lo if vmin is None else min(vmin, lo)
             vmax = hi if vmax is None else max(vmax, hi)
         olim = max(abs(vmin), abs(vmax))
@@ -72,6 +94,16 @@ class MatplotlibBackend(PlotBackend):
     def _resolve_cmap(self, opts):
         from plotdata.fault_transect.colormaps import resolve_colormap
         return resolve_colormap(opts.colormap, vlist=opts.cmap_vlist)
+
+    def _add_map_colorbar(self, fig, ax_map, mappable, opts):
+        """Colorbar matched to the map axes height (never taller than the map panel)."""
+        from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+        divider = make_axes_locatable(ax_map)
+        cax = divider.append_axes('right', size='4%', pad=0.08)
+        cbar = fig.colorbar(mappable, cax=cax)
+        cbar.set_label(f'offset ({opts.unit})', fontsize=opts.font_size)
+        return cbar
 
     def _fault_colored_segments(self, series, vlim=None, lat_offset=0.0, lon_offset=0.0,
                                 cmap=None):
@@ -124,6 +156,26 @@ class MatplotlibBackend(PlotBackend):
         lc.set_array(np.asarray(colors))
         return lc
 
+    def _draw_map_text(self, ax_map, opts, lon_min, lon_max, lat_min, lat_max,
+                       lat_offset=0.0, lon_offset=0.0, *, draw_title=True, draw_period=True):
+        """Draw fault tag title and formatted period label on a map panel."""
+        if draw_title and opts.title:
+            x, y, ha, va = title_coords(
+                opts.title_position, lon_min, lon_max, lat_min, lat_max,
+                lat_offset=lat_offset,
+                lon_offset=lon_offset,
+                title_offset_lon=opts.title_offset_lon,
+                title_offset_lat=opts.title_offset_lat)
+            ax_map.text(x, y, opts.title, fontsize=opts.font_size + 1, va=va, ha=ha)
+        if draw_period and opts.period_label:
+            x, y, ha, va = title_coords(
+                opts.period_label_position, lon_min, lon_max, lat_min, lat_max,
+                lat_offset=lat_offset,
+                lon_offset=lon_offset,
+                title_offset_lon=opts.title_offset_lon,
+                title_offset_lat=opts.title_offset_lat)
+            ax_map.text(x, y, opts.period_label, fontsize=opts.font_size, va=va, ha=ha)
+
     def _draw_map_panel(self, fig, ax_map, ax_curve, spec, draw_curve=True, add_colorbar=True,
                         vlim=None, lat_offset=0.0, lon_offset=0.0, in_stack=False):
         opts = spec.options
@@ -143,9 +195,6 @@ class MatplotlibBackend(PlotBackend):
                                           lon_offset=lon_offset, cmap=cmap)
         if lc is not None:
             ax_map.add_collection(lc)
-            if add_colorbar:
-                cbar = fig.colorbar(lc, ax=ax_map, shrink=0.75, pad=0.02)
-                cbar.set_label(f'offset ({opts.unit})', fontsize=opts.font_size)
 
         pad = map_view_lat_pad(spec.perp_width_km, min(all_lats), max(all_lats))
         if not in_stack:
@@ -154,14 +203,13 @@ class MatplotlibBackend(PlotBackend):
             ax_map.set_aspect('equal', adjustable='box')
             ax_map.set_xlabel('Longitude', fontsize=opts.font_size)
             ax_map.set_ylabel('Latitude', fontsize=opts.font_size)
-        if opts.title:
-            lon_min, lon_max = min(all_lons), max(all_lons)
-            lat_min, lat_max = min(all_lats), max(all_lats)
-            x_label, y_label, ha, va = title_coords(
-                opts.title_position, lon_min, lon_max, lat_min, lat_max,
-                lat_offset=lat_offset)
-            ax_map.text(x_label, y_label, opts.title, fontsize=opts.font_size + 1,
-                        va=va, ha=ha)
+        if lc is not None and add_colorbar:
+            self._add_map_colorbar(fig, ax_map, lc, opts)
+        lon_min, lon_max = min(all_lons), max(all_lons)
+        lat_min, lat_max = min(all_lats), max(all_lats)
+        self._draw_map_text(ax_map, opts, lon_min, lon_max, lat_min, lat_max,
+                            lat_offset=lat_offset, lon_offset=lon_offset,
+                            draw_title=not in_stack, draw_period=True)
 
         if draw_curve and ax_curve is not None:
             ymin, ymax = self._offset_norm_limits(series, None)
@@ -174,44 +222,61 @@ class MatplotlibBackend(PlotBackend):
         return lc
 
     def _draw_stacked_map(self, fig, ax_map, map_specs):
-        """Draw all periods on one map axis, each fault copy shifted in latitude."""
+        """Draw periods stacked along lat (vertical) or lon (horizontal)."""
         from matplotlib.colors import Normalize
 
         plt = self._plt
         opts = map_specs[0].options
         n_periods = len(map_specs)
-        lat_step = self._map_lat_stack_step(map_specs)
+        axis = opts.map_stack_axis or 'lat'
+        stack_step = self._map_stack_step(map_specs)
         shared_lim = self._shared_map_vlim(map_specs)
         cmap = self._resolve_cmap(opts)
 
         lon_min, lon_max, lat_min, lat_max = self._fault_geographic_bounds(map_specs[0])
-        pad = map_view_lat_pad(map_specs[0].perp_width_km, lat_min, lat_max)
+        lat_pad = map_view_lat_pad(map_specs[0].perp_width_km, lat_min, lat_max)
+        lat_center = 0.5 * (lat_min + lat_max)
+        lon_pad = map_view_lon_pad(map_specs[0].perp_width_km, lat_center, lon_min, lon_max)
 
         ax_map.set_facecolor('white')
         last_lc = None
         for i, spec in enumerate(map_specs):
-            lat_offset = (n_periods - 1 - i) * lat_step
+            lat_offset, lon_offset = stacked_map_axis_offset(i, stack_step, axis)
             lc = self._draw_map_panel(fig, ax_map, None, spec, draw_curve=False,
                                       add_colorbar=False, vlim=shared_lim,
-                                      lat_offset=lat_offset, in_stack=True)
+                                      lat_offset=lat_offset, lon_offset=lon_offset,
+                                      in_stack=True)
             if lc is not None:
                 last_lc = lc
 
-        ax_map.set_xlim(lon_min - pad, lon_max + pad)
-        ax_map.set_ylim(lat_min - pad, lat_max + (n_periods - 1) * lat_step + pad)
+        if axis == 'lon':
+            x_left = lon_min - lon_pad
+            x_right = lon_max + lon_pad + (n_periods - 1) * stack_step
+            ax_map.set_xlim(x_left, x_right)
+            ax_map.set_ylim(lat_min - lat_pad, lat_max + lat_pad)
+            self._stacked_longitude_xticks(ax_map, lon_min, lon_max, lon_pad, stack_step,
+                                           n_periods)
+        else:
+            ax_map.set_xlim(lon_min - lon_pad, lon_max + lon_pad)
+            y_top = lat_max + lat_pad
+            y_bottom = lat_min - lat_pad - (n_periods - 1) * stack_step
+            ax_map.set_ylim(y_bottom, y_top)
+            self._stacked_latitude_yticks(ax_map, lat_min, lat_max, lat_pad, stack_step,
+                                          n_periods)
+
         ax_map.set_aspect('equal', adjustable='box')
         ax_map.set_xlabel('Longitude', fontsize=opts.font_size)
         ax_map.set_ylabel('Latitude', fontsize=opts.font_size)
-        self._stacked_latitude_yticks(ax_map, lat_min, lat_max, pad, lat_step, n_periods)
 
         if last_lc is not None:
-            cbar = fig.colorbar(last_lc, ax=ax_map, shrink=0.75, pad=0.02)
-            cbar.set_label(f'offset ({opts.unit})', fontsize=opts.font_size)
+            self._add_map_colorbar(fig, ax_map, last_lc, opts)
         else:
             sm = plt.cm.ScalarMappable(norm=Normalize(*shared_lim), cmap=cmap)
             sm.set_array([])
-            cbar = fig.colorbar(sm, ax=ax_map, shrink=0.75, pad=0.02)
-            cbar.set_label(f'offset ({opts.unit})', fontsize=opts.font_size)
+            self._add_map_colorbar(fig, ax_map, sm, opts)
+
+        if opts.title:
+            fig.suptitle(opts.title, fontsize=opts.font_size + 2, y=0.98)
 
     def render_map_figure(self, map_specs, out_path):
         plt = self._plt
@@ -283,8 +348,13 @@ class MatplotlibBackend(PlotBackend):
             self._set_profile_xlim(ax, spec)
             ax.set_xlabel('Distance across fault (km)  [negative = left]', fontsize=opts.font_size)
             ax.set_ylabel(opts.unit, fontsize=opts.font_size)
-            ax.set_title(f'{opts.title}  profile {nn:02d} at {main.along_km:.1f} km',
-                         fontsize=opts.font_size + 1)
+            if opts.title:
+                ax.set_title(opts.title, fontsize=opts.font_size + 1)
+            ax.text(0.02, 0.92, f'profile {nn:02d} at {main.along_km:.1f} km',
+                    transform=ax.transAxes, fontsize=opts.font_size - 1, va='top')
+            if opts.period_label:
+                ax.text(0.98, 0.98, opts.period_label, transform=ax.transAxes,
+                        fontsize=opts.font_size, ha='right', va='top')
             ax.grid(alpha=0.3)
             path = out_path_template.replace('{nn}', f'{nn:02d}')
             fig.savefig(path, dpi=opts.dpi, bbox_inches='tight')
@@ -310,9 +380,12 @@ class MatplotlibBackend(PlotBackend):
                 self._annotate_subplot(ax, spec, idx, opts)
             for k in range(len(spec.main_indices), rows * cols):
                 axes[k // cols][k % cols].set_visible(False)
+            if opts.period_label:
+                fig.text(0.5, 0.995, opts.period_label, ha='center', va='top',
+                         fontsize=opts.font_size)
         else:
             for j, spec in enumerate(specs):
-                axes[0][j].set_title(spec.options.title, fontsize=opts.font_size + 1)
+                axes[0][j].set_title(spec.options.period_label, fontsize=opts.font_size + 1)
                 for k, idx in enumerate(spec.main_indices):
                     self._annotate_subplot(axes[k][j], spec, idx, opts)
                 for k in range(len(spec.main_indices), rows):
@@ -327,7 +400,7 @@ class MatplotlibBackend(PlotBackend):
             for ax in row:
                 if ax.get_visible():
                     ax.set_xlim(-axis_half, axis_half)
-        if len(specs) == 1:
+        if opts.title:
             fig.suptitle(opts.title, fontsize=opts.font_size + 2)
         fig.savefig(out_path, dpi=opts.dpi, bbox_inches='tight')
         self._figures.append(fig)
@@ -363,8 +436,10 @@ class MatplotlibBackend(PlotBackend):
             self._set_profile_xlim(ax, spec)
             ax.set_xlabel('Distance across fault (km)  [negative = left]', fontsize=opts.font_size)
             ax.set_ylabel(f'{opts.unit} (profiles offset by {step:.2g})', fontsize=opts.font_size)
-            ax.set_title(spec.options.title, fontsize=opts.font_size + 2)
+            ax.set_title(spec.options.period_label, fontsize=opts.font_size + 2)
             ax.grid(alpha=0.3)
+        if opts.title:
+            fig.suptitle(opts.title, fontsize=opts.font_size + 2)
         fig.savefig(out_path, dpi=opts.dpi, bbox_inches='tight')
         self._figures.append(fig)
         return out_path

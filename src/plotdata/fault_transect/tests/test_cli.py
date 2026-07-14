@@ -4,7 +4,8 @@
 import unittest
 
 from plotdata.cli.plot_fault_transect import (
-    parse_periods, build_basename, format_map_title, cmd_line_parse, _side_by_side)
+    parse_periods, format_map_title, cmd_line_parse, _side_by_side)
+from plotdata.fault_transect.naming import build_basename
 from plotdata.fault_transect.load_data import default_output_dir
 
 
@@ -34,20 +35,21 @@ class TestNaming(unittest.TestCase):
         self.assertEqual(build_basename('Etna', 'Pernicana', 'map', '20141020', '20260626'),
                          'Etna_Pernicana_map_20141020_20260626')
 
-    def test_without_tag(self):
-        self.assertEqual(build_basename('Etna', '', 'map', '20141020', '20260626'),
-                         'Etna_map_20141020_20260626')
+    def test_without_tag_raises(self):
+        with self.assertRaises(ValueError):
+            build_basename('Etna', '', 'map', '20141020', '20260626')
 
     def test_map_title(self):
         self.assertEqual(format_map_title('Pernicana', '20141020', '20260626'),
-                         'Pernicana  20141020:20260626')
+                         '2014-10-20 - 2026-06-26')
         self.assertEqual(format_map_title('', '20141020', '20260626'),
-                         '20141020:20260626')
+                         '2014-10-20 - 2026-06-26')
 
 class TestCmdLineParse(unittest.TestCase):
 
     def test_defaults(self):
-        inps = cmd_line_parse(['fault.kmz', 'Etna/mintpy'])
+        inps = cmd_line_parse(['FiandacaFA.kmz', 'Etna/mintpy'])
+        self.assertEqual(inps.tag_string, 'FiandacaFA')
         self.assertEqual(inps.plot_type, 'both')
         self.assertEqual(inps.along_step, 1.0)
         self.assertEqual(inps.perp_width, 0.5)
@@ -59,6 +61,22 @@ class TestCmdLineParse(unittest.TestCase):
         self.assertFalse(inps.show_flag)
         self.assertFalse(inps.upload)
         self.assertEqual(inps.title_position, 'upper-right')
+
+    def test_explicit_tag(self):
+        inps = cmd_line_parse(['FiandacaFault_FA.kmz', 'Etna/mintpy', '--tag', 'Fiandaca'])
+        self.assertEqual(inps.tag_string, 'Fiandaca')
+
+    def test_auto_tag_from_fault(self):
+        inps = cmd_line_parse(['FiandacaFault_FA.kmz', 'Etna/mintpy'])
+        self.assertEqual(inps.tag_string, 'Fiandaca')
+
+    def test_map_stack_axis_default(self):
+        inps = cmd_line_parse(['FiandacaFA.kmz', 'Etna/mintpy'])
+        self.assertEqual(inps.map_stack_axis, 'lat')
+
+    def test_map_stack_axis_lon(self):
+        inps = cmd_line_parse(['FiandacaFA.kmz', 'Etna/mintpy', '--map-stack-axis', 'lon'])
+        self.assertEqual(inps.map_stack_axis, 'lon')
 
     def test_data_required(self):
         with self.assertRaises(SystemExit):
