@@ -19,7 +19,7 @@ import sys
 import argparse
 
 EXAMPLE = """example:
-  plot_fault_transect.py PFS_Pernicana_faults_system_.kmz --dry-run
+  plot_fault_transect.py PFS_Pernicana_faults_system_.kmz EtnaSenA44/mintpy --fault-segment 1,2,4,5,6,7,8,9,10,11 --period 20141001:20181224,20181225:20201224,20211225:20260701
   plot_fault_transect.py PFS_Pernicana_faults_system__joint.kmz EtnaSenA44/mintpy --period 20141020:20260626 --tag Pernicana
   plot_fault_transect.py fault_joint.kmz EtnaSenA44/mintpy EtnaSenD124/mintpy --plot-type map --perp-width 0.5
   plot_fault_transect.py fault.kmz EtnaSenA44/mintpy --fault-segment 2-8 --plot-type profile --profile-count 10 --plot-layout subplot --cloud-profiles 2
@@ -36,7 +36,6 @@ def create_parser():
     parser.add_argument('data_dir', nargs='*', help='1-4 inputs: S1_*.he5 file or mintpy/miaplpy directory')
 
     fault = parser.add_argument_group('Fault handling')
-    fault.add_argument('--dry-run', dest='dry_run', action='store_true', help='Write homogenized {stem}_joint.kmz + {stem}_joint_qc.txt, then exit')
     fault.add_argument('--fault-segment', dest='fault_segment', type=str, default='all',
                        help='Segments to use, in along-fault order: all, 3, 2-8, 1,2,4-11. '
                             'Numbers match placemark labels (PFS3 -> 3) when names have unique '
@@ -76,16 +75,22 @@ def create_parser():
     plot.add_argument('--period-layout', dest='period_layout', choices=['auto', 'side-by-side', 'separate-page'], default='auto', help='Arrangement for multiple periods (default: %(default)s)')
 
     style = parser.add_argument_group('Plot parameters')
-    style.add_argument('--vlim', dest='vlim', nargs=2, type=float, metavar=('VMIN', 'VMAX'), default=None, help='Velocity limits for the map background')
-    style.add_argument('--ylim', dest='ylim', nargs='*', type=float, default=None,
-                       metavar='YMIN YMAX',
-                       help='Value limits for offset map colors and profile y-axis: '
-                            'YMIN YMAX [YMIN2 YMAX2 ...]; one pair for all periods or one per period')
+    style.add_argument('--vlim', dest='vlim', nargs=2, type=float, metavar=('VMIN', 'VMAX'),
+                       default=None, help='Offset colorscale limits on the map (default: auto)')
     style.add_argument('--auto-colorscale', dest='auto_colorscale', action='store_true',
-                       help='Use one automatic symmetric colorscale across all periods')
-    style.add_argument('--colormap', dest='colormap', default='viridis', help='Colormap (default: %(default)s)')
+                       help='Use one automatic symmetric offset colorscale across all periods')
+    style.add_argument('--colormap', dest='colormap', default='jet', metavar='COLORMAP',
+                       help='Colormap: matplotlib names, MintPy names (cmy, dismph, temperature, vik, ...), '
+                            'coherence (γ scale), or suffix _r / _truncate (default: %(default)s)')
+    style.add_argument('--cmap-vlist', dest='cmap_vlist', nargs=3, type=float, default=None,
+                       metavar=('VMIN', 'VMID', 'VMAX'),
+                       help='Truncation limits for *_truncate colormaps (default: 0 0.7 1)')
     style.add_argument('--font-size', dest='font_size', type=int, default=10, help='Font size (default: %(default)s)')
     style.add_argument('--dpi', dest='dpi', type=int, default=300, help='Figure DPI (default: %(default)s)')
+    style.add_argument('--title-position', dest='title_position',
+                       choices=['upper-left', 'upper-right', 'lower-left', 'lower-right'],
+                       default='upper-right',
+                       help='Map title corner (default: %(default)s)')
 
     out = parser.add_argument_group('Output')
     out.add_argument('--save', dest='save', choices=['png', 'pdf'], default='png', help='Image format; images are always saved (default: %(default)s)')
@@ -98,6 +103,12 @@ def create_parser():
     out.add_argument('--outdir', dest='outdir', type=str, default=None, help='Output directory (default: <project>/transects_mintpy or transects_miaplpy)')
     out.add_argument('--tag', dest='tag_string', type=str, default='', help='Tag inserted into output filenames (default: none)')
     out.add_argument('--no-index', dest='no_index', action='store_true', help='Skip index.html generation')
+    out.add_argument('--update', dest='update', action='store_true',
+                     help='Skip joint KMZ, data txt, and figures when each is newer than its inputs '
+                          '(source KMZ for joint; HDFEOS5 + fault KMZ for txt; txt for figures)')
+    out.add_argument('--plots-only', dest='plots_only', action='store_true',
+                     help='Rebuild figures from existing .txt only (no HDFEOS5). Mostly redundant with '
+                          '--update except when restyling figures that would otherwise be skipped.')
     out.add_argument('--upload', dest='upload', action='store_true', default=False, help='Upload products (not implemented yet)')
 
     return parser
@@ -129,12 +140,15 @@ def cmd_line_parse(iargs=None):
     parser = create_parser()
     inps = parser.parse_args(args=iargs)
 
-    if not inps.dry_run and not inps.data_dir:
-        parser.error('at least one data input is required (or use --dry-run)')
+    if not inps.data_dir:
+        parser.error('at least one data input is required')
     if len(inps.data_dir) > 4:
         parser.error('at most 4 data inputs are supported (asc, desc, horz, vert)')
     if inps.plot_layout == '3d':
         parser.error('--plot-layout 3d is not implemented yet; use separate, subplot or stacked')
+    if inps.plots_only and inps.plot_layout == 'separate':
+        parser.error('--plots-only is not supported with --plot-layout separate; '
+                     'use subplot or stacked')
     if inps.profile_spacing is None:
         inps.profile_spacing = inps.along_step
 
@@ -142,64 +156,69 @@ def cmd_line_parse(iargs=None):
         inps.periods = parse_periods(inps.period)
     except ValueError as exc:
         parser.error(str(exc))
+    if inps.vlim is not None and inps.vlim[0] >= inps.vlim[1]:
+        parser.error('--vlim VMIN must be less than VMAX')
 
     return inps
 
 
-def _load_fault(inps):
-    """Read the KMZ and return a list of (lon, lat) segments in requested order."""
-    from plotdata.fault_transect.kmz_fault import (
-        read_fault_kmz, resolve_segment_spec, orient_segments_for_sequence, homogenized_polylines)
-
-    segments = read_fault_kmz(inps.fault_file)
-    indices, seg_mode = resolve_segment_spec(
-        inps.fault_segment, segments, segment_by=inps.fault_segment_by)
-    selected = [segments[i] for i in indices]
-    # Fill segment_index for QC/debug
-    for seg, seg_idx in zip(selected, indices):
-        seg.name = seg.name or f'segment_{seg_idx}'
-
-    if inps.flip_fault:
-        selected = [type(s)(name=s.name, coords=list(reversed(s.coords))) for s in reversed(selected)]
-
-    oriented, qc_rows, total = orient_segments_for_sequence(selected)
-    for row, seg_idx in zip(qc_rows, indices):
-        row['segment_index'] = int(seg_idx)
-        if row['gap_to_prev_km'] > 0:
-            print(f"segment jump: {row['gap_to_prev_km']:.1f} km -> {row['name']}")
-    return homogenized_polylines(oriented, qc_rows)
+def _fault_cache_inputs(inps):
+    """KMZ paths used for txt/figure staleness checks."""
+    return getattr(inps, 'fault_cache_paths', (inps.fault_file,))
 
 
-def _run_dry_run(inps):
-    from plotdata.fault_transect.kmz_fault import (
-        read_fault_kmz, resolve_segment_spec, orient_segments_for_sequence,
-        write_fault_kmz_segments, write_segment_qc, joint_output_paths)
+def _require_plots_only_cache(txt_path, eos_file, bracket_info, *fault_paths):
+    from plotdata.fault_transect.cache import cache_is_fresh, parse_txt_header
 
-    segments = read_fault_kmz(inps.fault_file)
-    indices, seg_mode = resolve_segment_spec(
-        inps.fault_segment, segments, segment_by=inps.fault_segment_by)
-    selected = [segments[i] for i in indices]
-    print(f'Read {len(segments)} segment(s) from {inps.fault_file}; using {len(selected)} ({seg_mode})')
+    if not txt_path or not os.path.isfile(txt_path):
+        raise SystemExit(f'ERROR: --plots-only requires cached txt at {txt_path or "(missing)"}')
+    if not cache_is_fresh(txt_path, eos_file, *fault_paths):
+        raise SystemExit(
+            f'ERROR: {txt_path} is older than the HDFEOS5 or fault KMZ input; '
+            f'rerun without --plots-only to update.')
+    _, bracket = parse_txt_header(txt_path)
+    if bracket != bracket_info:
+        raise SystemExit(
+            f'ERROR: {txt_path} was created with different options; '
+            f'rerun without --plots-only to update.')
 
-    if inps.flip_fault:
-        selected = [type(s)(name=s.name, coords=list(reversed(s.coords))) for s in reversed(selected)]
 
-    oriented, qc_rows, total = orient_segments_for_sequence(selected)
-    for row, seg_idx in zip(qc_rows, indices):
-        row['segment_index'] = int(seg_idx)
+def _load_map_series_from_cache(inps, txt_path, eos_file, bracket_info):
+    from plotdata.fault_transect.cache import cache_is_fresh, parse_txt_header
+    from plotdata.fault_transect.export import read_offset_txt
 
-    kmz_path, qc_path = joint_output_paths(inps.fault_file, inps.outdir)
-    if inps.outdir:
-        os.makedirs(inps.outdir, exist_ok=True)
+    fault_paths = _fault_cache_inputs(inps)
+    if inps.plots_only:
+        _require_plots_only_cache(txt_path, eos_file, bracket_info, *fault_paths)
+        series, _ = read_offset_txt(txt_path)
+        print(f'Using cached map data from {txt_path}')
+        return series
+    if inps.update and txt_path and cache_is_fresh(txt_path, eos_file, *fault_paths):
+        _, bracket = parse_txt_header(txt_path)
+        if bracket == bracket_info:
+            series, _ = read_offset_txt(txt_path)
+            print(f'Using cached map data from {txt_path}')
+            return series
+    return None
 
-    stem = os.path.splitext(os.path.basename(kmz_path))[0]
-    write_fault_kmz_segments(kmz_path, oriented, name=stem)
-    write_segment_qc(qc_path, inps.fault_file, qc_rows, total)
 
-    print(f'Homogenized fault KMZ: {kmz_path}')
-    print(f'QC report:            {qc_path}')
-    print(f'Total fault length:   {total:.3f} km ({len(oriented)} segments)')
-    print('Inspect the KMZ in Google Earth; if satisfied, rerun with it (no --dry-run).')
+def _load_profiles_from_cache(inps, txt_path, eos_file, bracket_info):
+    from plotdata.fault_transect.cache import cache_is_fresh, parse_txt_header
+    from plotdata.fault_transect.export import read_profiles_txt
+
+    fault_paths = _fault_cache_inputs(inps)
+    if inps.plots_only:
+        _require_plots_only_cache(txt_path, eos_file, bracket_info, *fault_paths)
+        bundle, main_indices, _ = read_profiles_txt(txt_path)
+        print(f'Using cached profile data from {txt_path}')
+        return bundle, main_indices
+    if inps.update and txt_path and cache_is_fresh(txt_path, eos_file, *fault_paths):
+        _, bracket = parse_txt_header(txt_path)
+        if bracket == bracket_info:
+            bundle, main_indices, _ = read_profiles_txt(txt_path)
+            print(f'Using cached profile data from {txt_path}')
+            return bundle, main_indices
+    return None, None
 
 
 def _select_profile_points(points, inps):
@@ -234,6 +253,21 @@ def _multi_period_stem(project, tag_string, plot_label, periods):
         (f'{project}_{tag_string}_{plot_label}_{label}' if tag_string else f'{project}_{plot_label}_{label}')
 
 
+def _dates_from_product_txt(path):
+    stem = os.path.splitext(os.path.basename(path))[0]
+    match = re.search(r'(\d{8})_(\d{8})$', stem)
+    if not match:
+        raise ValueError(f'Could not parse dates from cached file name: {path}')
+    return match.group(1), match.group(2)
+
+
+def _make_grid_stub(start_date, end_date, unit):
+    from plotdata.fault_transect.load_data import VelocityGrid
+    return VelocityGrid(data=None, attr={}, lats=None, lons=None,
+                        start_date=start_date, end_date=end_date,
+                        eos_file='', project='', source='', unit=unit)
+
+
 def _process_input(inps, fault_segments, data_input, command):
     """Full pipeline for one data input: all periods, map + profile plots."""
     from plotdata.fault_transect.load_data import (
@@ -245,21 +279,27 @@ def _process_input(inps, fault_segments, data_input, command):
     from plotdata.fault_transect.backends import get_backend
     from plotdata.fault_transect.export import write_offset_txt, write_profiles_txt
     from plotdata.fault_transect.log_io import append_command_log
+    from plotdata.fault_transect.cache import (
+        cache_is_fresh, figure_is_fresh, combined_figure_is_fresh, find_cached_txt,
+        discover_map_periods, map_period_bracket, profile_period_bracket)
 
     eos_file, project, source = resolve_input(data_input)
     out_dir = inps.outdir if inps.outdir else default_output_dir(eos_file, project, source)
     os.makedirs(out_dir, exist_ok=True)
     work_dir = os.path.join(out_dir, 'work')
+    fault_paths = _fault_cache_inputs(inps)
 
     project_dir = os.path.dirname(out_dir)
     append_command_log(project_dir, command)
 
-    periods = inps.periods if inps.periods else [full_date_span(eos_file)]
-    if inps.ylim is not None:
-        from plotdata.fault_transect.periods import parse_ylim_tokens
-        ylim_pairs = parse_ylim_tokens(inps.ylim, len(periods))
+    if inps.periods:
+        periods = inps.periods
+    elif inps.plots_only:
+        periods = discover_map_periods(out_dir, project, inps.tag_string)
+        if not periods:
+            raise SystemExit(f'ERROR: --plots-only found no map txt files under {out_dir}')
     else:
-        ylim_pairs = None
+        periods = [full_date_span(eos_file)]
 
     points = sample_points_segments(fault_segments, inps.along_step, inps.along_start, inps.along_end)
     if not points:
@@ -268,84 +308,136 @@ def _process_input(inps, fault_segments, data_input, command):
 
     fault_segments_xy = [{'lons': [c[0] for c in seg], 'lats': [c[1] for c in seg]} for seg in fault_segments]
 
-    section_info = (f'fault={os.path.basename(inps.fault_file)} '
-                    f'along-step={inps.along_step} perp-width={inps.perp_width} '
-                    f'perp-offset={inps.perp_offset} '
-                    f'sample-method={inps.sample_method} reference-side={inps.reference_side}')
-    prof_info = section_info + f' profile-length={inps.profile_length} layout={inps.plot_layout}'
-
     backend = get_backend()
     index_entries = []
 
-    # ---- load all periods first (needed for side-by-side figures)
-    from plotdata.fault_transect.periods import consecutive_start_flags
-    consec_flags = consecutive_start_flags(periods)
-    grids = [load_velocity_grid(eos_file, project, source, s, e, work_dir, inps.mask_vmin,
-                                consecutive_start=consec_flags[i])
-             for i, (s, e) in enumerate(periods)]
+    from plotdata.fault_transect.periods import consecutive_start_flags, gap_start_flags
+    grids = []
+    all_series = []
+    prof_bundles_data = []
+    if inps.plots_only:
+        consec_flags = [False] * len(periods)
+        gap_flags = [False] * len(periods)
+    else:
+        consec_flags = consecutive_start_flags(periods)
+        gap_flags = gap_start_flags(periods)
+
+    for i, (start, end) in enumerate(periods):
+        map_bracket = map_period_bracket(inps, start, end)
+        prof_bracket = profile_period_bracket(inps, start, end)
+        map_txt = find_cached_txt(out_dir, project, inps.tag_string, 'map', start, end, map_bracket)
+        prof_label = f'profiles_{inps.plot_layout}'
+        prof_txt = find_cached_txt(out_dir, project, inps.tag_string, prof_label, start, end, prof_bracket)
+
+        grid = None
+        if inps.plot_type in ('map', 'both'):
+            series = _load_map_series_from_cache(inps, map_txt, eos_file, map_bracket)
+            if series is None:
+                if inps.plots_only:
+                    raise SystemExit(
+                        f'ERROR: --plots-only requires map txt for period {start}:{end}')
+                grid = load_velocity_grid(eos_file, project, source, start, end, work_dir,
+                                          inps.mask_vmin, consecutive_start=consec_flags[i],
+                                          gap_start=gap_flags[i])
+                series = compute_offset_series(
+                    grid.data, grid.lats, grid.lons, points,
+                    inps.perp_width, inps.along_step,
+                    inps.sample_method, inps.reference_side, grid.unit,
+                    perp_offset_km=inps.perp_offset)
+            else:
+                start_date, end_date = _dates_from_product_txt(map_txt)
+                grid = _make_grid_stub(start_date, end_date, inps.unit)
+            all_series.append(series)
+        elif inps.plots_only:
+            if prof_txt:
+                start_date, end_date = _dates_from_product_txt(prof_txt)
+            else:
+                start_date, end_date = start, end
+            grid = _make_grid_stub(start_date, end_date, inps.unit)
+        else:
+            grid = load_velocity_grid(eos_file, project, source, start, end, work_dir,
+                                      inps.mask_vmin, consecutive_start=consec_flags[i],
+                                      gap_start=gap_flags[i])
+        grids.append(grid)
+
+        if inps.plot_type in ('profile', 'both'):
+            bundle, main_indices = _load_profiles_from_cache(
+                inps, prof_txt, eos_file, prof_bracket)
+            if bundle is None:
+                if inps.plots_only:
+                    raise SystemExit(
+                        f'ERROR: --plots-only requires profile txt for period {start}:{end}')
+                if grid.data is None:
+                    grid = load_velocity_grid(eos_file, project, source, start, end, work_dir,
+                                              inps.mask_vmin, consecutive_start=consec_flags[i],
+                                              gap_start=gap_flags[i])
+                    grids[-1] = grid
+                bundle = extract_profiles(grid.data, grid.attr, points, inps.profile_length,
+                                          inps.interpolation, grid.unit)
+                main_indices = [idx for idx in _select_profile_points(points, inps)
+                                if bundle.get(idx) is not None]
+            prof_bundles_data.append((bundle, main_indices))
+
     actual_periods = [(g.start_date, g.end_date) for g in grids]
     combine = _side_by_side(inps, len(grids))
 
-    all_series = []
-    if inps.plot_type in ('map', 'both'):
-        for grid in grids:
-            all_series.append(compute_offset_series(
-                grid.data, grid.lats, grid.lons, points,
-                inps.perp_width, inps.along_step,
-                inps.sample_method, inps.reference_side, grid.unit,
-                perp_offset_km=inps.perp_offset))
+    from plotdata.fault_transect.limits import build_offset_color_limits
+    color_lims = build_offset_color_limits(
+        len(grids),
+        tuple(inps.vlim) if inps.vlim else None,
+        inps.auto_colorscale,
+        all_series)
 
-    prof_bundles_data = []
-    if inps.plot_type in ('profile', 'both'):
-        for grid in grids:
-            bundle = extract_profiles(grid.data, grid.attr, points, inps.profile_length,
-                                      inps.interpolation, grid.unit)
-            main_indices = [i for i in _select_profile_points(points, inps)
-                            if bundle.get(i) is not None]
-            prof_bundles_data.append((bundle, main_indices))
-
-    from plotdata.fault_transect.limits import build_value_limits
-    value_lims = build_value_limits(
-        len(grids), ylim_pairs, inps.auto_colorscale,
-        all_series,
-        [b for b, _ in prof_bundles_data] if prof_bundles_data else None,
-        [m for _, m in prof_bundles_data] if prof_bundles_data else None)
-
-    def make_opts(grid, map_title=False, value_lim=None):
+    def make_opts(grid, map_title=False, vlim=None):
         title = (format_map_title(inps.tag_string, grid.start_date, grid.end_date)
                  if map_title else f'{project} {grid.start_date}:{grid.end_date}')
-        return PlotOptions(colormap=inps.colormap,
-                           vlim=tuple(inps.vlim) if inps.vlim else None,
-                           value_lim=value_lim,
+        cmap_vlist = tuple(inps.cmap_vlist) if inps.cmap_vlist else None
+        return PlotOptions(colormap=inps.colormap, cmap_vlist=cmap_vlist,
+                           vlim=vlim,
                            font_size=inps.font_size, dpi=inps.dpi, unit=grid.unit,
-                           title=title)
+                           title=title,
+                           title_position=inps.title_position)
 
     # -------------------------------------------------------------- map plot
     if inps.plot_type in ('map', 'both'):
         map_specs, map_txts = [], []
-        for grid, series, value_lim in zip(grids, all_series, value_lims):
+        for grid, series, color_lim, (start, end) in zip(
+                grids, all_series, color_lims, periods):
+            map_bracket = map_period_bracket(inps, start, end)
             stem = build_basename(project, inps.tag_string, 'map', grid.start_date, grid.end_date)
-            txt_path = os.path.join(out_dir, f'{stem}.txt')
-            write_offset_txt(txt_path, series, section_info)
+            txt_path = find_cached_txt(out_dir, project, inps.tag_string, 'map', start, end, map_bracket)
+            if txt_path is None:
+                txt_path = os.path.join(out_dir, f'{stem}.txt')
+            if not (inps.update or inps.plots_only) or not cache_is_fresh(
+                    txt_path, eos_file, *fault_paths):
+                write_offset_txt(txt_path, series, map_bracket)
             map_specs.append(MapFigureSpec(data=grid.data, lats=grid.lats, lons=grid.lons,
                                            fault_segments=fault_segments_xy,
                                            offset_series=series, perp_width_km=inps.perp_width,
                                            options=make_opts(grid, map_title=True,
-                                                             value_lim=value_lim)))
+                                                             vlim=color_lim)))
             map_txts.append(txt_path)
 
         if combine:
             stem = _multi_period_stem(project, inps.tag_string, 'map', actual_periods)
             img_path = os.path.join(out_dir, f'{stem}.{inps.save}')
-            backend.render_map_figure(map_specs, img_path)
-            print(f'Figure saved to {img_path}')
+            if combined_figure_is_fresh(img_path, map_txts, inps.update,
+                                        eos_file, *fault_paths):
+                print(f'Skipping figure (up to date): {img_path}')
+            else:
+                backend.render_map_figure(map_specs, img_path)
+                print(f'Figure saved to {img_path}')
             index_entries.append({'group': f'{project} map', 'image': img_path, 'txt': map_txts})
         else:
-            for spec, txt_path, (start, end) in zip(map_specs, map_txts, actual_periods):
-                stem = build_basename(project, inps.tag_string, 'map', start, end)
+            for spec, txt_path, grid in zip(map_specs, map_txts, grids):
+                stem = build_basename(project, inps.tag_string, 'map',
+                                      grid.start_date, grid.end_date)
                 img_path = os.path.join(out_dir, f'{stem}.{inps.save}')
-                backend.render_map_figure([spec], img_path)
-                print(f'Figure saved to {img_path}')
+                if figure_is_fresh(img_path, txt_path, inps.update, eos_file, *fault_paths):
+                    print(f'Skipping figure (up to date): {img_path}')
+                else:
+                    backend.render_map_figure([spec], img_path)
+                    print(f'Figure saved to {img_path}')
                 index_entries.append({'group': f'{project} map', 'image': img_path, 'txt': txt_path})
 
     # --------------------------------------------------------- profile plots
@@ -357,60 +449,91 @@ def _process_input(inps, fault_segments, data_input, command):
             else:
                 bundle = extract_profiles(grid.data, grid.attr, points, inps.profile_length,
                                           inps.interpolation, grid.unit)
-                main_indices = [i for i in _select_profile_points(points, inps)
-                                if bundle.get(i) is not None]
+                main_indices = [idx for idx in _select_profile_points(points, inps)
+                                if bundle.get(idx) is not None]
             if not main_indices:
                 print(f'WARNING: no valid profiles for {project} '
                       f'{grid.start_date}_{grid.end_date}')
                 continue
-            value_lim = value_lims[grid_idx] if grid_idx < len(value_lims) else None
             prof_specs.append(ProfileFigureSpec(bundle=bundle, main_indices=main_indices,
                                                 cloud_profiles=inps.cloud_profiles,
                                                 stack_offset=inps.stack_offset,
                                                 subplot_cols=inps.subplot_cols,
                                                 connect_lines=inps.profile_lines,
-                                                options=make_opts(grid, value_lim=value_lim)))
-            prof_bundles.append((bundle, main_indices, (grid.start_date, grid.end_date)))
+                                                options=make_opts(grid)))
+            prof_bundles.append((bundle, main_indices, grid, periods[grid_idx]))
 
         if prof_specs and inps.plot_layout == 'separate':
-            for spec, (bundle, main_indices, (start, end)) in zip(prof_specs, prof_bundles):
-                stem = build_basename(project, inps.tag_string, 'profile{nn}', start, end)
+            for spec, (bundle, main_indices, grid, (req_start, req_end)) in zip(prof_specs, prof_bundles):
+                prof_bracket = profile_period_bracket(inps, req_start, req_end)
+                stem = build_basename(project, inps.tag_string, 'profile{nn}',
+                                      grid.start_date, grid.end_date)
                 template = os.path.join(out_dir, f'{stem}.{inps.save}')
-                written = backend.render_profiles_separate(spec, template)
-                for nn, img_path in enumerate(written):
+                need_render = False
+                planned = []
+                for nn, idx in enumerate(spec.main_indices):
+                    img_path = template.replace('{nn}', f'{nn:02d}')
                     txt_path = os.path.splitext(img_path)[0] + '.txt'
-                    write_profiles_txt(txt_path, bundle, [main_indices[nn]],
-                                       inps.cloud_profiles, prof_info)
-                    print(f'Figure saved to {img_path}')
-                    index_entries.append({'group': f'{project} profiles {start}_{end}',
+                    if not (inps.update or inps.plots_only) or not cache_is_fresh(
+                            txt_path, eos_file, *fault_paths):
+                        write_profiles_txt(txt_path, bundle, [main_indices[nn]],
+                                           inps.cloud_profiles, prof_bracket)
+                    if figure_is_fresh(img_path, txt_path, inps.update, eos_file, *fault_paths):
+                        print(f'Skipping figure (up to date): {img_path}')
+                    else:
+                        need_render = True
+                    planned.append((img_path, txt_path))
+                if need_render:
+                    written = backend.render_profiles_separate(spec, template)
+                    for img_path in written:
+                        print(f'Figure saved to {img_path}')
+                for img_path, txt_path in planned:
+                    index_entries.append({'group': f'{project} profiles {req_start}_{req_end}',
                                           'image': img_path, 'txt': txt_path})
         elif prof_specs:
             render = (backend.render_profiles_subplot if inps.plot_layout == 'subplot'
                       else backend.render_profiles_stacked)
             txt_paths = []
-            for bundle, main_indices, (start, end) in prof_bundles:
-                stem = build_basename(project, inps.tag_string,
-                                      f'profiles_{inps.plot_layout}', start, end)
-                txt_path = os.path.join(out_dir, f'{stem}.txt')
-                write_profiles_txt(txt_path, bundle, main_indices, inps.cloud_profiles, prof_info)
+            for bundle, main_indices, grid, (req_start, req_end) in prof_bundles:
+                prof_bracket = profile_period_bracket(inps, req_start, req_end)
+                prof_label = f'profiles_{inps.plot_layout}'
+                txt_path = find_cached_txt(out_dir, project, inps.tag_string, prof_label,
+                                           req_start, req_end, prof_bracket)
+                if txt_path is None:
+                    stem = build_basename(project, inps.tag_string, prof_label,
+                                          grid.start_date, grid.end_date)
+                    txt_path = os.path.join(out_dir, f'{stem}.txt')
+                if not (inps.update or inps.plots_only) or not cache_is_fresh(
+                        txt_path, eos_file, *fault_paths):
+                    write_profiles_txt(txt_path, bundle, main_indices, inps.cloud_profiles,
+                                       prof_bracket)
                 txt_paths.append(txt_path)
 
             if combine:
-                bundle_periods = [p for _, _, p in prof_bundles]
+                bundle_periods = [p for _, _, _, p in prof_bundles]
                 stem = _multi_period_stem(project, inps.tag_string,
                                           f'profiles_{inps.plot_layout}', bundle_periods)
                 img_path = os.path.join(out_dir, f'{stem}.{inps.save}')
-                render(prof_specs, img_path)
-                print(f'Figure saved to {img_path}')
+                if combined_figure_is_fresh(img_path, txt_paths, inps.update,
+                                            eos_file, *fault_paths):
+                    print(f'Skipping figure (up to date): {img_path}')
+                else:
+                    render(prof_specs, img_path)
+                    print(f'Figure saved to {img_path}')
                 index_entries.append({'group': f'{project} profiles',
                                       'image': img_path, 'txt': txt_paths})
             else:
-                for spec, txt_path, (_, _, (start, end)) in zip(prof_specs, txt_paths, prof_bundles):
+                for spec, txt_path, (_, _, grid, (req_start, req_end)) in zip(
+                        prof_specs, txt_paths, prof_bundles):
                     stem = build_basename(project, inps.tag_string,
-                                          f'profiles_{inps.plot_layout}', start, end)
+                                          f'profiles_{inps.plot_layout}',
+                                          grid.start_date, grid.end_date)
                     img_path = os.path.join(out_dir, f'{stem}.{inps.save}')
-                    render([spec], img_path)
-                    print(f'Figure saved to {img_path}')
+                    if figure_is_fresh(img_path, txt_path, inps.update, eos_file, *fault_paths):
+                        print(f'Skipping figure (up to date): {img_path}')
+                    else:
+                        render([spec], img_path)
+                        print(f'Figure saved to {img_path}')
                     index_entries.append({'group': f'{project} profiles',
                                           'image': img_path, 'txt': txt_path})
 
@@ -437,12 +560,10 @@ def main(iargs=None):
     command = f'{os.path.basename(sys.argv[0])} {" ".join(sys.argv[1:])}'.strip()
     append_command_log(os.getcwd(), command)
 
-    if inps.dry_run:
-        _run_dry_run(inps)
-        _print_done()
-        return
-
-    fault_segments = _load_fault(inps)
+    from plotdata.fault_transect.kmz_fault import prepare_fault_geometry
+    fault_segments, source_kmz, fault_cache_paths = prepare_fault_geometry(inps)
+    inps.fault_source_kmz = source_kmz
+    inps.fault_cache_paths = fault_cache_paths
 
     for data_input in inps.data_dir:
         _process_input(inps, fault_segments, data_input, command)

@@ -488,10 +488,111 @@ def write_join_report(path, report, source_kmz, joined_coords):
 
 def joint_output_paths(kmz_path, outdir=None):
     """Return (joint_kmz_path, qc_txt_path) for a source KMZ."""
+    kmz_path = os.path.abspath(kmz_path)
+    if is_joint_kmz_path(kmz_path):
+        return kmz_path, joint_qc_path(kmz_path)
     stem = os.path.splitext(os.path.basename(kmz_path))[0].rstrip('_')
-    directory = outdir if outdir else os.path.dirname(os.path.abspath(kmz_path))
+    directory = outdir if outdir else os.path.dirname(kmz_path)
     return (os.path.join(directory, f'{stem}_joint.kmz'),
             os.path.join(directory, f'{stem}_joint_qc.txt'))
+
+
+def is_joint_kmz_path(path):
+    """True when ``path`` basename ends with ``_joint.kmz``."""
+    return os.path.basename(path).lower().endswith('_joint.kmz')
+
+
+def joint_qc_path(joint_kmz):
+    """QC txt path paired with a ``*_joint.kmz`` file."""
+    joint_kmz = os.path.abspath(joint_kmz)
+    if joint_kmz.lower().endswith('_joint.kmz'):
+        return joint_kmz[:-len('.kmz')] + '_qc.txt'
+    return joint_kmz.replace('.kmz', '_joint_qc.txt')
+
+
+def read_qc_source_kmz(qc_path):
+    """Read ``# source_kmz`` from a joint QC file, or return None."""
+    if not qc_path or not os.path.isfile(qc_path):
+        return None
+    with open(qc_path, encoding='utf-8') as handle:
+        for line in handle:
+            if line.startswith('# source_kmz '):
+                return line.split(None, 2)[2].strip()
+    return None
+
+
+def resolve_joint_paths(input_kmz, outdir=None):
+    """Return (source_kmz, joint_kmz, joint_qc_path) for an input fault file."""
+    input_kmz = os.path.abspath(input_kmz)
+    if is_joint_kmz_path(input_kmz):
+        joint_kmz = input_kmz
+        qc_path = joint_qc_path(joint_kmz)
+        source = read_qc_source_kmz(qc_path) or input_kmz
+        return os.path.abspath(source), joint_kmz, qc_path
+    source = input_kmz
+    joint_kmz, qc_path = joint_output_paths(source, outdir)
+    return source, joint_kmz, qc_path
+
+
+def needs_joint_processing(num_selected_segments):
+    """True when more than one segment is selected (orientation/trim required)."""
+    return num_selected_segments > 1
+
+
+def prepare_fault_geometry(inps):
+    """Read, orient if needed, optionally write joint KMZ; return polylines + cache paths.
+
+    Returns (polylines, source_kmz, cache_paths) where ``cache_paths`` lists KMZ
+    files used for ``--update`` freshness checks on data txt and figures.
+    """
+    from plotdata.fault_transect.cache import cache_is_fresh
+
+    segments = read_fault_kmz(inps.fault_file)
+    indices, seg_mode = resolve_segment_spec(
+        inps.fault_segment, segments, segment_by=inps.fault_segment_by)
+    selected = [segments[i] for i in indices]
+    print(f'Read {len(segments)} segment(s) from {inps.fault_file}; '
+          f'using {len(selected)} ({seg_mode})')
+
+    for seg, seg_idx in zip(selected, indices):
+        seg.name = seg.name or f'segment_{seg_idx}'
+
+    if inps.flip_fault:
+        selected = [type(s)(name=s.name, coords=list(reversed(s.coords)))
+                    for s in reversed(selected)]
+
+    source_kmz, joint_kmz, joint_qc = resolve_joint_paths(inps.fault_file, inps.outdir)
+
+    if not needs_joint_processing(len(selected)):
+        coords = list(selected[0].coords) if selected else []
+        return [coords] if coords else [], source_kmz, (source_kmz,)
+
+    oriented, qc_rows, total = orient_segments_for_sequence(selected)
+    for row, seg_idx in zip(qc_rows, indices):
+        row['segment_index'] = int(seg_idx)
+        if row['gap_to_prev_km'] > 0:
+            print(f"segment jump: {row['gap_to_prev_km']:.1f} km -> {row['name']}")
+
+    if inps.outdir:
+        os.makedirs(inps.outdir, exist_ok=True)
+    joint_dir = os.path.dirname(joint_kmz)
+    if joint_dir:
+        os.makedirs(joint_dir, exist_ok=True)
+
+    write_joint = True
+    if inps.update and os.path.isfile(joint_kmz) and cache_is_fresh(joint_kmz, source_kmz):
+        print(f'Using existing joint fault KMZ: {joint_kmz}')
+        write_joint = False
+
+    if write_joint:
+        stem = os.path.splitext(os.path.basename(joint_kmz))[0]
+        write_fault_kmz_segments(joint_kmz, oriented, name=stem)
+        write_segment_qc(joint_qc, source_kmz, qc_rows, total)
+        print(f'Homogenized fault KMZ: {joint_kmz}')
+        print(f'QC report:            {joint_qc}')
+        print(f'Total fault length:   {total:.3f} km ({len(oriented)} segments)')
+
+    return homogenized_polylines(oriented), source_kmz, (source_kmz, joint_kmz)
 
 
 def homogenized_polylines(oriented_segments, qc_rows=None):

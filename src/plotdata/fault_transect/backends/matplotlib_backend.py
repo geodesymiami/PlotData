@@ -4,7 +4,8 @@
 import numpy as np
 
 from plotdata.fault_transect.backends.base import PlotBackend
-from plotdata.fault_transect.plot_api import profile_axis_half_km
+from plotdata.fault_transect.plot_api import (
+    profile_axis_half_km, title_coords, map_view_lat_pad, stacked_map_ytick_pairs)
 from plotdata.fault_transect.profiles import auto_stack_offset
 
 
@@ -16,10 +17,10 @@ class MatplotlibBackend(PlotBackend):
         self._figures = []
 
     # ------------------------------------------------------------------ map
-    def _value_norm_limits(self, series, value_lim):
-        """Return (vmin, vmax) for symmetric offset coloring and curve y-axis."""
-        if value_lim is not None:
-            return value_lim
+    def _offset_norm_limits(self, series, vlim):
+        """Return (vmin, vmax) for offset coloring and curve y-axis auto-scale."""
+        if vlim is not None:
+            return vlim
         offsets = np.asarray(series.offset, dtype=float)
         finite_offs = offsets[np.isfinite(offsets)]
         olim = float(np.nanmax(np.abs(finite_offs))) if len(finite_offs) else 1.0
@@ -27,7 +28,53 @@ class MatplotlibBackend(PlotBackend):
             olim = 1.0
         return -olim, olim
 
-    def _fault_colored_segments(self, series, value_lim=None):
+    def _fault_geographic_bounds(self, spec):
+        """Return (lon_min, lon_max, lat_min, lat_max) from fault segment vertices."""
+        lons, lats = [], []
+        for seg in spec.fault_segments:
+            lons.extend(seg['lons'])
+            lats.extend(seg['lats'])
+        return min(lons), max(lons), min(lats), max(lats)
+
+    def _map_lat_stack_step(self, map_specs):
+        """Latitude shift between stacked period copies, derived from fault extent."""
+        perp_km = map_specs[0].perp_width_km
+        _, _, lat_min, lat_max = self._fault_geographic_bounds(map_specs[0])
+        pad = map_view_lat_pad(perp_km, lat_min, lat_max)
+        lat_span = lat_max - lat_min
+        return lat_span + max(pad, 0.15 * lat_span, 0.02)
+
+    def _stacked_latitude_yticks(self, ax_map, lat_min, lat_max, pad, lat_step, n_periods):
+        """Y-axis ticks for bottom strip only — identical to a single-period map."""
+        from matplotlib.ticker import FixedFormatter, FixedLocator, NullLocator
+
+        pairs = stacked_map_ytick_pairs(lat_min, lat_max, pad, lat_step, n_periods)
+        if not pairs:
+            return
+        tick_locs = [loc for loc, _ in pairs]
+        tick_labels = [f'{true_lat:.2f}' for _, true_lat in pairs]
+        ax_map.yaxis.set_major_locator(FixedLocator(tick_locs))
+        ax_map.yaxis.set_major_formatter(FixedFormatter(tick_labels))
+        ax_map.yaxis.set_minor_locator(NullLocator())
+
+    def _shared_map_vlim(self, map_specs):
+        """One colorscale for all periods in a combined map figure."""
+        vmin, vmax = None, None
+        for spec in map_specs:
+            lo, hi = self._offset_norm_limits(spec.offset_series, spec.options.vlim)
+            vmin = lo if vmin is None else min(vmin, lo)
+            vmax = hi if vmax is None else max(vmax, hi)
+        olim = max(abs(vmin), abs(vmax))
+        if olim == 0:
+            olim = 1.0
+        return -olim, olim
+
+    def _resolve_cmap(self, opts):
+        from plotdata.fault_transect.colormaps import resolve_colormap
+        return resolve_colormap(opts.colormap, vlist=opts.cmap_vlist)
+
+    def _fault_colored_segments(self, series, vlim=None, lat_offset=0.0, lon_offset=0.0,
+                                cmap=None):
         """Build LineCollection segments and colors along the fault sample path."""
         from matplotlib.collections import LineCollection
         from matplotlib.colors import Normalize
@@ -60,22 +107,29 @@ class MatplotlibBackend(PlotBackend):
                 color_val = o1
             else:
                 continue
-            segs.append([(lons[i], lats[i]), (lons[i + 1], lats[i + 1])])
+            segs.append([
+                (lons[i] + lon_offset, lats[i] + lat_offset),
+                (lons[i + 1] + lon_offset, lats[i + 1] + lat_offset),
+            ])
             colors.append(color_val)
 
         if not segs:
             return None
 
-        finite_offs = offsets[np.isfinite(offsets)]
-        vmin, vmax = self._value_norm_limits(series, value_lim)
-        lc = LineCollection(segs, cmap='RdBu_r', linewidths=10, capstyle='round',
+        vmin, vmax = self._offset_norm_limits(series, vlim)
+        if cmap is None:
+            cmap = 'RdBu_r'
+        lc = LineCollection(segs, cmap=cmap, linewidths=10, capstyle='round',
                             norm=Normalize(vmin=vmin, vmax=vmax), zorder=3)
         lc.set_array(np.asarray(colors))
         return lc
 
-    def _draw_map_panel(self, fig, ax_map, ax_curve, spec, draw_curve=True):
+    def _draw_map_panel(self, fig, ax_map, ax_curve, spec, draw_curve=True, add_colorbar=True,
+                        vlim=None, lat_offset=0.0, lon_offset=0.0, in_stack=False):
         opts = spec.options
         series = spec.offset_series
+        color_lim = vlim if vlim is not None else opts.vlim
+        cmap = self._resolve_cmap(opts)
 
         all_lons = []
         all_lats = []
@@ -85,35 +139,82 @@ class MatplotlibBackend(PlotBackend):
 
         ax_map.set_facecolor('white')
 
-        lc = self._fault_colored_segments(series, opts.value_lim)
+        lc = self._fault_colored_segments(series, color_lim, lat_offset=lat_offset,
+                                          lon_offset=lon_offset, cmap=cmap)
         if lc is not None:
             ax_map.add_collection(lc)
-            cbar = fig.colorbar(lc, ax=ax_map, shrink=0.75, pad=0.02)
-            cbar.set_label(f'offset ({opts.unit})', fontsize=opts.font_size)
+            if add_colorbar:
+                cbar = fig.colorbar(lc, ax=ax_map, shrink=0.75, pad=0.02)
+                cbar.set_label(f'offset ({opts.unit})', fontsize=opts.font_size)
 
-        pad = max(4 * spec.perp_width_km / 111.19, 0.02)
-        ax_map.set_xlim(min(all_lons) - pad, max(all_lons) + pad)
-        ax_map.set_ylim(min(all_lats) - pad, max(all_lats) + pad)
-        ax_map.set_aspect('equal', adjustable='box')
-        ax_map.set_xlabel('Longitude', fontsize=opts.font_size)
-        ax_map.set_ylabel('Latitude', fontsize=opts.font_size)
+        pad = map_view_lat_pad(spec.perp_width_km, min(all_lats), max(all_lats))
+        if not in_stack:
+            ax_map.set_xlim(min(all_lons) - pad, max(all_lons) + pad)
+            ax_map.set_ylim(min(all_lats) - pad + lat_offset, max(all_lats) + pad + lat_offset)
+            ax_map.set_aspect('equal', adjustable='box')
+            ax_map.set_xlabel('Longitude', fontsize=opts.font_size)
+            ax_map.set_ylabel('Latitude', fontsize=opts.font_size)
         if opts.title:
-            ax_map.text(0.02, 0.98, opts.title, transform=ax_map.transAxes,
-                        fontsize=opts.font_size + 1, va='top', ha='left',
-                        bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, pad=0.25))
+            lon_min, lon_max = min(all_lons), max(all_lons)
+            lat_min, lat_max = min(all_lats), max(all_lats)
+            x_label, y_label, ha, va = title_coords(
+                opts.title_position, lon_min, lon_max, lat_min, lat_max,
+                lat_offset=lat_offset)
+            ax_map.text(x_label, y_label, opts.title, fontsize=opts.font_size + 1,
+                        va=va, ha=ha)
 
         if draw_curve and ax_curve is not None:
-            ymin, ymax = self._value_norm_limits(series, opts.value_lim)
+            ymin, ymax = self._offset_norm_limits(series, None)
             ax_curve.axhline(0, color='gray', linewidth=0.8)
             ax_curve.plot(series.along_km, series.offset, 'o-', color='#c0392b', markersize=4)
             ax_curve.set_ylim(ymin, ymax)
             ax_curve.set_xlabel('Distance along fault (km)', fontsize=opts.font_size)
             ax_curve.set_ylabel(f'{series.reference_side} - other ({opts.unit})', fontsize=opts.font_size)
             ax_curve.grid(alpha=0.3)
+        return lc
+
+    def _draw_stacked_map(self, fig, ax_map, map_specs):
+        """Draw all periods on one map axis, each fault copy shifted in latitude."""
+        from matplotlib.colors import Normalize
+
+        plt = self._plt
+        opts = map_specs[0].options
+        n_periods = len(map_specs)
+        lat_step = self._map_lat_stack_step(map_specs)
+        shared_lim = self._shared_map_vlim(map_specs)
+        cmap = self._resolve_cmap(opts)
+
+        lon_min, lon_max, lat_min, lat_max = self._fault_geographic_bounds(map_specs[0])
+        pad = map_view_lat_pad(map_specs[0].perp_width_km, lat_min, lat_max)
+
+        ax_map.set_facecolor('white')
+        last_lc = None
+        for i, spec in enumerate(map_specs):
+            lat_offset = (n_periods - 1 - i) * lat_step
+            lc = self._draw_map_panel(fig, ax_map, None, spec, draw_curve=False,
+                                      add_colorbar=False, vlim=shared_lim,
+                                      lat_offset=lat_offset, in_stack=True)
+            if lc is not None:
+                last_lc = lc
+
+        ax_map.set_xlim(lon_min - pad, lon_max + pad)
+        ax_map.set_ylim(lat_min - pad, lat_max + (n_periods - 1) * lat_step + pad)
+        ax_map.set_aspect('equal', adjustable='box')
+        ax_map.set_xlabel('Longitude', fontsize=opts.font_size)
+        ax_map.set_ylabel('Latitude', fontsize=opts.font_size)
+        self._stacked_latitude_yticks(ax_map, lat_min, lat_max, pad, lat_step, n_periods)
+
+        if last_lc is not None:
+            cbar = fig.colorbar(last_lc, ax=ax_map, shrink=0.75, pad=0.02)
+            cbar.set_label(f'offset ({opts.unit})', fontsize=opts.font_size)
+        else:
+            sm = plt.cm.ScalarMappable(norm=Normalize(*shared_lim), cmap=cmap)
+            sm.set_array([])
+            cbar = fig.colorbar(sm, ax=ax_map, shrink=0.75, pad=0.02)
+            cbar.set_label(f'offset ({opts.unit})', fontsize=opts.font_size)
 
     def render_map_figure(self, map_specs, out_path):
         plt = self._plt
-        from matplotlib import gridspec
 
         n_periods = len(map_specs)
         opts = map_specs[0].options
@@ -122,23 +223,14 @@ class MatplotlibBackend(PlotBackend):
                                      gridspec_kw={'height_ratios': [2.2, 1]}, squeeze=False)
             self._draw_map_panel(fig, axes[0, 0], axes[1, 0], map_specs[0])
         else:
-            fig = plt.figure(figsize=(9, 5 * n_periods), constrained_layout=True)
-            gs = gridspec.GridSpec(n_periods, 1, figure=fig)
-            for i, spec in enumerate(map_specs):
-                ax_map = fig.add_subplot(gs[i])
-                self._draw_map_panel(fig, ax_map, None, spec, draw_curve=False)
+            height = max(6, 3.5 * n_periods)
+            fig, ax_map = plt.subplots(figsize=(9, height), constrained_layout=True)
+            self._draw_stacked_map(fig, ax_map, map_specs)
         fig.savefig(out_path, dpi=opts.dpi, bbox_inches='tight')
         self._figures.append(fig)
         return out_path
 
     # ------------------------------------------------------------- profiles
-    def _apply_profile_value_ylim(self, ax, spec, stacked_extra=0.0):
-        lim = spec.options.value_lim
-        if lim is None:
-            return
-        ymin, ymax = lim
-        ax.set_ylim(ymin, ymax + stacked_extra)
-
     def _plot_profile_samples(self, ax, across_km, values, y_offset, color, connect, zorder=3,
                               markersize=3, linewidth=1.2, alpha=1.0):
         y = np.asarray(values, dtype=float) + y_offset
@@ -189,7 +281,6 @@ class MatplotlibBackend(PlotBackend):
                 continue
             ax.axvline(0, color='#c0392b', linewidth=0.8, alpha=0.7)
             self._set_profile_xlim(ax, spec)
-            self._apply_profile_value_ylim(ax, spec)
             ax.set_xlabel('Distance across fault (km)  [negative = left]', fontsize=opts.font_size)
             ax.set_ylabel(opts.unit, fontsize=opts.font_size)
             ax.set_title(f'{opts.title}  profile {nn:02d} at {main.along_km:.1f} km',
@@ -246,7 +337,6 @@ class MatplotlibBackend(PlotBackend):
         main = self._draw_profile(ax, spec, idx)
         ax.axvline(0, color='#c0392b', linewidth=0.6, alpha=0.7)
         self._set_profile_xlim(ax, spec)
-        self._apply_profile_value_ylim(ax, spec)
         label = f'{main.along_km:.1f} km' if main is not None else 'no data'
         ax.text(0.02, 0.82, label, transform=ax.transAxes, fontsize=opts.font_size - 1)
         ax.grid(alpha=0.3)
@@ -271,8 +361,6 @@ class MatplotlibBackend(PlotBackend):
                             va='center', color='#555555')
             ax.axvline(0, color='#c0392b', linewidth=0.8, alpha=0.7)
             self._set_profile_xlim(ax, spec)
-            stacked_extra = (n_prof - 1) * step if spec.options.value_lim is not None else 0.0
-            self._apply_profile_value_ylim(ax, spec, stacked_extra=stacked_extra)
             ax.set_xlabel('Distance across fault (km)  [negative = left]', fontsize=opts.font_size)
             ax.set_ylabel(f'{opts.unit} (profiles offset by {step:.2g})', fontsize=opts.font_size)
             ax.set_title(spec.options.title, fontsize=opts.font_size + 2)

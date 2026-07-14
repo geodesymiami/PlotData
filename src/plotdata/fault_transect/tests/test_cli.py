@@ -58,12 +58,9 @@ class TestCmdLineParse(unittest.TestCase):
         self.assertEqual(inps.profile_spacing, inps.along_step)  # default follows along-step
         self.assertFalse(inps.show_flag)
         self.assertFalse(inps.upload)
+        self.assertEqual(inps.title_position, 'upper-right')
 
-    def test_dry_run_without_data(self):
-        inps = cmd_line_parse(['fault.kmz', '--dry-run'])
-        self.assertTrue(inps.dry_run)
-
-    def test_data_required_without_dry_run(self):
+    def test_data_required(self):
         with self.assertRaises(SystemExit):
             cmd_line_parse(['fault.kmz'])
 

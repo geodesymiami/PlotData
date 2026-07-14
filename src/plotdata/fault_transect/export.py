@@ -5,6 +5,15 @@ import os
 
 import numpy as np
 
+from plotdata.fault_transect.offset import OffsetSeries
+from plotdata.fault_transect.profiles import Profile, ProfileBundle
+
+
+def _parse_float(token):
+    if token in ('nan', 'NaN'):
+        return float('nan')
+    return float(token)
+
 
 def _write_txt(path, header, rows):
     parent = os.path.dirname(path)
@@ -65,3 +74,82 @@ def write_profiles_txt(path, bundle, main_indices, cloud_profiles, bracket_info)
                 is_main,
             ])
     _write_txt(path, header, rows)
+
+
+def read_offset_txt(path):
+    """Load map offset series written by :func:`write_offset_txt`."""
+    from plotdata.fault_transect.cache import parse_txt_header
+
+    header, bracket = parse_txt_header(path)
+    expected = 'along_km lat lon left_val right_val offset'
+    if not header.startswith(expected):
+        raise ValueError(f'{path}: unexpected offset header')
+    series = OffsetSeries()
+    ref_side = 'left'
+    for token in bracket.split():
+        if token.startswith('reference-side='):
+            ref_side = token.split('=', 1)[1]
+    series.reference_side = ref_side
+    with open(path, encoding='utf-8') as handle:
+        handle.readline()
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split()
+            series.along_km.append(_parse_float(parts[0]))
+            series.lat.append(_parse_float(parts[1]))
+            series.lon.append(_parse_float(parts[2]))
+            series.left_val.append(_parse_float(parts[3]))
+            series.right_val.append(_parse_float(parts[4]))
+            series.offset.append(_parse_float(parts[5]))
+    return series, bracket
+
+
+def read_profiles_txt(path):
+    """Load profile bundle and main indices written by :func:`write_profiles_txt`."""
+    from plotdata.fault_transect.cache import parse_txt_header
+
+    header, bracket = parse_txt_header(path)
+    expected = 'profile_index along_km lat lon across_km value is_main'
+    if not header.startswith(expected):
+        raise ValueError(f'{path}: unexpected profile header')
+    rows_by_index = {}
+    main_indices = set()
+    profile_length = 0.0
+    with open(path, encoding='utf-8') as handle:
+        handle.readline()
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split()
+            idx = int(parts[0])
+            along_km = _parse_float(parts[1])
+            lat = _parse_float(parts[2])
+            lon = _parse_float(parts[3])
+            across = _parse_float(parts[4])
+            value = _parse_float(parts[5])
+            is_main = parts[6] == '1'
+            rows_by_index.setdefault(idx, []).append(
+                (along_km, lat, lon, across, value, is_main))
+            if is_main:
+                main_indices.add(idx)
+            profile_length = max(profile_length, abs(across) * 2.0)
+
+    profiles = []
+    for idx in sorted(rows_by_index):
+        rows = rows_by_index[idx]
+        along_km = rows[0][0]
+        center_lat = rows[len(rows) // 2][1]
+        center_lon = rows[len(rows) // 2][2]
+        across = np.asarray([row[3] for row in rows], dtype=float)
+        lats = np.asarray([row[1] for row in rows], dtype=float)
+        lons = np.asarray([row[2] for row in rows], dtype=float)
+        values = np.asarray([row[4] for row in rows], dtype=float)
+        profiles.append(Profile(index=idx, along_km=along_km,
+                                center_lat=center_lat, center_lon=center_lon,
+                                across_km=across, lat=lats, lon=lons, value=values))
+
+    bundle = ProfileBundle(profiles=profiles, profile_length_km=profile_length, unit='')
+    return bundle, sorted(main_indices), bracket

@@ -39,8 +39,8 @@ stacked). All plotted data is exported to companion `.txt` files and an
 matplotlib is isolated in `fault_transect/backends/matplotlib_backend.py`.
 
 ```bash
-# Multi-segment KMZ: create and inspect the joint fault first
-plot_fault_transect.py PFS_Pernicana_faults_system_.kmz --dry-run
+# Multi-segment KMZ: joint fault is created automatically when needed
+plot_fault_transect.py PFS_Pernicana_faults_system_.kmz EtnaSenA44/mintpy --fault-segment 1,2,4,5,6,7,8,9,10,11 --no-display
 
 # Map (offset) + stacked profiles for one dataset
 plot_fault_transect.py PFS_Pernicana_faults_system_joint.kmz EtnaSenA44/mintpy --tag Pernicana --no-display

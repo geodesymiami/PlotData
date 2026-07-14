@@ -6,13 +6,63 @@ from dataclasses import dataclass, field
 
 @dataclass
 class PlotOptions:
-    colormap: str = 'viridis'
-    vlim: tuple = None            # (vmin, vmax) or None
-    value_lim: tuple = None       # (vmin, vmax) for offset map colors and profile y-axis
+    colormap: str = 'jet'
+    cmap_vlist: tuple = None       # (vmin, vmid, vmax) for _truncate maps
+    vlim: tuple = None            # (vmin, vmax) for offset map colorscale; None -> auto
     font_size: int = 10
     dpi: int = 300
     unit: str = 'cm/yr'
     title: str = ''
+    title_position: str = 'upper-right'
+
+
+def title_coords(position, lon_min, lon_max, lat_min, lat_max, lat_offset=0.0,
+                 margin_frac=0.02):
+    """Return (x, y, ha, va) for a map title in geographic coordinates."""
+    lon_span = lon_max - lon_min
+    lat_span = lat_max - lat_min
+    lat_base_min = lat_min + lat_offset
+    lat_base_max = lat_max + lat_offset
+    positions = {
+        'upper-left': (lon_min + margin_frac * lon_span, lat_base_max - margin_frac * lat_span,
+                       'left', 'top'),
+        'upper-right': (lon_max - margin_frac * lon_span, lat_base_max - margin_frac * lat_span,
+                        'right', 'top'),
+        'lower-left': (lon_min + margin_frac * lon_span, lat_base_min + margin_frac * lat_span,
+                       'left', 'bottom'),
+        'lower-right': (lon_max - margin_frac * lon_span, lat_base_min + margin_frac * lat_span,
+                        'right', 'bottom'),
+    }
+    try:
+        return positions[position]
+    except KeyError as exc:
+        valid = ', '.join(sorted(positions))
+        raise ValueError(f'title position must be one of: {valid}') from exc
+
+
+def map_view_lat_pad(perp_width_km, lat_min, lat_max):
+    """Padding around fault lat extent for map axes (matches single-period maps)."""
+    lat_span = lat_max - lat_min
+    return max(4 * perp_width_km / 111.19, 0.02)
+
+
+def single_period_lat_ticks(lat_min, lat_max, pad, nbins=5):
+    """Latitude tick values for one map panel (true coordinates, no stack offset)."""
+    y0, y1 = lat_min - pad, lat_max + pad
+    try:
+        from matplotlib.ticker import MaxNLocator
+        values = MaxNLocator(nbins=nbins, min_n_ticks=3).tick_values(y0, y1)
+    except ImportError:
+        step = (y1 - y0) / max(nbins - 1, 1)
+        values = [y0 + i * step for i in range(nbins)]
+    return [float(v) for v in values if y0 <= v <= y1]
+
+
+def stacked_map_ytick_pairs(lat_min, lat_max, pad, lat_step, n_periods, nbins=5):
+    """Bottom strip only: same tick positions and labels as a single-period map."""
+    del lat_step, n_periods  # stack layout; ticks match one-panel map at lat_offset=0
+    true_ticks = single_period_lat_ticks(lat_min, lat_max, pad, nbins=nbins)
+    return [(true_lat, true_lat) for true_lat in true_ticks]
 
 
 @dataclass

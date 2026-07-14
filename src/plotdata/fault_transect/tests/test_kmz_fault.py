@@ -3,6 +3,7 @@
 
 import os
 import tempfile
+import time
 import unittest
 import zipfile
 
@@ -10,7 +11,9 @@ from plotdata.fault_transect.kmz_fault import (
     read_fault_kmz, join_segments, parse_segment_spec, resolve_segment_spec,
     write_fault_kmz, write_fault_kmz_segments, joint_output_paths, polyline_length_km,
     orient_segments_for_sequence, write_segment_qc, closest_point_on_polyline,
-    homogenized_polylines, FaultSegment)
+    homogenized_polylines, FaultSegment, is_joint_kmz_path, joint_qc_path,
+    read_qc_source_kmz, resolve_joint_paths, needs_joint_processing,
+    prepare_fault_geometry)
 
 
 def make_kmz(path, segments):
@@ -178,6 +181,68 @@ class TestKmzFault(unittest.TestCase):
         oriented, qc, _ = orient_segments_for_sequence(segments, connect_gap_km=0.3)
         self.assertFalse(qc[1]['trimmed'])
         self.assertAlmostEqual(oriented[1].coords[0][0], 15.1, places=3)
+
+    def test_joint_path_helpers(self):
+        self.assertTrue(is_joint_kmz_path('/data/PFS_fault_joint.kmz'))
+        self.assertFalse(is_joint_kmz_path('/data/PFS_fault_.kmz'))
+        self.assertEqual(joint_qc_path('/data/PFS_fault_joint.kmz'),
+                         '/data/PFS_fault_joint_qc.txt')
+
+    def test_resolve_joint_paths_from_joint_input(self):
+        source = os.path.join(self.tmp.name, 'source.kmz')
+        joint = os.path.join(self.tmp.name, 'source_joint.kmz')
+        qc = joint_qc_path(joint)
+        make_kmz(source, [('A', [(15.0, 37.0), (15.1, 37.0)])])
+        write_segment_qc(qc, source, [], 1.0)
+        src, jnt, qc_out = resolve_joint_paths(joint)
+        self.assertEqual(jnt, os.path.abspath(joint))
+        self.assertEqual(src, os.path.abspath(source))
+        self.assertEqual(qc_out, os.path.abspath(qc))
+
+    def test_needs_joint_processing(self):
+        self.assertFalse(needs_joint_processing(0))
+        self.assertFalse(needs_joint_processing(1))
+        self.assertTrue(needs_joint_processing(2))
+
+    def test_prepare_fault_geometry_single_segment(self):
+        path = os.path.join(self.tmp.name, 'fault.kmz')
+        make_kmz(path, [('A', [(15.0, 37.0), (15.1, 37.0)]),
+                        ('B', [(15.2, 37.0), (15.3, 37.0)])])
+        inps = type('Inps', (), {
+            'fault_file': path, 'fault_segment': '0', 'fault_segment_by': 'index',
+            'flip_fault': False, 'outdir': self.tmp.name, 'update': False})()
+        polylines, source, cache_paths = prepare_fault_geometry(inps)
+        self.assertEqual(len(polylines), 1)
+        self.assertEqual(cache_paths, (source,))
+        self.assertFalse(os.path.isfile(os.path.join(self.tmp.name, 'fault_joint.kmz')))
+
+    def test_prepare_fault_geometry_writes_joint_for_multi(self):
+        path = os.path.join(self.tmp.name, 'fault.kmz')
+        make_kmz(path, [('A', [(15.0, 37.0), (15.1, 37.0)]),
+                        ('B', [(15.1, 37.0), (15.2, 37.0)])])
+        inps = type('Inps', (), {
+            'fault_file': path, 'fault_segment': 'all', 'fault_segment_by': 'auto',
+            'flip_fault': False, 'outdir': self.tmp.name, 'update': False})()
+        polylines, source, cache_paths = prepare_fault_geometry(inps)
+        joint = os.path.join(self.tmp.name, 'fault_joint.kmz')
+        self.assertTrue(os.path.isfile(joint))
+        self.assertEqual(len(polylines), 2)
+        self.assertEqual(cache_paths, (source, joint))
+
+    def test_prepare_fault_geometry_update_skips_joint_rewrite(self):
+        path = os.path.join(self.tmp.name, 'fault.kmz')
+        make_kmz(path, [('A', [(15.0, 37.0), (15.1, 37.0)]),
+                        ('B', [(15.1, 37.0), (15.2, 37.0)])])
+        inps = type('Inps', (), {
+            'fault_file': path, 'fault_segment': 'all', 'fault_segment_by': 'auto',
+            'flip_fault': False, 'outdir': self.tmp.name, 'update': False})()
+        prepare_fault_geometry(inps)
+        joint = os.path.join(self.tmp.name, 'fault_joint.kmz')
+        mtime = os.path.getmtime(joint)
+        time.sleep(0.02)
+        inps.update = True
+        prepare_fault_geometry(inps)
+        self.assertAlmostEqual(os.path.getmtime(joint), mtime, places=0)
 
 if __name__ == '__main__':
     unittest.main()

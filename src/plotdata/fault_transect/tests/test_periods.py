@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Tests for period parsing/adjustment and ylim parsing."""
+"""Tests for period parsing/adjustment."""
 
 import unittest
 
 from plotdata.fault_transect.periods import (
-    consecutive_start_flags, is_consecutive_boundary,
-    parse_period_chunks, validate_and_adjust_periods, parse_ylim_tokens)
+    consecutive_start_flags, gap_start_flags, is_consecutive_boundary,
+    parse_period_chunks, snap_end_date, snap_first_period_start, snap_gap_start,
+    validate_and_adjust_periods)
 
 
 class TestPeriods(unittest.TestCase):
@@ -48,20 +49,38 @@ class TestPeriods(unittest.TestCase):
         periods = parse_period_chunks(['20141001:20181224,20181225:20201224'])
         self.assertEqual(periods, [('20141001', '20181224'), ('20181225', '20201224')])
 
+    def test_gap_start_flags(self):
+        periods = [
+            ('20141001', '20181224'),
+            ('20181225', '20201225'),
+            ('20201225', '20260701'),
+        ]
+        self.assertEqual(gap_start_flags(periods), [False, True, False])
+        self.assertEqual(consecutive_start_flags(periods), [False, False, True])
 
-class TestYlimParsing(unittest.TestCase):
+    def test_four_period_mixed_boundaries(self):
+        periods = [
+            ('20141001', '20181224'),
+            ('20181225', '20201225'),
+            ('20201225', '20230601'),
+            ('20230701', '20260701'),
+        ]
+        self.assertEqual(gap_start_flags(periods), [False, True, False, True])
+        self.assertEqual(consecutive_start_flags(periods), [False, False, True, False])
+        for gap, consec in zip(gap_start_flags(periods), consecutive_start_flags(periods)):
+            self.assertFalse(gap and consec)
 
-    def test_single_pair_all_periods(self):
-        pairs = parse_ylim_tokens(['-4', '4'], 3)
-        self.assertEqual(pairs, [(-4.0, 4.0)] * 3)
+    def test_snap_gap_start_uses_first_acquisition_on_or_after(self):
+        dates = ['20181220', '20181222', '20181226', '20190101']
+        self.assertEqual(snap_gap_start(dates, '20181225'), '20181226')
 
-    def test_per_period_pairs(self):
-        pairs = parse_ylim_tokens(['-4', '4', '-5', '5'], 2)
-        self.assertEqual(pairs, [(-4.0, 4.0), (-5.0, 5.0)])
+    def test_snap_first_period_start_uses_last_acquisition_on_or_before(self):
+        dates = ['20141020', '20181222', '20190101']
+        self.assertEqual(snap_first_period_start(dates, '20141001'), '20141020')
 
-    def test_mismatched_count_raises(self):
-        with self.assertRaises(ValueError):
-            parse_ylim_tokens(['-4', '4', '-5', '5'], 3)
+    def test_snap_end_date_uses_last_acquisition_on_or_before(self):
+        dates = ['20141020', '20181222', '20190101']
+        self.assertEqual(snap_end_date(dates, '20181224'), '20181222')
 
 
 if __name__ == '__main__':

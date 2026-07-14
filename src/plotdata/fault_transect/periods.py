@@ -33,15 +33,89 @@ def consecutive_start_flags(periods):
     return flags
 
 
+def gap_start_flags(periods):
+    """For each period, True if its start is after the previous period's end (a gap)."""
+    if not periods:
+        return []
+    flags = [False]
+    for i in range(1, len(periods)):
+        flags.append(int(periods[i][0]) > int(periods[i - 1][1]))
+    return flags
+
+
+def _eos_date_list(eos_file):
+    from mintpy.objects import HDFEOS
+    return [d.decode() if isinstance(d, bytes) else str(d)
+            for d in HDFEOS(eos_file).get_date_list()]
+
+
+def snap_first_period_start(date_list, start_date):
+    """Nearest acquisition on or before ``start_date`` (first period)."""
+    if int(start_date) < int(date_list[0]):
+        print(f'WARNING: no acquisition on or before {start_date}; using {date_list[0]}')
+        return date_list[0]
+    for date in reversed(date_list):
+        if int(date) <= int(start_date):
+            return date
+    return date_list[0]
+
+
+def snap_gap_start(date_list, start_date):
+    """First acquisition on or after ``start_date`` (gap between periods)."""
+    if int(start_date) > int(date_list[-1]):
+        print(f'WARNING: no acquisition on or after {start_date}; using {date_list[-1]}')
+        return date_list[-1]
+    for date in date_list:
+        if int(date) >= int(start_date):
+            if date != start_date:
+                print(f'WARNING: gap period start {start_date} is not an '
+                      f'acquisition; using {date}')
+            return date
+    return date_list[-1]
+
+
+def snap_end_date(date_list, end_date):
+    """Nearest acquisition on or before ``end_date``."""
+    if int(end_date) > int(date_list[-1]):
+        print(f'WARNING: no acquisition on or before {end_date}; using {date_list[-1]}')
+        return date_list[-1]
+    for date in reversed(date_list):
+        if int(date) <= int(end_date):
+            return date
+    return date_list[-1]
+
+
+def snap_period_dates(eos_file, start_date, end_date, *, consecutive_start=False, gap_start=False):
+    """Snap requested period bounds to available acquisitions.
+
+    * First period: start on or before requested start; end on or before requested end.
+    * Gap (``start > prev_end``): start on or **after** requested start.
+    * Consecutive (``start == prev_end``): start on or before boundary (shared date).
+    """
+    date_list = _eos_date_list(eos_file)
+    req_start, req_end = start_date, end_date
+    if consecutive_start:
+        start_date = snap_consecutive_start(eos_file, start_date)
+    elif gap_start:
+        start_date = snap_gap_start(date_list, start_date)
+    else:
+        start_date = snap_first_period_start(date_list, start_date)
+    end_date = snap_end_date(date_list, end_date)
+
+    print('###############################################')
+    print(' Period of data:  ', date_list[0], date_list[-1])
+    print(' Period requested:', req_start, req_end)
+    print(' Period used:     ', start_date, end_date)
+    print('###############################################')
+    return start_date, end_date
+
+
 def snap_consecutive_start(eos_file, boundary_date):
     """Use ``boundary_date`` if it is an acquisition; else nearest earlier acquisition.
 
     Only for consecutive periods where period N+1 starts on period N's end date.
     """
-    from mintpy.objects import HDFEOS
-
-    date_list = [d.decode() if isinstance(d, bytes) else str(d)
-                 for d in HDFEOS(eos_file).get_date_list()]
+    date_list = _eos_date_list(eos_file)
     if boundary_date in date_list:
         return boundary_date
     for date in reversed(date_list):
@@ -83,25 +157,3 @@ def validate_and_adjust_periods(periods, adjust=True):
 
         adjusted.append((start, end))
     return adjusted
-
-
-def parse_ylim_tokens(tokens, num_periods):
-    """Parse --ylim values into one (ymin, ymax) tuple per period.
-
-    One pair applies to all periods; N pairs apply to N periods in order.
-    """
-    if not tokens:
-        return None
-    if len(tokens) % 2 != 0:
-        raise ValueError('--ylim requires pairs of values: YMIN YMAX [YMIN2 YMAX2 ...]')
-    pairs = [(float(tokens[i]), float(tokens[i + 1])) for i in range(0, len(tokens), 2)]
-    for ymin, ymax in pairs:
-        if ymin >= ymax:
-            raise ValueError(f'--ylim pair ({ymin}, {ymax}): ymin must be less than ymax')
-    if len(pairs) == 1:
-        return [pairs[0]] * num_periods
-    if len(pairs) != num_periods:
-        raise ValueError(
-            f'--ylim provides {len(pairs)} period limit(s) but {num_periods} period(s) '
-            f'were requested')
-    return pairs
