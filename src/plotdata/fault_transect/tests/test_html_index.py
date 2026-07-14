@@ -47,6 +47,8 @@ class TestHtmlIndex(unittest.TestCase):
             title='EtnaSenA44_Fiandaca')
         self.assertIn('EtnaSenA44_Fiandaca_map.png', page)
         self.assertIn('EtnaSenA44_Fiandaca_map.txt', page)
+        self.assertNotIn(f'>{os.path.basename(self.img)}</a>', page)
+        self.assertIn('text-align: left', page)
 
 
 if __name__ == '__main__':

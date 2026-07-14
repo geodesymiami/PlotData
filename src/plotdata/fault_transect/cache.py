@@ -61,7 +61,7 @@ def _style_repr(value):
     return str(value)
 
 
-def map_figure_style_key(inps, color_lims, n_periods):
+def map_figure_style_key(inps, color_lims, n_periods, dataset_label=''):
     """Fingerprint of map figure styling (not data-processing options)."""
     title_off = inps.title_offset if inps.title_offset is not None else (0.0, 0.0)
     return '|'.join([
@@ -79,10 +79,12 @@ def map_figure_style_key(inps, color_lims, n_periods):
         f'map_stack_axis={inps.map_stack_axis}',
         f'n_periods={n_periods}',
         f'tag={inps.tag_string}',
+        f'dataset={dataset_label or ""}',
+        f'scatter={inps.scatter_size}',
     ])
 
 
-def profile_figure_style_key(inps, plot_layout, n_periods):
+def profile_figure_style_key(inps, plot_layout, n_periods, dataset_label=''):
     title_off = inps.title_offset if inps.title_offset is not None else (0.0, 0.0)
     return '|'.join([
         f'layout={plot_layout}',
@@ -98,6 +100,9 @@ def profile_figure_style_key(inps, plot_layout, n_periods):
         f'title_off={_style_repr(title_off)}',
         f'n_periods={n_periods}',
         f'tag={inps.tag_string}',
+        f'plot_step_factor={inps.plot_step_factor}',
+        f'dataset={dataset_label or ""}',
+        f'scatter={inps.scatter_size}',
     ])
 
 
@@ -153,9 +158,41 @@ def map_period_bracket(inps, start, end):
 
 
 def profile_period_bracket(inps, start, end):
+    along_end = inps.along_end if inps.along_end is not None else 'end'
     return (map_period_bracket(inps, start, end)
-            + f' profile-length={inps.profile_length} layout={inps.plot_layout} '
-            f'cloud-profiles={inps.cloud_profiles}')
+            + f' along-start={inps.along_start} along-end={along_end}'
+            f' profile-length={inps.profile_length} layout={inps.plot_layout} '
+            f'cloud-profiles={inps.cloud_profiles} plot-step-factor={inps.plot_step_factor}')
+
+
+def timeseries_period_bracket(inps, periods, span_start, span_end):
+    """Bracket metadata for a full-span timeseries product."""
+    import re
+    period_list = ','.join(f'{s}:{e}' for s, e in periods)
+    base = map_period_bracket(inps, span_start, span_end)
+    base = re.sub(r'period=\S+', f'periods={period_list}', base)
+    along_end = inps.along_end if inps.along_end is not None else 'end'
+    return (base + f' along-start={inps.along_start} along-end={along_end}'
+            f' plot-step-factor={inps.plot_step_factor}')
+
+
+def timeseries_figure_style_key(inps, dataset_label=''):
+    title_off = inps.title_offset if inps.title_offset is not None else (0.0, 0.0)
+    return '|'.join([
+        f'cmap={inps.colormap}',
+        f'font={inps.font_size}',
+        f'dpi={inps.dpi}',
+        f'save={inps.save}',
+        f'stack={inps.stack_offset}',
+        f'title_pos={inps.title_position}',
+        f'title_off={_style_repr(title_off)}',
+        f'vlim={_style_repr(inps.vlim)}',
+        f'tag={inps.tag_string}',
+        f'plot_step_factor={inps.plot_step_factor}',
+        f'ts_map=1',
+        f'dataset={dataset_label or ""}',
+        f'scatter={inps.scatter_size}',
+    ])
 
 
 def _basename_candidates(project, tag_string, label, start, end):
@@ -201,6 +238,21 @@ def find_cached_txt(out_dir, project, tag_string, label, start, end, bracket_inf
                 continue
             if bracket == bracket_info:
                 return path
+    return None
+
+
+def discover_timeseries_span(out_dir, project, tag_string):
+    """Return (start, end) from a cached timeseries txt filename, or None."""
+    patterns = [os.path.join(out_dir, f'{project}_timeseries_*.txt')]
+    tag_string = (tag_string or '').strip()
+    if tag_string:
+        patterns.insert(0, os.path.join(out_dir, f'{project}_{tag_string}_timeseries_*.txt'))
+    for pattern in patterns:
+        for path in sorted(glob.glob(pattern)):
+            stem = os.path.splitext(os.path.basename(path))[0]
+            match = re.search(r'_timeseries_(\d{8})_(\d{8})$', stem)
+            if match:
+                return match.group(1), match.group(2)
     return None
 
 

@@ -7,6 +7,7 @@ import numpy as np
 
 from plotdata.fault_transect.offset import OffsetSeries
 from plotdata.fault_transect.profiles import Profile, ProfileBundle
+from plotdata.fault_transect.timeseries import TimeseriesBundle
 
 
 def _parse_float(token):
@@ -153,3 +154,71 @@ def read_profiles_txt(path):
 
     bundle = ProfileBundle(profiles=profiles, profile_length_km=profile_length, unit='')
     return bundle, sorted(main_indices), bracket
+
+
+def write_timeseries_txt(path, bundle, bracket_info):
+    """Timeseries data: one row per date per along-fault location."""
+    header = (f'location_index along_km lat lon date offset '
+              f'[{bracket_info}]')
+    rows = []
+    for loc in bundle.locations:
+        for date, value in zip(bundle.dates, loc.offset):
+            rows.append([
+                str(loc.point_index),
+                _fmt(loc.along_km, 3),
+                _fmt(loc.lat, 8),
+                _fmt(loc.lon, 8),
+                str(date),
+                _fmt(value),
+            ])
+    _write_txt(path, header, rows)
+
+
+def read_timeseries_txt(path):
+    """Load timeseries bundle written by :func:`write_timeseries_txt`."""
+    from plotdata.fault_transect.cache import parse_txt_header
+    from plotdata.fault_transect.timeseries import LocationTimeseries, TimeseriesBundle
+
+    header, bracket = parse_txt_header(path)
+    expected = 'location_index along_km lat lon date offset'
+    if not header.startswith(expected):
+        raise ValueError(f'{path}: unexpected timeseries header')
+    ref_side = 'left'
+    for token in bracket.split():
+        if token.startswith('reference-side='):
+            ref_side = token.split('=', 1)[1]
+    by_index = {}
+    dates = []
+    seen_dates = set()
+    with open(path, encoding='utf-8') as handle:
+        handle.readline()
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split()
+            idx = int(parts[0])
+            along_km = _parse_float(parts[1])
+            lat = _parse_float(parts[2])
+            lon = _parse_float(parts[3])
+            date = parts[4]
+            value = _parse_float(parts[5])
+            if date not in seen_dates:
+                dates.append(date)
+                seen_dates.add(date)
+            by_index.setdefault(idx, {'along_km': along_km, 'lat': lat, 'lon': lon,
+                                      'values': []})
+            by_index[idx]['values'].append(value)
+
+    locations = []
+    for idx in sorted(by_index):
+        entry = by_index[idx]
+        locations.append(LocationTimeseries(
+            point_index=idx,
+            along_km=entry['along_km'],
+            lat=entry['lat'],
+            lon=entry['lon'],
+            offset=np.asarray(entry['values'], dtype=float)))
+    bundle = TimeseriesBundle(dates=dates, locations=locations,
+                              unit='cm', reference_side=ref_side)
+    return bundle, bracket

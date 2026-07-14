@@ -2,6 +2,7 @@
 """Resolve HDFEOS5 inputs and derive a masked velocity grid per period."""
 
 import os
+import re
 from dataclasses import dataclass
 
 import numpy as np
@@ -46,6 +47,65 @@ def resolve_input(path):
         project = os.path.basename(os.path.dirname(os.path.dirname(eos_file))) or 'project'
 
     return eos_file, project, source
+
+
+def resolve_dataset_label(data_input, eos_file=None):
+    """Return ``ascending``, ``descending``, ``horizontal``, or ``vertical``.
+
+    Uses HDF attributes when available, then EOS filename tokens (``S1_horz_``,
+    ``S1_vert_``), then path/project names (``SenA``/``SenD``).
+    """
+    paths = [str(data_input or ''), str(eos_file or '')]
+    combined = ' '.join(paths)
+    base = os.path.basename(eos_file or data_input or '').lower()
+
+    if re.search(r'(?:^|[_-])horz(?:[_-]|$)', base):
+        return 'horizontal'
+    if re.search(r'(?:^|[_-])vert(?:[_-]|$)', base):
+        return 'vertical'
+
+    path_lower = combined.lower()
+    if re.search(r'(?:^|/)(?:horz|horizontal)(?:/|_|\.|$)', path_lower):
+        return 'horizontal'
+    if re.search(r'(?:^|/)(?:vert|vertical|up)(?:/|_|\.|$)', path_lower):
+        return 'vertical'
+
+    file_to_read = eos_file if eos_file and os.path.isfile(eos_file) else None
+    if file_to_read:
+        try:
+            from mintpy.utils import readfile
+
+            attr = readfile.read_attribute(file_to_read)
+            disp = (attr.get('displacement_type') or '').lower()
+            if disp in ('horizontal', 'vertical'):
+                return disp
+            proc = (attr.get('processing_type') or '').lower()
+            if 'horizontal' in proc:
+                return 'horizontal'
+            if 'vertical' in proc:
+                return 'vertical'
+            orbit = (attr.get('ORBIT_DIRECTION') or attr.get('ORBIT_DIRECTION_SECOND') or '')
+            orbit = orbit.lower()
+            if orbit in ('ascending', 'descending'):
+                return orbit
+        except Exception:
+            pass
+
+    s = path_lower
+    tokens = set(re.findall(r'[a-z0-9]+', s))
+    asc_tokens = {'sena', 'cska', 'senat', 'cskat', 'asc'}
+    desc_tokens = {'send', 'cskd', 'sendt', 'cskdt', 'desc'}
+    if tokens & asc_tokens:
+        return 'ascending'
+    if tokens & desc_tokens:
+        return 'descending'
+    for token in asc_tokens:
+        if token in s:
+            return 'ascending'
+    for token in desc_tokens:
+        if token in s:
+            return 'descending'
+    return ''
 
 
 def default_output_dir(eos_file, project, source):

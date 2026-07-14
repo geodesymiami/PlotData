@@ -13,6 +13,7 @@ class PlotOptions:
     dpi: int = 300
     unit: str = 'cm/yr'
     title: str = ''                   # fault / tag name only
+    dataset_label: str = ''           # ascending, descending, horizontal, or vertical
     period_label: str = ''            # formatted period range (no tag)
     title_position: str = 'upper-right'
     period_label_position: str = 'lower-left'
@@ -20,6 +21,7 @@ class PlotOptions:
     title_offset_lat: float = 0.0
     map_stack_axis: str = 'lat'       # 'lat' or 'lon': axis for stacked multi-period maps
     map_stack_offset: float = None    # manual step (deg) along map_stack_axis
+    scatter_size: float = 2.0         # marker diameter in points (profile/timeseries dots)
 
 
 def title_coords(position, lon_min, lon_max, lat_min, lat_max, lat_offset=0.0,
@@ -110,6 +112,18 @@ def print_offset_summaries(summaries):
                   f"{entry['lat_deg']:+.4f} deg lat")
 
 
+def stacked_curve_y_offset(index, count, step):
+    """Vertical offset for stacked profile/timeseries curves.
+
+    The first curve (index 0, start along fault) sits at the baseline; each
+    subsequent curve is shifted upward by ``step``. Timeseries values are
+    anchored at the first acquisition via ``stacked_timeseries_y`` so spacing
+    is uniform at early dates.
+    """
+    del count
+    return index * step
+
+
 def single_period_lat_ticks(lat_min, lat_max, pad, nbins=5):
     """Latitude tick values for one map panel (true coordinates, no stack offset)."""
     y0, y1 = lat_min - pad, lat_max + pad
@@ -195,4 +209,19 @@ class ProfileFigureSpec:
     subplot_cols: int = 1
     connect_lines: bool = False   # if True, connect profile samples with lines
     axis_half_km: float = None      # None -> derived from bundle.profile_length_km
+    options: PlotOptions = field(default_factory=PlotOptions)
+
+
+@dataclass
+class TimeseriesFigureSpec:
+    """Data for map + stacked across-fault displacement timeseries figure."""
+    bundle: object                # timeseries.TimeseriesBundle
+    period_boundary_dates: list = field(default_factory=list)
+    stack_offset: float = None
+    fault_segments: list = field(default_factory=list)
+    offset_series: object = None    # offset.OffsetSeries for full-span map coloring
+    sample_points: list = field(default_factory=list)
+    perp_width_km: float = 0.5
+    perp_offset_km: float = 0.5
+    reference_side: str = 'left'
     options: PlotOptions = field(default_factory=PlotOptions)

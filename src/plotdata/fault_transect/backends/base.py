@@ -38,6 +38,10 @@ class PlotBackend(ABC):
         """Vertically offset profiles; one axis per spec (period)."""
 
     @abstractmethod
+    def render_timeseries_stacked(self, spec, out_path):
+        """Stacked across-fault displacement timeseries vs acquisition date."""
+
+    @abstractmethod
     def show(self):
         """Open interactive windows for figures rendered so far (optional)."""
 

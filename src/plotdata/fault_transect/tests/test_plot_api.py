@@ -7,7 +7,16 @@ from plotdata.fault_transect.plot_api import (
     title_coords, stacked_map_lat_offset, stacked_map_lon_offset,
     stacked_map_axis_offset, stacked_map_ytick_pairs, stacked_map_xtick_pairs,
     compute_map_lat_stack_step, compute_map_lon_stack_step, compute_map_stack_step,
-    print_offset_summaries)
+    print_offset_summaries, stacked_curve_y_offset)
+
+
+class TestStackedCurveOffset(unittest.TestCase):
+
+    def test_first_curve_at_baseline(self):
+        self.assertEqual(stacked_curve_y_offset(0, 5, 2.0), 0.0)
+
+    def test_later_curves_stack_upward(self):
+        self.assertEqual(stacked_curve_y_offset(3, 5, 2.0), 6.0)
 
 
 class TestTitleCoords(unittest.TestCase):

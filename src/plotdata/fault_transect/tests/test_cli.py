@@ -4,7 +4,8 @@
 import unittest
 
 from plotdata.cli.plot_fault_transect import (
-    parse_periods, format_map_title, cmd_line_parse, _side_by_side)
+    parse_periods, format_map_title, cmd_line_parse, _side_by_side,
+    _along_range_indices, _select_plot_point_indices, _select_plot_points)
 from plotdata.fault_transect.naming import build_basename
 from plotdata.fault_transect.load_data import default_output_dir
 
@@ -50,14 +51,17 @@ class TestCmdLineParse(unittest.TestCase):
     def test_defaults(self):
         inps = cmd_line_parse(['FiandacaFA.kmz', 'Etna/mintpy'])
         self.assertEqual(inps.tag_string, 'FiandacaFA')
-        self.assertEqual(inps.plot_type, 'both')
+        self.assertEqual(inps.plot_type, 'all')
         self.assertEqual(inps.along_step, 1.0)
         self.assertEqual(inps.perp_width, 0.5)
         self.assertEqual(inps.sample_method, 'mean')
         self.assertEqual(inps.reference_side, 'left')
         self.assertEqual(inps.plot_layout, 'stacked')
         self.assertEqual(inps.save, 'png')
-        self.assertEqual(inps.profile_spacing, inps.along_step)  # default follows along-step
+        self.assertEqual(inps.plot_step_factor, 2)
+        self.assertEqual(inps.scatter_size, 2.0)
+        self.assertEqual(inps.along_start, 0.0)
+        self.assertIsNone(inps.along_end)
         self.assertFalse(inps.show_flag)
         self.assertFalse(inps.upload)
         self.assertEqual(inps.title_position, 'upper-right')
@@ -77,6 +81,31 @@ class TestCmdLineParse(unittest.TestCase):
     def test_map_stack_axis_lon(self):
         inps = cmd_line_parse(['FiandacaFA.kmz', 'Etna/mintpy', '--map-stack-axis', 'lon'])
         self.assertEqual(inps.map_stack_axis, 'lon')
+
+    def test_plot_type_timeseries(self):
+        inps = cmd_line_parse(['FiandacaFA.kmz', 'Etna/mintpy', '--plot-type', 'timeseries'])
+        self.assertEqual(inps.plot_type, 'timeseries')
+
+    def test_plot_step_factor(self):
+        inps = cmd_line_parse(['FiandacaFA.kmz', 'Etna/mintpy', '--plot-step-factor', '3'])
+        self.assertEqual(inps.plot_step_factor, 3)
+
+    def test_plot_step_factor_invalid(self):
+        with self.assertRaises(SystemExit):
+            cmd_line_parse(['FiandacaFA.kmz', 'Etna/mintpy', '--plot-step-factor', '0'])
+
+    def test_scatter_size(self):
+        inps = cmd_line_parse(['FiandacaFA.kmz', 'Etna/mintpy', '--scatter-size', '5'])
+        self.assertEqual(inps.scatter_size, 5.0)
+
+    def test_scatter_size_invalid(self):
+        with self.assertRaises(SystemExit):
+            cmd_line_parse(['FiandacaFA.kmz', 'Etna/mintpy', '--scatter-size', '0'])
+
+    def test_along_range_invalid(self):
+        with self.assertRaises(SystemExit):
+            cmd_line_parse(['FiandacaFA.kmz', 'Etna/mintpy', '--along-start', '10',
+                            '--along-end', '5'])
 
     def test_data_required(self):
         with self.assertRaises(SystemExit):
@@ -113,6 +142,40 @@ class TestPeriodLayout(unittest.TestCase):
     def test_explicit_override(self):
         inps = self._inps(plot_layout='subplot', period_layout='separate-page')
         self.assertFalse(_side_by_side(inps, 2))
+
+
+class TestPlotPointSelection(unittest.TestCase):
+
+    def _point(self, along_km):
+        class P:
+            pass
+        p = P()
+        p.along_km = along_km
+        return p
+
+    def test_along_range_indices(self):
+        points = [self._point(k) for k in (0.0, 1.0, 2.0, 3.0, 4.0)]
+        self.assertEqual(_along_range_indices(points, 1.0, 3.0), [1, 2, 3])
+        self.assertEqual(_along_range_indices(points, 0.0, None), [0, 1, 2, 3, 4])
+
+    def test_plot_step_factor_stride(self):
+        class Inps:
+            profile_count = None
+            plot_step_factor = 2
+
+        range_indices = list(range(10))
+        self.assertEqual(_select_plot_point_indices(range_indices, Inps),
+                         [0, 2, 4, 6, 8])
+
+    def test_select_plot_points_with_along_range(self):
+        class Inps:
+            profile_count = None
+            plot_step_factor = 1
+            along_start = 2.0
+            along_end = 5.0
+
+        points = [self._point(float(k)) for k in range(8)]
+        self.assertEqual(_select_plot_points(points, Inps), [2, 3, 4, 5])
 
 
 class TestOutputDir(unittest.TestCase):

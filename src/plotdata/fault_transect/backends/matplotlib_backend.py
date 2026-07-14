@@ -4,10 +4,11 @@
 import numpy as np
 
 from plotdata.fault_transect.backends.base import PlotBackend
+from plotdata.fault_transect.naming import format_figure_suptitle
 from plotdata.fault_transect.plot_api import (
     profile_axis_half_km, title_coords, map_view_lat_pad, map_view_lon_pad,
     compute_map_stack_step, stacked_map_axis_offset, stacked_map_ytick_pairs,
-    stacked_map_xtick_pairs)
+    stacked_map_xtick_pairs, stacked_curve_y_offset)
 from plotdata.fault_transect.profiles import auto_stack_offset
 
 
@@ -17,6 +18,14 @@ class MatplotlibBackend(PlotBackend):
         import matplotlib.pyplot as plt
         self._plt = plt
         self._figures = []
+
+    @staticmethod
+    def _cloud_marker_size(scatter_size):
+        return max(1.0, float(scatter_size) * 2.0 / 3.0)
+
+    @staticmethod
+    def _scatter_area(marker_size, scale=1.0):
+        return (float(marker_size) * scale) ** 2
 
     # ------------------------------------------------------------------ map
     def _offset_norm_limits(self, series, vlim):
@@ -214,7 +223,8 @@ class MatplotlibBackend(PlotBackend):
         if draw_curve and ax_curve is not None:
             ymin, ymax = self._offset_norm_limits(series, None)
             ax_curve.axhline(0, color='gray', linewidth=0.8)
-            ax_curve.plot(series.along_km, series.offset, 'o-', color='#c0392b', markersize=4)
+            ax_curve.plot(series.along_km, series.offset, 'o-', color='#c0392b',
+                          markersize=opts.scatter_size)
             ax_curve.set_ylim(ymin, ymax)
             ax_curve.set_xlabel('Distance along fault (km)', fontsize=opts.font_size)
             ax_curve.set_ylabel(f'{series.reference_side} - other ({opts.unit})', fontsize=opts.font_size)
@@ -275,8 +285,9 @@ class MatplotlibBackend(PlotBackend):
             sm.set_array([])
             self._add_map_colorbar(fig, ax_map, sm, opts)
 
-        if opts.title:
-            fig.suptitle(opts.title, fontsize=opts.font_size + 2, y=0.98)
+        if opts.title or opts.dataset_label:
+            fig.suptitle(format_figure_suptitle(opts.title, opts.dataset_label),
+                         fontsize=opts.font_size + 2, y=0.98)
 
     def render_map_figure(self, map_specs, out_path):
         plt = self._plt
@@ -297,8 +308,12 @@ class MatplotlibBackend(PlotBackend):
 
     # ------------------------------------------------------------- profiles
     def _plot_profile_samples(self, ax, across_km, values, y_offset, color, connect, zorder=3,
-                              markersize=3, linewidth=1.2, alpha=1.0):
-        y = np.asarray(values, dtype=float) + y_offset
+                              markersize=3, linewidth=1.2, alpha=1.0, *, stacked=False):
+        if stacked:
+            from plotdata.fault_transect.timeseries import stacked_profile_y
+            y = stacked_profile_y(values, y_offset)
+        else:
+            y = np.asarray(values, dtype=float) + y_offset
         x = np.asarray(across_km, dtype=float)
         finite = np.isfinite(x) & np.isfinite(y)
         if not np.any(finite):
@@ -315,9 +330,11 @@ class MatplotlibBackend(PlotBackend):
             half = profile_axis_half_km(spec.bundle.profile_length_km)
         ax.set_xlim(-half, half)
 
-    def _draw_profile(self, ax, spec, main_index, y_offset=0.0):
+    def _draw_profile(self, ax, spec, main_index, y_offset=0.0, *, stacked_layout=False):
         """Draw one main profile (black) plus its gray cloud on an axis."""
         bundle = spec.bundle
+        scatter_size = spec.options.scatter_size
+        cloud_size = self._cloud_marker_size(scatter_size)
         for delta in range(-spec.cloud_profiles, spec.cloud_profiles + 1):
             if delta == 0:
                 continue
@@ -326,12 +343,14 @@ class MatplotlibBackend(PlotBackend):
                 continue
             self._plot_profile_samples(ax, neighbor.across_km, neighbor.value, y_offset,
                                        color='gray', connect=spec.connect_lines,
-                                       zorder=1, markersize=2, linewidth=0.4, alpha=0.6)
+                                       zorder=1, markersize=cloud_size, linewidth=0.4, alpha=0.6,
+                                       stacked=stacked_layout)
         main = bundle.get(main_index)
         if main is not None:
             self._plot_profile_samples(ax, main.across_km, main.value, y_offset,
                                        color='black', connect=spec.connect_lines,
-                                       zorder=3, markersize=4, linewidth=1.2)
+                                       zorder=3, markersize=scatter_size, linewidth=1.2,
+                                       stacked=stacked_layout)
         return main
 
     def render_profiles_separate(self, spec, out_path_template):
@@ -400,8 +419,9 @@ class MatplotlibBackend(PlotBackend):
             for ax in row:
                 if ax.get_visible():
                     ax.set_xlim(-axis_half, axis_half)
-        if opts.title:
-            fig.suptitle(opts.title, fontsize=opts.font_size + 2)
+        if opts.title or opts.dataset_label:
+            fig.suptitle(format_figure_suptitle(opts.title, opts.dataset_label),
+                         fontsize=opts.font_size + 2)
         fig.savefig(out_path, dpi=opts.dpi, bbox_inches='tight')
         self._figures.append(fig)
         return out_path
@@ -426,10 +446,14 @@ class MatplotlibBackend(PlotBackend):
             step = spec.stack_offset if spec.stack_offset else auto_stack_offset(spec.bundle)
             n_prof = len(spec.main_indices)
             for k, idx in enumerate(spec.main_indices):
-                y_off = (n_prof - 1 - k) * step
-                main = self._draw_profile(ax, spec, idx, y_offset=y_off)
+                y_off = stacked_curve_y_offset(k, n_prof, step)
+                main = self._draw_profile(ax, spec, idx, y_offset=y_off, stacked_layout=True)
                 if main is not None:
-                    ax.text(main.across_km[-1], y_off + np.nanmedian(main.value),
+                    from plotdata.fault_transect.timeseries import stacked_profile_y
+                    plotted = stacked_profile_y(main.value, y_off)
+                    finite = np.isfinite(plotted)
+                    label_y = float(np.nanmedian(plotted[finite])) if np.any(finite) else y_off
+                    ax.text(main.across_km[-1], label_y,
                             f' {main.along_km:.1f} km', fontsize=opts.font_size - 1,
                             va='center', color='#555555')
             ax.axvline(0, color='#c0392b', linewidth=0.8, alpha=0.7)
@@ -438,8 +462,113 @@ class MatplotlibBackend(PlotBackend):
             ax.set_ylabel(f'{opts.unit} (profiles offset by {step:.2g})', fontsize=opts.font_size)
             ax.set_title(spec.options.period_label, fontsize=opts.font_size + 2)
             ax.grid(alpha=0.3)
-        if opts.title:
-            fig.suptitle(opts.title, fontsize=opts.font_size + 2)
+        if opts.title or opts.dataset_label:
+            fig.suptitle(format_figure_suptitle(opts.title, opts.dataset_label),
+                         fontsize=opts.font_size + 2)
+        fig.savefig(out_path, dpi=opts.dpi, bbox_inches='tight')
+        self._figures.append(fig)
+        return out_path
+
+    def render_timeseries_stacked(self, spec, out_path):
+        from datetime import datetime
+
+        from plotdata.fault_transect.timeseries import (
+            auto_timeseries_stack_offset, reference_side_center_latlon,
+            stacked_timeseries_y)
+
+        plt = self._plt
+        opts = spec.options
+        bundle = spec.bundle
+        if not bundle.locations:
+            raise ValueError('timeseries figure has no locations to plot')
+
+        step = (spec.stack_offset if spec.stack_offset is not None
+                else auto_timeseries_stack_offset(bundle))
+        n_loc = len(bundle.locations)
+        height = max(10, 1.6 * n_loc)
+        fig = plt.figure(figsize=(12, height), constrained_layout=True)
+        gs = fig.add_gridspec(1, 2, width_ratios=[1.0, 1.15], wspace=0.22)
+        ax_map = fig.add_subplot(gs[0, 0])
+        ax_ts = fig.add_subplot(gs[0, 1])
+
+        # ------------------------------- left: map with sample markers
+        ax_map.set_facecolor('white')
+        all_lons, all_lats = [], []
+        for seg in spec.fault_segments:
+            all_lons.extend(seg['lons'])
+            all_lats.extend(seg['lats'])
+
+        last_lc = None
+        if spec.offset_series is not None and len(spec.offset_series.offset):
+            color_lim = opts.vlim if opts.vlim is not None else self._offset_norm_limits(
+                spec.offset_series, None)
+            cmap = self._resolve_cmap(opts)
+            last_lc = self._fault_colored_segments(
+                spec.offset_series, color_lim, cmap=cmap)
+            if last_lc is not None:
+                ax_map.add_collection(last_lc)
+        else:
+            for seg in spec.fault_segments:
+                ax_map.plot(seg['lons'], seg['lats'], color='#555555', linewidth=2.0,
+                            zorder=2)
+
+        fault_lons, fault_lats, ref_lons, ref_lats = [], [], [], []
+        for loc in bundle.locations:
+            fault_lons.append(loc.lon)
+            fault_lats.append(loc.lat)
+            if loc.point_index < len(spec.sample_points):
+                point = spec.sample_points[loc.point_index]
+                ref_lat, ref_lon = reference_side_center_latlon(
+                    point, spec.reference_side, spec.perp_offset_km, spec.perp_width_km)
+                ref_lons.append(ref_lon)
+                ref_lats.append(ref_lat)
+
+        ax_map.scatter(fault_lons, fault_lats, s=self._scatter_area(opts.scatter_size),
+                       c='black', marker='o',
+                       edgecolors='white', linewidths=0.4, zorder=5, label='point')
+        if ref_lons:
+            ax_map.scatter(ref_lons, ref_lats,
+                           s=self._scatter_area(opts.scatter_size, 1.15),
+                           c='#c0392b', marker='s',
+                           edgecolors='white', linewidths=0.4, zorder=5,
+                           label='reference')
+
+        if all_lons and all_lats:
+            pad = map_view_lat_pad(spec.perp_width_km, min(all_lats), max(all_lats))
+            ax_map.set_xlim(min(all_lons) - pad, max(all_lons) + pad)
+            ax_map.set_ylim(min(all_lats) - pad, max(all_lats) + pad)
+            ax_map.set_aspect('equal', adjustable='box')
+        ax_map.set_xlabel('Longitude', fontsize=opts.font_size)
+        ax_map.set_ylabel('Latitude', fontsize=opts.font_size)
+        if last_lc is not None:
+            self._add_map_colorbar(fig, ax_map, last_lc, opts)
+        if spec.fault_segments:
+            lon_min, lon_max = min(all_lons), max(all_lons)
+            lat_min, lat_max = min(all_lats), max(all_lats)
+            self._draw_map_text(ax_map, opts, lon_min, lon_max, lat_min, lat_max,
+                                draw_title=True, draw_period=True)
+        ax_map.legend(loc='lower left', fontsize=max(opts.font_size - 2, 7), framealpha=0.9)
+
+        # ------------------------------ right: stacked timeseries (dots)
+        x_dates = [datetime.strptime(str(d), '%Y%m%d') for d in bundle.dates]
+
+        for date in spec.period_boundary_dates:
+            x = datetime.strptime(str(date), '%Y%m%d')
+            ax_ts.axvline(x, color='#888888', linewidth=0.6, linestyle='-', alpha=0.85,
+                          zorder=0)
+
+        for k, loc in enumerate(bundle.locations):
+            y = stacked_timeseries_y(loc.offset, k, step)
+            ax_ts.plot(x_dates, y, linestyle='none', marker='o', color='black',
+                       markersize=opts.scatter_size, zorder=3)
+
+        ax_ts.set_xlabel('Date', fontsize=opts.font_size)
+        ax_ts.set_ylabel('LOS Displacement [cm]', fontsize=opts.font_size)
+        ax_ts.grid(alpha=0.3)
+        fig.autofmt_xdate()
+        suptitle = format_figure_suptitle(opts.title, opts.dataset_label)
+        if suptitle:
+            fig.suptitle(suptitle, fontsize=opts.font_size + 2, y=1.02)
         fig.savefig(out_path, dpi=opts.dpi, bbox_inches='tight')
         self._figures.append(fig)
         return out_path

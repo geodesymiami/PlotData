@@ -17,10 +17,10 @@ _PAGE = """<!DOCTYPE html>
   h2 {{ font-size: 1.15em; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-top: 1.6em; }}
   .cmd {{ background: #f4f4f4; padding: 8px 12px; border-radius: 6px; font-family: monospace;
          font-size: 0.85em; overflow-x: auto; }}
-  .item {{ display: inline-block; margin: 10px; text-align: center; vertical-align: top; }}
-  .item img {{ max-width: 340px; border: 1px solid #ddd; border-radius: 4px; }}
+  .item {{ display: inline-block; margin: 10px; vertical-align: top; text-align: left; }}
+  .item img {{ display: block; max-width: 340px; border: 1px solid #ddd; border-radius: 4px; }}
   .item a {{ font-size: 0.85em; }}
-  .txt {{ display: block; margin-top: 2px; }}
+  .txt {{ display: block; margin-top: 4px; text-align: left; }}
 </style>
 </head>
 <body>
@@ -48,7 +48,6 @@ def build_index_html(out_dir, command, entries, *, title=None):
         for item in items:
             img_rel = os.path.relpath(item['image'], out_dir)
             card = f'<div class="item"><a href="{img_rel}"><img src="{img_rel}" alt=""></a>'
-            card += f'<a href="{img_rel}">{html.escape(os.path.basename(item["image"]))}</a>'
             txts = item.get('txt') or []
             if isinstance(txts, str):
                 txts = [txts]

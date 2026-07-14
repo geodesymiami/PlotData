@@ -32,18 +32,25 @@ Check the [Installation guide](https://github.com/geodesymiami/PlotData/blob/mai
 
 `plot_fault_transect.py` takes a fault trace KMZ and 1-4 HDFEOS5 timeseries inputs
 (S1_*.he5 files or mintpy/miaplpy directories) and plots the across-fault
-displacement offset sampled along the fault (`--plot-type map`) and/or
-fault-perpendicular profiles (`--plot-type profile`, layouts: separate, subplot,
-stacked). All plotted data is exported to companion `.txt` files and an
-`index.html` is generated. Code lives in `src/plotdata/fault_transect/`;
-matplotlib is isolated in `fault_transect/backends/matplotlib_backend.py`.
+displacement offset sampled along the fault (`--plot-type map`), fault-perpendicular
+profiles (`--plot-type profile`), and/or stacked across-fault displacement
+timeseries (`--plot-type timeseries`). Use `--plot-type all` (default) for all three.
+Profile and timeseries locations use `--plot-step-factor N` (every Nth `--along-step`
+sampling point; default 2). Vertical spacing in stacked profile/timeseries plots:
+`--stack-offset` (cm; default auto). Layouts for profiles: separate, subplot, stacked.
+All plotted data is exported to companion `.txt` files and an `index.html` is
+generated. Code lives in `src/plotdata/fault_transect/`; matplotlib is isolated
+in `fault_transect/backends/matplotlib_backend.py`.
 
 ```bash
 # Multi-segment KMZ: joint fault is created automatically when needed
 plot_fault_transect.py PFS_Pernicana_faults_system_.kmz EtnaSenA44/mintpy --fault-segment 1,2,4,5,6,7,8,9,10,11 --no-display
 
-# Map (offset) + stacked profiles for one dataset
+# Map + stacked profiles for one dataset
 plot_fault_transect.py PFS_Pernicana_faults_system_joint.kmz EtnaSenA44/mintpy --tag Pernicana --no-display
+
+# Stacked timeseries with period boundary markers
+plot_fault_transect.py FiandacaFault_FA.kmz EtnaSenA44/mintpy --plot-type timeseries --period 20141001:20181222,20181228:20260701 --no-display
 
 # Two periods side-by-side, 10 profiles in a 10x1 subplot
 plot_fault_transect.py fault_joint.kmz EtnaSenA44/mintpy --plot-type profile --plot-layout subplot --profile-count 10 --period 20141020:20181231,20190101:20260626 --no-display

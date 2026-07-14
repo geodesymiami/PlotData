@@ -4,7 +4,8 @@
 import unittest
 
 from plotdata.fault_transect.naming import (
-    extract_fault_tag, format_fault_plot_title, resolve_output_tag, index_html_stem,
+    extract_fault_tag, format_fault_plot_title, format_dataset_display_label,
+    format_figure_suptitle, resolve_output_tag, index_html_stem,
     build_basename, MAP_LABEL, PROFILE_LABEL, multi_period_stem)
 
 
@@ -35,6 +36,17 @@ class TestExtractFaultTag(unittest.TestCase):
     def test_format_fault_plot_title(self):
         self.assertEqual(format_fault_plot_title('Fiandaca'), 'Fiandaca Fault')
         self.assertEqual(format_fault_plot_title(''), '')
+
+    def test_format_dataset_display_label(self):
+        self.assertEqual(format_dataset_display_label('ascending'), 'Ascending')
+        self.assertEqual(format_dataset_display_label('horizontal'), 'Horizontal')
+        self.assertEqual(format_dataset_display_label(''), '')
+
+    def test_format_figure_suptitle(self):
+        self.assertEqual(format_figure_suptitle('Fiandaca Fault', 'ascending'),
+                         'Fiandaca Fault\nAscending')
+        self.assertEqual(format_figure_suptitle('Fiandaca Fault', ''), 'Fiandaca Fault')
+        self.assertEqual(format_figure_suptitle('', 'descending'), 'Descending')
 
     def test_build_basename(self):
         self.assertEqual(

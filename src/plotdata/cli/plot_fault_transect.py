@@ -10,7 +10,8 @@ mintpy/miaplpy directories). Produces a map plot (fault trace + sampling boxes
 colored by across-fault offset + offset-vs-distance curve) and/or profile
 plots (fault-perpendicular profiles at regular along-fault spacing). All
 plotted data is always exported to companion .txt files and an index.html is
-generated.
+generated. Plot types: map (period offset rate), profile (cross-fault), timeseries
+(across-fault displacement vs acquisition date).
 """
 
 import os
@@ -52,8 +53,6 @@ def create_parser():
 
     geom = parser.add_argument_group('Sampling geometry')
     geom.add_argument('--along-step', dest='along_step', type=float, default=1.0, help='Spacing of sampling points along the fault in km (default: %(default)s)')
-    geom.add_argument('--along-start', dest='along_start', type=float, default=0.0, help='Start distance along fault in km (default: %(default)s)')
-    geom.add_argument('--along-end', dest='along_end', type=float, default=None, help='End distance along fault in km (default: fault end)')
     geom.add_argument('--perp-width', dest='perp_width', type=float, default=0.5, help='Search-zone width on each side of the fault in km (default: %(default)s)')
     geom.add_argument('--perp-offset', dest='perp_offset', type=float, default=0.5,
                       help='Gap excluded next to the fault before the search zone on each side, in km (default: %(default)s)')
@@ -61,17 +60,28 @@ def create_parser():
     geom.add_argument('--interpolation', dest='interpolation', choices=['nearest', 'linear', 'cubic'], default='nearest', help='Value extraction along profile lines (default: %(default)s)')
 
     plot = parser.add_argument_group('Plot selection and layout')
-    plot.add_argument('--plot-type', dest='plot_type', choices=['map', 'profile', 'both'], default='both', help='What to plot (default: %(default)s)')
+    plot.add_argument('--plot-type', dest='plot_type',
+                      choices=['map', 'profile', 'timeseries', 'all'], default='all',
+                      help='What to plot (default: %(default)s)')
     plot.add_argument('--reference-side', dest='reference_side', choices=['left', 'right'], default='left', help='Reference side of fault; offset = reference - other (default: %(default)s)')
     plot.add_argument('--plot-layout', dest='plot_layout', choices=['separate', 'subplot', 'stacked', '3d'], default='stacked', help='Profile arrangement (default: %(default)s)')
-    plot.add_argument('--profile-spacing', dest='profile_spacing', type=float, default=None, help='Spacing between profiles in km (default: --along-step)')
+    plot.add_argument('--plot-step-factor', dest='plot_step_factor', type=int, default=2,
+                      help='Plot every Nth along-fault sampling point (factor of --along-step; '
+                           'default: %(default)s)')
+    plot.add_argument('--along-start', dest='along_start', type=float, default=0.0,
+                      help='Start distance along fault in km for profile and timeseries plots '
+                           '(default: %(default)s; map uses full fault)')
+    plot.add_argument('--along-end', dest='along_end', type=float, default=None,
+                      help='End distance along fault in km for profile and timeseries plots '
+                           '(default: fault end; map uses full fault)')
     plot.add_argument('--profile-length', dest='profile_length', type=float, default=4.0, help='Profile length across the fault in km (default: %(default)s)')
     plot.add_argument('--profile-count', dest='profile_count', type=int, default=None, help='Fixed number of profiles (overrides --profile-spacing)')
     plot.add_argument('--cloud-profiles', dest='cloud_profiles', type=int, default=0, help='Adjacent profiles per side as thin gray lines (default: %(default)s)')
     plot.add_argument('--profile-lines', dest='profile_lines', action='store_true',
                       help='Connect profile samples with lines (default: dots only)')
     plot.add_argument('--stack-offset', dest='stack_offset', type=float, default=None,
-                      help='Vertical step between profiles in stacked profile layout (default: auto)')
+                      help='Vertical step between curves in stacked profile and timeseries '
+                           'layouts (default: auto)')
     plot.add_argument('--subplot-cols', dest='subplot_cols', type=int, default=1, help='Columns for subplot layout (default: %(default)s)')
     plot.add_argument('--period-layout', dest='period_layout', choices=['auto', 'side-by-side', 'separate-page'], default='auto', help='Arrangement for multiple periods (default: %(default)s)')
 
@@ -87,6 +97,9 @@ def create_parser():
                        metavar=('VMIN', 'VMID', 'VMAX'),
                        help='Truncation limits for *_truncate colormaps (default: 0 0.7 1)')
     style.add_argument('--font-size', dest='font_size', type=int, default=10, help='Font size (default: %(default)s)')
+    style.add_argument('--scatter-size', dest='scatter_size', type=float, default=2.0, metavar='SIZE',
+                       help='Scatter marker size in points for profile and timeseries dots '
+                            '(default: %(default)s)')
     style.add_argument('--dpi', dest='dpi', type=int, default=300, help='Figure DPI (default: %(default)s)')
     style.add_argument('--title-position', dest='title_position',
                        choices=['upper-left', 'upper-right', 'lower-left', 'lower-right'],
@@ -125,6 +138,18 @@ def create_parser():
     return parser
 
 
+def _wants_map(plot_type):
+    return plot_type in ('map', 'all')
+
+
+def _wants_profile(plot_type):
+    return plot_type in ('profile', 'all')
+
+
+def _wants_timeseries(plot_type):
+    return plot_type in ('timeseries', 'all')
+
+
 def parse_periods(tokens):
     """Parse --period tokens; each may contain comma-separated periods.
 
@@ -140,7 +165,7 @@ def format_map_title(tag_string, start_date, end_date):
     return format_period_display(start_date, end_date)
 
 
-def make_plot_options(inps, grid, *, vlim=None):
+def make_plot_options(inps, grid, *, vlim=None, dataset_label=''):
     """Build PlotOptions with fault tag title and formatted period label."""
     from plotdata.fault_transect.naming import format_fault_plot_title
     from plotdata.fault_transect.periods import format_period_display
@@ -156,12 +181,14 @@ def make_plot_options(inps, grid, *, vlim=None):
         dpi=inps.dpi,
         unit=grid.unit,
         title=format_fault_plot_title(inps.tag_string),
+        dataset_label=(dataset_label or '').strip(),
         period_label=format_period_display(grid.start_date, grid.end_date),
         title_position=inps.title_position,
         title_offset_lon=title_off[0],
         title_offset_lat=title_off[1],
         map_stack_axis=inps.map_stack_axis,
         map_stack_offset=inps.map_stack_offset,
+        scatter_size=inps.scatter_size,
     )
 
 
@@ -178,8 +205,6 @@ def cmd_line_parse(iargs=None):
     if inps.plots_only and inps.plot_layout == 'separate':
         parser.error('--plots-only is not supported with --plot-layout separate; '
                      'use subplot or stacked')
-    if inps.profile_spacing is None:
-        inps.profile_spacing = inps.along_step
 
     try:
         inps.periods = parse_periods(inps.period)
@@ -187,8 +212,15 @@ def cmd_line_parse(iargs=None):
         parser.error(str(exc))
     if inps.vlim is not None and inps.vlim[0] >= inps.vlim[1]:
         parser.error('--vlim VMIN must be less than VMAX')
+    if inps.plot_step_factor < 1:
+        parser.error('--plot-step-factor must be >= 1')
     if inps.map_stack_offset is not None and inps.map_stack_offset <= 0:
         parser.error('--map-stack-offset must be positive')
+    if inps.scatter_size <= 0:
+        parser.error('--scatter-size must be positive')
+    if (inps.along_end is not None and inps.along_start >= inps.along_end
+            and (_wants_profile(inps.plot_type) or _wants_timeseries(inps.plot_type))):
+        parser.error('--along-start must be smaller than --along-end')
 
     from plotdata.fault_transect.naming import resolve_output_tag
     inps.tag_string = resolve_output_tag(inps.fault_file, inps.tag_string)
@@ -289,17 +321,54 @@ def _load_profiles_from_cache(inps, txt_path, eos_file, bracket_info):
     return None, None
 
 
-def _select_profile_points(points, inps):
-    """Pick main-profile sampling-point indices from spacing or count."""
-    if not points:
+def _load_timeseries_from_cache(inps, txt_path, eos_file, bracket_info):
+    from plotdata.fault_transect.cache import txt_cache_hit
+    from plotdata.fault_transect.export import read_timeseries_txt
+
+    fault_paths = _fault_cache_inputs(inps)
+    if inps.plots_only:
+        _require_plots_only_cache(txt_path, eos_file, bracket_info, *fault_paths)
+        bundle, _ = read_timeseries_txt(txt_path)
+        print(f'Using cached timeseries data from {txt_path}')
+        return bundle
+    if inps.force:
+        return None
+    if txt_path and txt_cache_hit(txt_path, eos_file, bracket_info, *fault_paths):
+        bundle, _ = read_timeseries_txt(txt_path)
+        print(f'Using cached timeseries data from {txt_path}')
+        return bundle
+    return None
+
+
+def _along_range_indices(points, along_start, along_end):
+    """Indices into ``points`` whose along_km lies in [along_start, along_end]."""
+    indices = []
+    for i, point in enumerate(points):
+        if point.along_km + 1e-9 < along_start:
+            continue
+        if along_end is not None and point.along_km > along_end + 1e-9:
+            continue
+        indices.append(i)
+    return indices
+
+
+def _select_plot_point_indices(range_indices, inps):
+    """Subsample indices for profile/timeseries from an along-fault range."""
+    if not range_indices:
         return []
     if inps.profile_count:
-        n = min(inps.profile_count, len(points))
-        idx = [int(round(k)) for k in
-               [i * (len(points) - 1) / max(n - 1, 1) for i in range(n)]]
-        return sorted(set(idx))
-    stride = max(1, int(round(inps.profile_spacing / inps.along_step)))
-    return list(range(0, len(points), stride))
+        n = min(inps.profile_count, len(range_indices))
+        picks = [int(round(k)) for k in
+                 [i * (len(range_indices) - 1) / max(n - 1, 1) for i in range(n)]]
+        return sorted(set(range_indices[i] for i in picks))
+    stride = max(1, int(inps.plot_step_factor))
+    return range_indices[::stride]
+
+
+def _select_plot_points(points, inps):
+    """Pick along-fault sampling-point indices for profiles and timeseries."""
+    range_indices = _along_range_indices(points, inps.along_start, inps.along_end)
+    return _select_plot_point_indices(range_indices, inps)
 
 
 def _side_by_side(inps, num_periods):
@@ -311,7 +380,7 @@ def _side_by_side(inps, num_periods):
     if inps.period_layout == 'separate-page':
         return False
     # auto: compact layouts side-by-side; full-page 'separate' layout per period
-    return inps.plot_layout != 'separate' or inps.plot_type == 'map'
+    return inps.plot_layout != 'separate' or _wants_map(inps.plot_type)
 
 
 def _multi_period_stem(project, tag_string, plot_label, periods):
@@ -334,24 +403,41 @@ def _make_grid_stub(start_date, end_date, unit):
                         eos_file='', project='', source='', unit=unit)
 
 
+def _index_group(project, dataset_label, kind):
+    from plotdata.fault_transect.naming import format_dataset_display_label
+    ds = format_dataset_display_label(dataset_label)
+    if ds:
+        return f'{project} {ds} {kind}'
+    return f'{project} {kind}'
+
+
 def _process_input(inps, fault_segments, data_input, command):
     """Full pipeline for one data input: all periods, map + profile plots."""
     from plotdata.fault_transect.load_data import (
-        resolve_input, default_output_dir, full_date_span, load_velocity_grid)
+        resolve_input, resolve_dataset_label, default_output_dir, full_date_span,
+        load_velocity_grid)
     from plotdata.fault_transect.fault_sampling import sample_points_segments
     from plotdata.fault_transect.offset import compute_offset_series
     from plotdata.fault_transect.profiles import extract_profiles
-    from plotdata.fault_transect.plot_api import PlotOptions, MapFigureSpec, ProfileFigureSpec
+    from plotdata.fault_transect.plot_api import (
+        PlotOptions, MapFigureSpec, ProfileFigureSpec, TimeseriesFigureSpec)
     from plotdata.fault_transect.backends import get_backend
-    from plotdata.fault_transect.export import write_offset_txt, write_profiles_txt
+    from plotdata.fault_transect.export import (
+        write_offset_txt, write_profiles_txt, write_timeseries_txt)
     from plotdata.fault_transect.log_io import append_command_log
-    from plotdata.fault_transect.naming import MAP_LABEL, PROFILE_LABEL, build_basename
+    from plotdata.fault_transect.naming import (
+        MAP_LABEL, PROFILE_LABEL, TIMESERIES_LABEL, build_basename)
     from plotdata.fault_transect.cache import (
         should_write_txt, figure_is_fresh, combined_figure_is_fresh, write_figure_style,
-        map_figure_style_key, profile_figure_style_key, find_cached_txt,
-        discover_map_periods, map_period_bracket, profile_period_bracket)
+        map_figure_style_key, profile_figure_style_key, timeseries_figure_style_key,
+        find_cached_txt, discover_map_periods, discover_timeseries_span,
+        map_period_bracket, profile_period_bracket, timeseries_period_bracket)
+    from plotdata.fault_transect.timeseries import (
+        compute_timeseries_offsets, interior_period_dates, load_displacement_timeseries,
+        snap_timeseries_span, auto_timeseries_stack_offset, plotted_interior_period_dates)
 
     eos_file, project, source = resolve_input(data_input)
+    dataset_label = resolve_dataset_label(data_input, eos_file)
     out_dir = inps.outdir if inps.outdir else default_output_dir(eos_file, project, source)
     os.makedirs(out_dir, exist_ok=True)
     work_dir = os.path.join(out_dir, 'work')
@@ -364,15 +450,28 @@ def _process_input(inps, fault_segments, data_input, command):
         periods = inps.periods
     elif inps.plots_only:
         periods = discover_map_periods(out_dir, project, inps.tag_string)
+        if not periods and _wants_timeseries(inps.plot_type):
+            span = discover_timeseries_span(out_dir, project, inps.tag_string)
+            if span:
+                periods = [span]
         if not periods:
-            raise SystemExit(f'ERROR: --plots-only found no map txt files under {out_dir}')
+            raise SystemExit(f'ERROR: --plots-only found no cached txt files under {out_dir}')
     else:
         periods = [full_date_span(eos_file)]
 
-    points = sample_points_segments(fault_segments, inps.along_step, inps.along_start, inps.along_end)
+    points = sample_points_segments(fault_segments, inps.along_step, 0.0, None)
     if not points:
-        raise SystemExit('ERROR: no sampling points on the fault; check --along-* options')
-    print(f'{project}: {len(points)} sampling points along {points[-1].along_km:.1f} km of fault')
+        raise SystemExit('ERROR: no sampling points on the fault; check --along-step')
+    plot_point_indices = _select_plot_points(points, inps)
+    if (_wants_profile(inps.plot_type) or _wants_timeseries(inps.plot_type)) and not plot_point_indices:
+        raise SystemExit('ERROR: no profile/timeseries locations in '
+                         f'--along-start {inps.along_start} to '
+                         f'--along-end {inps.along_end or "fault end"}')
+    dataset_note = f', {dataset_label}' if dataset_label else ''
+    n_plot = len(plot_point_indices)
+    plot_note = f'; {n_plot} profile/timeseries location{"s" if n_plot != 1 else ""}' if n_plot else ''
+    print(f'{project}{dataset_note}: {len(points)} sampling points along '
+          f'{points[-1].along_km:.1f} km of fault{plot_note}')
 
     fault_segments_xy = [{'lons': [c[0] for c in seg], 'lats': [c[1] for c in seg]} for seg in fault_segments]
 
@@ -398,7 +497,8 @@ def _process_input(inps, fault_segments, data_input, command):
         prof_txt = find_cached_txt(out_dir, project, inps.tag_string, prof_label, start, end, prof_bracket)
 
         grid = None
-        if inps.plot_type in ('map', 'both'):
+        need_period_grid = _wants_map(inps.plot_type) or _wants_profile(inps.plot_type)
+        if _wants_map(inps.plot_type):
             series = _load_map_series_from_cache(inps, map_txt, eos_file, map_bracket)
             if series is None:
                 if inps.plots_only:
@@ -417,20 +517,22 @@ def _process_input(inps, fault_segments, data_input, command):
                 start_date, end_date = _dates_from_product_txt(map_txt)
                 grid = _make_grid_stub(start_date, end_date, inps.unit)
             all_series.append(series)
-        elif inps.plots_only:
+        elif need_period_grid and inps.plots_only:
             if prof_txt:
                 start_date, end_date = _dates_from_product_txt(prof_txt)
             else:
                 start_date, end_date = start, end
             grid = _make_grid_stub(start_date, end_date, inps.unit)
-        else:
+        elif need_period_grid:
             grid = load_velocity_grid(eos_file, project, source, start, end, work_dir,
                                       inps.mask_vmin, consecutive_start=consec_flags[i],
                                       gap_start=gap_flags[i], force=inps.force,
                                       tag_string=inps.tag_string)
-        grids.append(grid)
 
-        if inps.plot_type in ('profile', 'both'):
+        if need_period_grid:
+            grids.append(grid)
+
+        if _wants_profile(inps.plot_type):
             bundle, main_indices = _load_profiles_from_cache(
                 inps, prof_txt, eos_file, prof_bracket)
             if bundle is None:
@@ -445,7 +547,7 @@ def _process_input(inps, fault_segments, data_input, command):
                     grids[-1] = grid
                 bundle = extract_profiles(grid.data, grid.attr, points, inps.profile_length,
                                           inps.interpolation, grid.unit)
-                main_indices = [idx for idx in _select_profile_points(points, inps)
+                main_indices = [idx for idx in plot_point_indices
                                 if bundle.get(idx) is not None]
             prof_bundles_data.append((bundle, main_indices))
 
@@ -460,7 +562,7 @@ def _process_input(inps, fault_segments, data_input, command):
         all_series)
 
     # -------------------------------------------------------------- map plot
-    if inps.plot_type in ('map', 'both'):
+    if _wants_map(inps.plot_type):
         map_specs, map_txts = [], []
         for grid, series, color_lim, (start, end) in zip(
                 grids, all_series, color_lims, periods):
@@ -475,10 +577,11 @@ def _process_input(inps, fault_segments, data_input, command):
                                            fault_segments=fault_segments_xy,
                                            offset_series=series, perp_width_km=inps.perp_width,
                                            options=make_plot_options(inps, grid,
-                                                             vlim=color_lim)))
+                                                             vlim=color_lim,
+                                                             dataset_label=dataset_label)))
             map_txts.append(txt_path)
 
-        map_style = map_figure_style_key(inps, color_lims, len(map_specs))
+        map_style = map_figure_style_key(inps, color_lims, len(map_specs), dataset_label)
         if combine:
             stem = _multi_period_stem(project, inps.tag_string, MAP_LABEL, actual_periods)
             img_path = os.path.join(out_dir, f'{stem}.{inps.save}')
@@ -500,13 +603,13 @@ def _process_input(inps, fault_segments, data_input, command):
                 backend.render_map_figure(map_specs, img_path)
                 write_figure_style(img_path, map_style)
                 print(f'Figure saved to {img_path}')
-            index_entries.append({'group': f'{project} map', 'image': img_path, 'txt': map_txts})
+            index_entries.append({'group': _index_group(project, dataset_label, 'map'), 'image': img_path, 'txt': map_txts})
         else:
             for spec, txt_path, grid in zip(map_specs, map_txts, grids):
                 stem = build_basename(project, inps.tag_string, MAP_LABEL,
                                       grid.start_date, grid.end_date)
                 img_path = os.path.join(out_dir, f'{stem}.{inps.save}')
-                period_style = map_figure_style_key(inps, [spec.options.vlim], 1)
+                period_style = map_figure_style_key(inps, [spec.options.vlim], 1, dataset_label)
                 if (not inps.plots_only
                         and figure_is_fresh(img_path, txt_path, period_style,
                                             eos_file, *fault_paths)):
@@ -515,10 +618,11 @@ def _process_input(inps, fault_segments, data_input, command):
                     backend.render_map_figure([spec], img_path)
                     write_figure_style(img_path, period_style)
                     print(f'Figure saved to {img_path}')
-                index_entries.append({'group': f'{project} map', 'image': img_path, 'txt': txt_path})
+                index_entries.append({'group': _index_group(project, dataset_label, 'map'),
+                                      'image': img_path, 'txt': txt_path})
 
     # --------------------------------------------------------- profile plots
-    if inps.plot_type in ('profile', 'both'):
+    if _wants_profile(inps.plot_type):
         prof_specs, prof_bundles = [], []
         for grid_idx, grid in enumerate(grids):
             if grid_idx < len(prof_bundles_data):
@@ -526,7 +630,7 @@ def _process_input(inps, fault_segments, data_input, command):
             else:
                 bundle = extract_profiles(grid.data, grid.attr, points, inps.profile_length,
                                           inps.interpolation, grid.unit)
-                main_indices = [idx for idx in _select_profile_points(points, inps)
+                main_indices = [idx for idx in plot_point_indices
                                 if bundle.get(idx) is not None]
             if not main_indices:
                 print(f'WARNING: no valid profiles for {project} '
@@ -537,10 +641,11 @@ def _process_input(inps, fault_segments, data_input, command):
                                                 stack_offset=inps.stack_offset,
                                                 subplot_cols=inps.subplot_cols,
                                                 connect_lines=inps.profile_lines,
-                                                options=make_plot_options(inps, grid)))
+                                                options=make_plot_options(inps, grid,
+                                                                          dataset_label=dataset_label)))
             prof_bundles.append((bundle, main_indices, grid, periods[grid_idx]))
 
-        prof_style = profile_figure_style_key(inps, inps.plot_layout, len(prof_specs))
+        prof_style = profile_figure_style_key(inps, inps.plot_layout, len(prof_specs), dataset_label)
         if prof_specs and inps.plot_layout == 'separate':
             for spec, (bundle, main_indices, grid, (req_start, req_end)) in zip(prof_specs, prof_bundles):
                 prof_bracket = profile_period_bracket(inps, req_start, req_end)
@@ -549,7 +654,7 @@ def _process_input(inps, fault_segments, data_input, command):
                 template = os.path.join(out_dir, f'{stem}.{inps.save}')
                 need_render = False
                 planned = []
-                sep_style = profile_figure_style_key(inps, 'separate', 1)
+                sep_style = profile_figure_style_key(inps, 'separate', 1, dataset_label)
                 for nn, idx in enumerate(spec.main_indices):
                     img_path = template.replace('{nn}', f'{nn:02d}')
                     txt_path = os.path.splitext(img_path)[0] + '.txt'
@@ -569,7 +674,8 @@ def _process_input(inps, fault_segments, data_input, command):
                         write_figure_style(img_path, sep_style)
                         print(f'Figure saved to {img_path}')
                 for img_path, txt_path in planned:
-                    index_entries.append({'group': f'{project} profiles {req_start}_{req_end}',
+                    index_entries.append({'group': _index_group(project, dataset_label,
+                                                                f'profiles {req_start}_{req_end}'),
                                           'image': img_path, 'txt': txt_path})
         elif prof_specs:
             if inps.plot_layout == 'stacked':
@@ -608,7 +714,7 @@ def _process_input(inps, fault_segments, data_input, command):
                     render(prof_specs, img_path)
                     write_figure_style(img_path, prof_style)
                     print(f'Figure saved to {img_path}')
-                index_entries.append({'group': f'{project} profiles',
+                index_entries.append({'group': _index_group(project, dataset_label, 'profiles'),
                                       'image': img_path, 'txt': txt_paths})
             else:
                 for spec, txt_path, (_, _, grid, (req_start, req_end)) in zip(
@@ -616,7 +722,7 @@ def _process_input(inps, fault_segments, data_input, command):
                     stem = build_basename(project, inps.tag_string, PROFILE_LABEL,
                                           grid.start_date, grid.end_date)
                     img_path = os.path.join(out_dir, f'{stem}.{inps.save}')
-                    one_style = profile_figure_style_key(inps, inps.plot_layout, 1)
+                    one_style = profile_figure_style_key(inps, inps.plot_layout, 1, dataset_label)
                     if (not inps.plots_only
                             and figure_is_fresh(img_path, txt_path, one_style,
                                                 eos_file, *fault_paths)):
@@ -625,8 +731,86 @@ def _process_input(inps, fault_segments, data_input, command):
                         render([spec], img_path)
                         write_figure_style(img_path, one_style)
                         print(f'Figure saved to {img_path}')
-                    index_entries.append({'group': f'{project} profiles',
+                    index_entries.append({'group': _index_group(project, dataset_label, 'profiles'),
                                           'image': img_path, 'txt': txt_path})
+
+    # ------------------------------------------------------- timeseries plot
+    if _wants_timeseries(inps.plot_type):
+        if not inps.plots_only:
+            ts_span_start, ts_span_end = snap_timeseries_span(eos_file, periods)
+        else:
+            ts_span_start, ts_span_end = periods[0][0], periods[-1][1]
+        ts_bracket = timeseries_period_bracket(inps, periods, ts_span_start, ts_span_end)
+        ts_txt = find_cached_txt(out_dir, project, inps.tag_string, TIMESERIES_LABEL,
+                                 ts_span_start, ts_span_end, ts_bracket)
+        ts_stem = build_basename(project, inps.tag_string, TIMESERIES_LABEL,
+                                   ts_span_start, ts_span_end)
+        if ts_txt is None:
+            ts_txt = os.path.join(out_dir, f'{ts_stem}.txt')
+
+        ts_bundle = _load_timeseries_from_cache(inps, ts_txt, eos_file, ts_bracket)
+        if ts_bundle is None:
+            if inps.plots_only:
+                raise SystemExit(
+                    f'ERROR: --plots-only requires timeseries txt at {ts_txt}')
+            data, dates, lats, lons = load_displacement_timeseries(
+                eos_file, ts_span_start, ts_span_end, inps.mask_vmin)
+            ts_span_start, ts_span_end = dates[0], dates[-1]
+            ts_bracket = timeseries_period_bracket(inps, periods, ts_span_start, ts_span_end)
+            ts_stem = build_basename(project, inps.tag_string, TIMESERIES_LABEL,
+                                     ts_span_start, ts_span_end)
+            ts_txt = os.path.join(out_dir, f'{ts_stem}.txt')
+            location_indices = plot_point_indices
+            ts_bundle = compute_timeseries_offsets(
+                data, dates, lats, lons, points, location_indices,
+                inps.perp_width, inps.along_step, inps.sample_method,
+                inps.reference_side, perp_offset_km=inps.perp_offset, unit='cm')
+
+        ts_span_start = ts_bundle.dates[0]
+        ts_span_end = ts_bundle.dates[-1]
+
+        ts_offset_series = None
+        if not inps.plots_only:
+            ts_grid = load_velocity_grid(
+                eos_file, project, source, ts_span_start, ts_span_end, work_dir,
+                inps.mask_vmin, force=inps.force, tag_string=inps.tag_string)
+            ts_offset_series = compute_offset_series(
+                ts_grid.data, ts_grid.lats, ts_grid.lons, points,
+                inps.perp_width, inps.along_step,
+                inps.sample_method, inps.reference_side, ts_grid.unit,
+                perp_offset_km=inps.perp_offset)
+
+        if should_write_txt(inps, ts_txt, eos_file, ts_bracket, *fault_paths):
+            write_timeseries_txt(ts_txt, ts_bundle, ts_bracket)
+
+        ts_step = (inps.stack_offset if inps.stack_offset is not None
+                   else auto_timeseries_stack_offset(ts_bundle))
+        _record_profile_stack_summary(
+            inps, project, ts_step, 'cm',
+            inps.stack_offset is not None)
+        ts_stub = _make_grid_stub(ts_span_start, ts_span_end, 'cm')
+        ts_spec = TimeseriesFigureSpec(
+            bundle=ts_bundle,
+            period_boundary_dates=plotted_interior_period_dates(periods, ts_bundle.dates),
+            stack_offset=inps.stack_offset,
+            fault_segments=fault_segments_xy,
+            offset_series=ts_offset_series,
+            sample_points=points,
+            perp_width_km=inps.perp_width,
+            perp_offset_km=inps.perp_offset,
+            reference_side=inps.reference_side,
+            options=make_plot_options(inps, ts_stub, dataset_label=dataset_label))
+        ts_style = timeseries_figure_style_key(inps, dataset_label)
+        img_path = os.path.join(out_dir, f'{ts_stem}.{inps.save}')
+        if (not inps.plots_only
+                and figure_is_fresh(img_path, ts_txt, ts_style, eos_file, *fault_paths)):
+            print(f'Skipping figure (up to date): {img_path}')
+        else:
+            backend.render_timeseries_stacked(ts_spec, img_path)
+            write_figure_style(img_path, ts_style)
+            print(f'Figure saved to {img_path}')
+        index_entries.append({'group': _index_group(project, dataset_label, 'timeseries'),
+                              'image': img_path, 'txt': ts_txt})
 
     if not inps.no_index and index_entries:
         from plotdata.fault_transect.html_index import write_index_html

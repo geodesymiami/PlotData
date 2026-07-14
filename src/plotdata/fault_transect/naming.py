@@ -40,8 +40,26 @@ def format_fault_plot_title(tag_string):
     return f'{tag} Fault'
 
 
+def format_dataset_display_label(dataset_label):
+    """Capitalize dataset type for figure labels (e.g. ``Ascending``)."""
+    label = (dataset_label or '').strip().lower()
+    if not label:
+        return ''
+    return label.capitalize()
+
+
+def format_figure_suptitle(title, dataset_label=''):
+    """Combine fault title and dataset label for figure suptitles."""
+    title = (title or '').strip()
+    dataset = format_dataset_display_label(dataset_label)
+    if title and dataset:
+        return f'{title}\n{dataset}'
+    return title or dataset
+
+
 MAP_LABEL = 'map'
 PROFILE_LABEL = 'profile'
+TIMESERIES_LABEL = 'timeseries'
 
 
 def build_basename(project, tag_string, plot_label, start_date, end_date):
