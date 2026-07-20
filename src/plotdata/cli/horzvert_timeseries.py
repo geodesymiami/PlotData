@@ -18,6 +18,15 @@ from plotdata.helper_functions import (
     get_file_names, prepend_scratchdir_if_needed, extract_window, detect_cores,
     find_reference_points_from_subsets, create_geometry_file, find_longitude_degree, to_date, get_output_filename
 )
+from plotdata.horzvert_cache import (
+    build_hv_fingerprint,
+    geometry_cache_fresh,
+    longest_output_subdir,
+    locate_hv_outputs,
+    predict_geo_input_path,
+    should_recompute_hv,
+    write_hvparams,
+)
 from concurrent.futures import ProcessPoolExecutor
 
 SCRATCHDIR = os.getenv('SCRATCHDIR')
@@ -56,7 +65,10 @@ def create_parser(iargs=None, namespace=None):
     parser.add_argument('--lat-step', dest='lat_step', type=float, default=-0.00014, help='latitude step for geocoding (lon step same, from find_longitude_degree) (default: %(default)s).')
     parser.add_argument('--horz-az-angle', dest='horz_az_angle', type=float, default=90, help='Horizontal azimuth angle (default: %(default)s).')
     parser.add_argument('--window-size', dest='window_size', type=int, default=3, help='window size (square side in number of pixels) for reference point look up (default: %(default)s).')
-    parser.add_argument('-ow', '--overwrite', dest='overwrite', action='store_true', help='Overwrite all previously generated files')
+    parser.add_argument('-ow', '--overwrite', '--force', dest='force', action='store_true',
+                        help='Recompute geometry, mask, and horz/vert products even when cached outputs are up to date')
+    parser.add_argument('--check-cache-only', dest='check_cache_only', action='store_true',
+                        help='Exit 0 when cached horz/vert products are fresh, 1 otherwise (no processing)')
     parser.add_argument('-ts', '--timeseries', dest='timeseries', action='store_true', help='Output timeseries file in addition to HDFEOS format')
     parser.add_argument('--intervals', dest='interval_index', type=int, default=2,
             help=('Interval block index [0..repeat_interval/2] to search (1=first positive block, 2=first negative, etc.). '
@@ -80,6 +92,49 @@ def create_parser(iargs=None, namespace=None):
 
 
     return inps
+
+
+def _geo_input_paths(file_args):
+    """Resolve geocoded HE5 paths used for horz/vert cache checks."""
+    return [predict_geo_input_path(prepend_scratchdir_if_needed(f)) for f in file_args]
+
+
+def _hv_output_dir(project_base_dir, file_args):
+    """Return directory containing horz/vert HE5 products (longest dated span)."""
+    subdir = longest_output_subdir(file_args)
+    if subdir:
+        return os.path.join(project_base_dir, subdir)
+    return project_base_dir
+
+
+def _hv_cache_context(inps, project_base_dir):
+    """Return cache context: output_dir, vert, horz, geo paths, fingerprint."""
+    geo_paths = _geo_input_paths(inps.file)
+    output_dir = _hv_output_dir(project_base_dir, inps.file)
+    vert_path, horz_path = locate_hv_outputs(output_dir)
+    fingerprint = build_hv_fingerprint(
+        inps,
+        [os.path.basename(p) for p in geo_paths],
+    )
+    return output_dir, vert_path, horz_path, geo_paths, fingerprint
+
+
+def check_hv_cache_status(inps, project_base_dir):
+    """Return True when cached horz/vert products are fresh."""
+    _, vert_path, horz_path, geo_paths, fingerprint = _hv_cache_context(inps, project_base_dir)
+    return not should_recompute_hv(
+        inps, vert_path, horz_path, geo_paths[0], geo_paths[1], fingerprint,
+    )
+
+
+def _report_cached_hv_products(inps, project_base_dir):
+    """Print cached product paths and return True on cache hit."""
+    output_dir, vert_path, horz_path, geo_paths, fingerprint = _hv_cache_context(inps, project_base_dir)
+    if should_recompute_hv(inps, vert_path, horz_path, geo_paths[0], geo_paths[1], fingerprint):
+        return False
+    print(f'Using cached vertical timeseries: {vert_path}')
+    print(f'Using cached horizontal timeseries: {horz_path}')
+    return True
 
 
 def parse_lalo(str_lalo):
@@ -447,8 +502,9 @@ def load_timeseries_file(file_path, geometry_file_input, mask_vmin, inps):
         inps.ref_lalo = parse_lalo([metadata['REF_LAT'], metadata['REF_LON']])
 
     # Create geometry file if needed
-    overwrite_flag = getattr(inps, 'overwrite', False)
-    if not os.path.exists(geometry_file) or overwrite_flag:
+    force_flag = getattr(inps, 'force', False)
+    if (not os.path.exists(geometry_file) or force_flag
+            or not geometry_cache_fresh(geometry_file, eos_file)):
         os.makedirs(os.path.dirname(geometry_file), exist_ok=True)
         create_geometry_file(eos_file, os.path.dirname(geometry_file))
 
@@ -1074,6 +1130,9 @@ def main(iargs=None, namespace=None):
     shift_map = chosen["shift_map"]
     project_base_dir = chosen["base"]
 
+    if inps.check_cache_only:
+        sys.exit(0 if check_hv_cache_status(inps, project_base_dir) else 1)
+
     max_shift = max((max(abs(r[0]), abs(r[1])) for r in block_ranges), default=0)
     diff_msg = describe_shift(ts1_f, ts2_f, m1, m2, limit=max_shift)
     symbols = list("*+-:!@#$%^&():\";'<>,.?/")
@@ -1154,6 +1213,9 @@ def main(iargs=None, namespace=None):
     image_pairs_written = True
 
     if inps.dry_run:
+        return
+
+    if _report_cached_hv_products(inps, project_base_dir):
         return
 
     os.chdir(SCRATCHDIR)
@@ -1396,26 +1458,11 @@ def main(iargs=None, namespace=None):
     ts1.metadata['first_date'] = min(date_objs).strftime('%Y-%m-%d')
     ts1.metadata['last_date'] = max(date_objs).strftime('%Y-%m-%d')
 
-    # Create output files
-
-    # Check for post_processing_method and determine subdirectory for *.he5 files
-    post_processing_method = ts1.metadata.get('post_processing_method', '').strip()
-    output_subdir = None
-    if post_processing_method.lower() == 'mintpy':
-        output_subdir = 'mintpy'
-    elif post_processing_method.lower() == 'miaplpy':
-        output_subdir = 'miaplpy'
-
-    # Build output paths
-    if output_subdir:
-        # Create subdirectory if needed
-        output_dir = os.path.join(project_base_dir, output_subdir)
-        os.makedirs(output_dir, exist_ok=True)
-        vertical_path = os.path.join(output_dir, get_output_filename(ts1.metadata, None, direction='vert'))
-        horizontal_path = os.path.join(output_dir, get_output_filename(ts1.metadata, None, direction='horz'))
-    else:
-        vertical_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, direction='vert'))
-        horizontal_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, direction='horz'))
+    # Create output files under site/<mintpy|miaplpy[_YYYYMM_YYYYMM]>/ (longest input span)
+    output_dir = _hv_output_dir(project_base_dir, inps.file)
+    os.makedirs(output_dir, exist_ok=True)
+    vertical_path = os.path.join(output_dir, get_output_filename(ts1.metadata, None, direction='vert'))
+    horizontal_path = os.path.join(output_dir, get_output_filename(ts1.metadata, None, direction='horz'))
 
     mask_path = os.path.join(project_base_dir, 'maskTempCoh.h5')
 
@@ -1430,6 +1477,13 @@ def main(iargs=None, namespace=None):
     create_hdfeos_output(horizontal_timeseries, date_list, mask, delta_days, bperp, latitude, longitude,
                      ts1.metadata, horizontal_path.replace('.h5', '.he5'), mask.shape[0], mask.shape[1])
 
+    geo_paths = _geo_input_paths(inps.file)
+    fingerprint = build_hv_fingerprint(
+        inps,
+        [os.path.basename(p) for p in geo_paths],
+    )
+    write_hvparams(vertical_path.replace('.h5', '.he5'), fingerprint)
+
     # Write mask file
     mask_meta = {
         'FILE_TYPE': 'mask',
@@ -1438,7 +1492,7 @@ def main(iargs=None, namespace=None):
     }
 
     os.makedirs(os.path.dirname(mask_path), exist_ok=True)
-    if not os.path.exists(mask_path) or inps.overwrite:
+    if not os.path.exists(mask_path) or inps.force:
         writefile.write({'mask': mask.astype('bool')}, out_file=mask_path, metadata=mask_meta)
 
 
