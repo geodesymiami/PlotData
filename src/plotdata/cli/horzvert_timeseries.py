@@ -870,12 +870,12 @@ def create_hdfeos_output(ts_data, date_list, mask, delta_days, bperp, latitude, 
         'HDFEOS/GRIDS/timeseries/quality/mask': mask.astype('bool'),
         'HDFEOS/GRIDS/timeseries/quality/temporalCoherence': np.full((length, width), np.nan, dtype='float32'),
         # ---- aliases (short names for easier reading) ----
-        'latitude': lat_grid.astype('float32'),
-        'longitude': lon_grid.astype('float32'),
-        'bperp': bperp.astype('float32'),
-        'date': date_list.astype('S8'),
-        'timeseries': ts_data.astype('float32'),
-        'mask': mask.astype('bool'),
+        # 'latitude': lat_grid.astype('float32'),
+        # 'longitude': lon_grid.astype('float32'),
+        # 'bperp': bperp.astype('float32'),
+        # 'date': date_list.astype('S8'),
+        # 'timeseries': ts_data.astype('float32'),
+        # 'mask': mask.astype('bool'),
     }
 
     # Update metadata for HDFEOS format
@@ -1268,8 +1268,8 @@ def main(iargs=None, namespace=None):
 
     # Compute horizontal and vertical timeseries
     vertical_timeseries, horizontal_timeseries, mask, latitude, longitude = compute_horzvert_timeseries(ts1, ts2, date_list, inps)
-    ts1.metadata['relative_orbit_second'] = ts2.metadata['relative_orbit']
-    ts1.metadata['ORBIT_DIRECTION_SECOND'] = ts2.metadata['ORBIT_DIRECTION']
+    ts1.metadata['relative_orbit_second'] = ts2.metadata['relative_orbit'] if hasattr(ts2.metadata, 'relative_orbit') else '000'
+    ts1.metadata['ORBIT_DIRECTION_SECOND'] = ts2.metadata.get('ORBIT_DIRECTION', 'ORBITAL_DIRECTION')
     # Derive start/end dates from the paired date_list (horz/vert range).
     date_objs = [to_date(d) for d in date_list]
     ts1.metadata['first_date'] = min(date_objs).strftime('%Y-%m-%d')
@@ -1290,11 +1290,11 @@ def main(iargs=None, namespace=None):
         # Create subdirectory if needed
         output_dir = os.path.join(project_base_dir, output_subdir)
         os.makedirs(output_dir, exist_ok=True)
-        vertical_path = os.path.join(output_dir, get_output_filename(ts1.metadata, None, direction='vert'))
-        horizontal_path = os.path.join(output_dir, get_output_filename(ts1.metadata, None, direction='horz'))
+        vertical_path = os.path.join(output_dir, get_output_filename(ts1.metadata, direction='vert'))
+        horizontal_path = os.path.join(output_dir, get_output_filename(ts1.metadata, direction='horz'))
     else:
-        vertical_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, direction='vert'))
-        horizontal_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, None, direction='horz'))
+        vertical_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, direction='vert'))
+        horizontal_path = os.path.join(project_base_dir, get_output_filename(ts1.metadata, direction='horz'))
 
     mask_path = os.path.join(project_base_dir, 'maskTempCoh.h5')
 

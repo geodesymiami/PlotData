@@ -1010,7 +1010,7 @@ def calculate_LOS(incident, azimuth):
     return lose, losn, losz
 
 
-def get_output_filename(metadata,):
+def get_output_filename(metadata, direction=None):
     """Build output filename from OPERA identification metadata."""
     def mget(key, default=None):
         # supports dict metadata and argparse.Namespace(attrs=..., variables=...)
@@ -1036,13 +1036,14 @@ def get_output_filename(metadata,):
             "%Y-%m-%dT%H:%M:%S.%f",
         ):
             try:
-                return datetime.datetime.strptime(s, fmt).strftime("%Y%m%d")
+                return datetime.strptime(s, fmt).strftime("%Y%m%d")
             except ValueError:
                 pass
         # fallback for strings like "2017-01-07T04:30:28.815125Z"
         return s[:10].replace("-", "")
 
-    direction = metadata.orbit_pass_direction if hasattr(metadata, "orbit_pass_direction") else None
+    if direction is None:
+        direction = metadata.get("orbit_pass_direction", None)
     if direction is not None:
         direction = str(direction).strip().upper()
 

@@ -1,7 +1,7 @@
 import math
 import pygmt
 import numpy as np
-import pandas as pd
+import copy
 import xarray as xr
 from datetime import datetime
 import matplotlib.pyplot as plt
@@ -13,19 +13,8 @@ from matplotlib.transforms import Affine2D
 from matplotlib.patheffects import withStroke
 from matplotlib.patches import Rectangle, Polygon
 from plotdata.volcano_functions import get_volcanoes_data
-from plotdata.helper_functions import calculate_distance, get_bounding_box, parse_polygon, resize_to_match, parse_coord_vert, interpolate
-
-
-def set_default_section(line, region):
-    mid_lat = line if type(line) == float else (max(region[2:4]) + min(region[2:4]))/2
-    mid_lon = (max(region[0:2]) + min(region[0:2]))/2
-
-    size = (max(region[0:2]) - min(region[0:2]))*0.25
-
-    latitude = (mid_lat, mid_lat)
-    longitude = (mid_lon - size, mid_lon + size)
-
-    return [longitude, latitude]
+from plotdata.objects.forward import Penny as frwPenny, Mogi as frwMogi, Okada as frwOkada, Yang as frwYang
+from plotdata.helper_functions import calculate_distance, get_bounding_box, parse_polygon, resize_to_match, parse_coord_vert, interpolate, convert_to_utm, set_default_section
 
 def plot_point(ax, lat, lon, marker='o', color='black', size=5, alpha=1, zorder=None):
     ax.plot(lon, lat, marker, color=color, markersize=size, alpha=alpha, zorder=zorder)
@@ -121,20 +110,25 @@ class VelocityPlot:
         return z
 
     def _plot_source(self, sources):
-        if sources:
+        if sources and not self.no_sources:
             source_type = {
                 "mogi": {"class": Mogi, "attributes": ["xcen", "ycen"]},
                 "spheroid": {"class": Spheroid, "attributes": ["xcen", "ycen", "s_axis_max", "ratio", "strike", "dip"]},
                 "penny": {"class": Penny,  "attributes": ["xcen", "ycen", "radius"]},
                 "okada": {"class": Okada,  "attributes": ["ytlc", "xtlc", "length", "width", "strike", "dip"]},
             }
+
+            ref_lat = self.ref_lalo[0] if self.ref_lalo else (self.region[2] + self.region[3]) / 2
+            ref_lon = self.ref_lalo[1] if self.ref_lalo else (self.region[0] + self.region[1]) / 2
+            sources = parameters_from_utm_to_latlon(ref_lat, ref_lon, sources)
             for s in sources:
                 s_keys = set(sources[s].keys())
 
                 for key, value in source_type.items():
-                    if set(value["attributes"]) == s_keys:
+                    if set(value["attributes"]).issubset(s_keys):
                         model = value["class"]
-                        model(self.ax, **sources[s])
+                        source_params = {attr: sources[s][attr] for attr in value["attributes"]}
+                        model(self.ax, **source_params)
 
     def _plot_synthetic(self, data):
         zorder = self._get_next_zorder()
@@ -148,7 +142,7 @@ class VelocityPlot:
         else:
             self.imdata = self.ax.imshow(data, cmap=self.cmap, extent=self.region, origin='upper', interpolation='none', zorder=zorder, vmin=self.vmin, vmax=self.vmax, rasterized=True)
 
-        self._plot_source(self.sources) 
+        self._plot_source(copy.deepcopy(getattr(self, "sources", None)))
 
         self._update_axis_limits()
 
@@ -159,6 +153,9 @@ class VelocityPlot:
             cbar.set_label(self.unit,)
 
             cbar.locator = ticker.MaxNLocator(3)
+            cbar.set_label(self.unit, fontsize=20)
+            cbar.ax.tick_params(labelsize=20)
+
             cbar.update_ticks()
 
         self.imdata.set_alpha(0.7)
@@ -307,10 +304,10 @@ class VelocityPlot:
 
         # Compute hillshade with real spacing
         ls = LightSource(azdeg=315, altdeg=45)
-        hillshade = ls.hillshade(self.z, vert_exag=1, dx=dx, dy=dy)
+        hillshade = ls.hillshade(self.z, vert_exag=0.5, dx=dx, dy=dy)
 
         # Use pcolormesh to plot hillshade using real coordinates
-        self.im = self.ax.pcolormesh(lon2d, lat2d, hillshade, cmap='gist_yarg_r', shading='gouraud', zorder=zorder,)
+        self.im = self.ax.pcolormesh(lon2d, lat2d, hillshade, cmap='grey', shading='gouraud', zorder=zorder, vmin=0, vmax=0.7)
 
     def _plot_isolines(self):
         print("Adding isolines...\n")
@@ -600,12 +597,14 @@ class ProfilePlot:
                 setattr(self, attr, getattr(inps, attr))
 
         self.data = dataset["data"]
-        self.synth = resize_to_match(dataset["synth"], dataset["data"], 'Profile Data')
+        if dataset["synth"].ndim == dataset["data"].ndim:
+            self.synth = resize_to_match(dataset["synth"], dataset["data"], 'Profile Data')
+        else:
+            self.synth = dataset["synth"]
         self.geometry = dataset.get("geometry").get("data") if "geometry" in dataset else None
         self.attributes = dataset.get("geometry").get("attributes") if "geometry" in dataset else None
         self.region = self.attributes.get('region')
 
-        resize_to_match(dataset["synth"], dataset["data"], 'Profile Data')
 
         # Double check if the line is set
         if not self.line or type(self.line) == float:
@@ -622,6 +621,7 @@ class ProfilePlot:
 
     def _draw_line(self, data, region, latitude, longitude):
         """Draws a line on the data grid and returns the indices of the path."""
+        # TODO Fix pixel=scatter case, where the data is not a 2D array but a 1D array of points
         ny, nx = data.shape
 
         lon_min, lon_max = float(region[0]), float(region[1])
@@ -719,8 +719,6 @@ class ProfilePlot:
         if self.label:
             self.ax.annotate(self.label,xy=(0.02, 0.98),xycoords='axes fraction',fontsize=7,ha='left',va='top',color='white',bbox=dict(facecolor='black', edgecolor='none', alpha=0.6, boxstyle='round,pad=0.3'))
 
-####################################################################################
-
 class VectorsPlot:
     """Handles the plotting of velocity maps, elevation profiles, and vector fields."""
     def __init__(self, dataset, inps):
@@ -757,13 +755,48 @@ class VectorsPlot:
                 latitude, longitude = get_bounding_box(self.geometry_attr)
                 self.region = [longitude[0], longitude[1], latitude[0], latitude[1]]
 
+        ##############################################################################################
+
         self.horizontal_section = self._process_sections((self.horz), self.horz_attr['region'])
         self.vertical_section = self._process_sections((self.vert), self.vert_attr['region'])
         self.topography_section = self._process_sections(self.geometry, self.geometry_attr["region"])
 
+    def _get_forward_model(self, mask):
+        lon_points, lat_points, _, _, _, _, _, _ = self._snap_coordinate(self.horz.shape, self.horz_attr['region'], self.line[1], self.line[0])
+        x,y = convert_to_utm(lon_points, lat_points)
+        ux, uz = np.zeros_like(x), np.zeros_like(x)
+
+        # Create the forward model based on the source parameters
+        for key ,value in self.sources.items():
+            if value.get('radius'):
+                forward = frwPenny()
+            elif value.get('s_axis_max'):
+                forward = frwYang()
+            elif value.get('slip',value.get('param1', value.get('opening'))):
+                # forward = frwOkada()
+                forward = frwOkada()
+            else:
+                forward = frwMogi()
+
+            ux0, _, uz0 = forward.model(x, y, **value)
+            ux += ux0
+            uz += uz0
+
+        return ux, uz
+
     def _process_sections(self, data, region):
         """Processes the sections for horizontal and vertical components."""
-        lat_indices, lon_indices = self._draw_line(data, region, self.line[1], self.line[0])
+        lon_points, lat_points, lon_min, lon_span, lat_max, lat_span, nx, ny = self._snap_coordinate(data.shape, region, self.line[1], self.line[0])
+
+        # fractional column index: 0..(nx-1) left->right
+        col_f = (lon_points - lon_min) / lon_span * (nx - 1)
+
+        # fractional row index: if row 0 == top (lat_max), map lat -> row via lat_max - lat
+        row_f = (lat_max - lat_points) / lat_span * (ny - 1)
+
+        # round/clip to integer array indices
+        lon_indices = np.clip(np.round(col_f).astype(int), 0, nx - 1)
+        lat_indices = np.clip(np.round(row_f).astype(int), 0, ny - 1)
 
         # Extract the values data along the snapped path
         values = data[lat_indices, lon_indices]
@@ -771,9 +804,8 @@ class VectorsPlot:
         # TODO recheck
         return values
 
-    def _draw_line(self, data, region, latitude, longitude):
-        ny, nx = data.shape
-
+    def _snap_coordinate(self, shape, region, latitude, longitude):
+        ny, nx = shape
         lon_min, lon_max = float(region[0]), float(region[1])
         lat_min, lat_max = float(region[2]), float(region[3])
 
@@ -788,17 +820,7 @@ class VectorsPlot:
         lon_points = np.linspace(longitude[0], longitude[1], num_points)
         lat_points = np.linspace(latitude[0], latitude[1], num_points)
 
-        # fractional column index: 0..(nx-1) left->right
-        col_f = (lon_points - lon_min) / lon_span * (nx - 1)
-
-        # fractional row index: if row 0 == top (lat_max), map lat -> row via lat_max - lat
-        row_f = (lat_max - lat_points) / lat_span * (ny - 1)
-
-        # round/clip to integer array indices
-        lon_indices = np.clip(np.round(col_f).astype(int), 0, nx - 1)
-        lat_indices = np.clip(np.round(row_f).astype(int), 0, ny - 1)
-
-        return lat_indices, lon_indices
+        return lon_points, lat_points, lon_min, lon_span, lat_max, lat_span, nx, ny
 
     def _normalize_vectors(self, h, v):
         #Normalization
@@ -820,7 +842,11 @@ class VectorsPlot:
 
         return v, h
 
-    def _compute_vectors(self):
+    def plot(self, ax):
+        """Plots elevation profile and velocity vectors."""
+        self.ax = ax
+
+        # Compute and plot vectors
         """Computes velocity vectors and scaling factors."""
         v = interpolate(self.topography_section, self.vertical_section) if self.topography_section.shape[0] > self.vertical_section.shape[0] else self.vertical_section
         h = interpolate(self.topography_section, self.horizontal_section) if self.topography_section.shape[0] > self.horizontal_section.shape[0] else self.horizontal_section
@@ -828,88 +854,168 @@ class VectorsPlot:
 
         x = np.linspace(0, calculate_distance(self.line[0][0], self.line[1][0], self.line[0][1], self.line[1][1])*1000, len(self.z))
 
-        # Resample vectors
-        for i in range(len(h)):
-            if i % self.resample_vector != 0:
-                h[i] = 0
-                v[i] = 0
-
-
         distance = calculate_distance(self.line[1][0], self.line[0][0], self.line[1][1], self.line[0][1])
         self.xrange = np.linspace(0, distance, len(x))
 
         # Filter out zero-length vectors
-        non_zero_indices = np.where((h != 0) | (v != 0))
+        sample_mask = np.arange(len(h)) % self.resample_vector == 0
+        valid_mask = sample_mask & (np.isfinite(h) & np.isfinite(v) & ((h != 0) | (v != 0)))
 
-        self.filtered_x = self.xrange[non_zero_indices]
-        self.filtered_h = h[non_zero_indices]
-        self.filtered_v = v[non_zero_indices]
-
-        self.filtered_elevation = self.z[non_zero_indices]
-
-    def plot(self, ax):
-        """Plots elevation profile and velocity vectors."""
-        self.ax = ax
-
-        # Compute and plot vectors
-        self._compute_vectors()
+        self.filtered_x = self.xrange[valid_mask]
+        self.filtered_h = h[valid_mask]
+        self.filtered_v = v[valid_mask]
+        self.filtered_elevation = self.z[valid_mask]
 
         # Plot elevation profile
-        self.ax.plot(self.xrange, self.z, color='#a8a8a8', alpha=0.5)
-        ylim = [np.nanmin(self.z) - 1/self.vertical_exag*(np.nanmax(self.z)-np.nanmin(self.z)), np.nanmax(self.z) + 1/self.vertical_exag*(np.nanmax(self.z)-np.nanmin(self.z))]
+        self.ax.plot(self.xrange, self.z, color="#a8a8a8", alpha=0.5,)
+
+        elevation_range = np.nanmax(self.z) - np.nanmin(self.z)
+        padding = elevation_range / self.vertical_exag
+
+        ylim = [np.nanmin(self.z) - padding, np.nanmax(self.z) + padding,]
+
         self.ax.set_ylim(ylim)
-        self.ax.set_xlim([min(self.xrange), max(self.xrange)])
+        self.ax.set_xlim(np.nanmin(self.xrange), np.nanmax(self.xrange))
 
-        unit = self.horz_attr.get('unit', self.vert_attr.get('unit', self.unit))
-        mean_velocity = abs(np.nanmean(np.hypot(self.filtered_v, self.filtered_h)))
+        unit = self.horz_attr.get("unit", self.vert_attr.get("unit", self.unit),)
 
-        self.filtered_v, self.filtered_h = self._normalize_vectors(self.filtered_h, self.filtered_v)
+        # Preserve physical observed magnitudes before normalization.
+        observed_magnitude = np.hypot(self.filtered_h, self.filtered_v,)
+        mean_velocity = np.nanmean(observed_magnitude)
 
-        scale = np.nanmedian(np.hypot(self.filtered_v, self.filtered_h)) * 0.5 #0.2
-        width = 4 / 10**2.5 * (3 / 10**2.5 / scale)   ** 0.1
+        has_model = (hasattr(self, 'sources') and self.sources and any("vectors.model" in element for row in self.layout for element in row))
 
-        # Plot velocity vectors
-        if self.vector_legend == 'mean_vector':
-            # Mean velocity vector
-            self.imdata = self.ax.quiver(self.filtered_x, self.filtered_elevation, self.filtered_h, self.filtered_v, color='#ff7366', scale_units='xy', scale=scale, width=width)
-            start_x = max(self.xrange) * 0.1
+        if has_model:
+            model_h, model_v = self._get_forward_model(valid_mask)
+
+            if model_h.shape[0] != self.topography_section.shape[0]:
+                model_h = interpolate(self.topography_section, model_h)
+
+            if model_v.shape[0] != self.topography_section.shape[0]:
+                model_v = interpolate(self.topography_section, model_v)
+
+            if 'cm' in self.unit:
+                u = 100
+            elif 'mm' in self.unit:
+                u = 1000
+            elif 'm' in self.unit:
+                u = 1
+
+            self.x_model = model_h[valid_mask] * u * 365.25  / self.horz_attr.get('days', self.vert_attr.get('days'))
+            self.z_model = model_v[valid_mask] * u * 365.25  / self.horz_attr.get('days', self.vert_attr.get('days'))
+
+            # Normalize observations and model together so they share the same scale.
+            n_observed = len(self.filtered_h)
+
+            combined_h = np.concatenate((self.filtered_h, self.x_model))
+            combined_v = np.concatenate((self.filtered_v, self.z_model))
+
+            combined_v, combined_h = self._normalize_vectors(
+                combined_h,
+                combined_v,
+            )
+
+            self.filtered_h = combined_h[:n_observed]
+            self.filtered_v = combined_v[:n_observed]
+            self.x_model = combined_h[n_observed:]
+            self.z_model = combined_v[n_observed:]
+
+            vector_magnitude = np.hypot(combined_h, combined_v)
+        else:
+            self.filtered_v, self.filtered_h = self._normalize_vectors(self.filtered_h, self.filtered_v,)
+            vector_magnitude = np.hypot(self.filtered_h, self.filtered_v,)
+
+        scale = max(np.nanmax(vector_magnitude) * 5, 5)
+        width = 4 / 10**2.5 * (3 / 10**2.5 / scale) ** 0.1
+
+        # Plot observed velocity vectors.
+        if self.vector_legend == "mean_vector":
+            self.imdata = self.ax.quiver(self.filtered_x, self.filtered_elevation, self.filtered_h, self.filtered_v, color="#ff7366", scale=scale, width=width, label="Observed", alpha=0.8, zorder=3,)
+
+            start_x = np.nanmax(self.xrange) * 0.1
             y_span = ylim[1] - ylim[0]
-            start_y = (max(ylim) - y_span * 0.2)
-            mean_norm = np.nanmean(np.hypot(self.filtered_v, self.filtered_h))
+            start_y = ylim[1] * 0.95
+
+            normalized_mean = np.nanmean(np.hypot(self.filtered_h, self.filtered_v))
 
             exp = math.floor(math.log10(max(mean_velocity, 1e-12)))
-            cands = np.array([1.0, 5.0, 10.0]) * (10 ** exp)
-            velocity_rep = float(cands[np.argmin(np.abs(cands - mean_velocity))])
+            candidates = np.array([1.0, 5.0, 10.0]) * 10**exp
+            velocity_rep = float(candidates[np.argmin(np.abs(candidates - mean_velocity))])
 
-            vel_indicator = f"{velocity_rep:g} {unit}"
-            self.ax.quiver([start_x], [start_y], [(mean_norm * velocity_rep) / mean_velocity], [0], color='#ff7366', scale_units='xy', scale=scale, width=width)
-            self.ax.text(start_x, start_y * 1.02, vel_indicator, color='black', ha='left', fontsize=self.font_size, alpha=0.9)
+            # Avoid division by zero when all observed vectors are zero.
+            if mean_velocity > 0:
+                legend_length = (normalized_mean * velocity_rep / mean_velocity)
+            else:
+                legend_length = 0.0
 
-        elif self.vector_legend == 'colorbar':
+            self.ax.quiver([start_x], [start_y], [legend_length], [0], color="#ff7366", scale=scale, width=width,)
+            self.ax.text(start_x, start_y + 0.02 * y_span, f"{velocity_rep:g} {unit}", color="black", ha="left", fontsize=self.font_size, alpha=0.8,  zorder=3,)
+
+        elif self.vector_legend == "colorbar":
             from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-            self.imdata = self.ax.quiver(self.filtered_x, self.filtered_elevation, self.filtered_h, self.filtered_v, np.hypot(self.filtered_h, self.filtered_v), cmap='viridis', scale_units='xy', scale=scale, width=width)
-            cax = inset_axes(self.ax, width="15%", height="2.8%", loc="lower left", borderpad=2.0)
 
-            cb = self.ax.figure.colorbar(self.imdata, cax=cax, orientation="horizontal")
+            self.imdata = self.ax.quiver(self.filtered_x, self.filtered_elevation, self.filtered_h, self.filtered_v, observed_magnitude, cmap="viridis", scale=scale, width=width, label="Observed", zorder=3,)
 
-            mag = np.sqrt(((self.filtered_v[self.filtered_v!=0]))**2 + ((self.filtered_h[self.filtered_h!=0]))**2)
-            vmin, vmax = np.nanmin(mag), np.nanmax(mag)
-            # Get current normalized limits (usually 0–1)
-            nmin, nmax = cax.get_xlim()
+            cax = inset_axes(self.ax, width="15%", height="2.8%", loc="lower left", borderpad=2.0,)
 
-            # Place ticks at the colorbar ends
-            cax.set_xticks([nmin, nmax])
+            colorbar = self.ax.figure.colorbar(self.imdata, cax=cax, orientation="horizontal",)
+            colorbar.set_label(unit)
+            colorbar.ax.xaxis.set_label_position("top")
 
-            # Replace text only
-            cax.set_xticklabels([f"{vmin:.1f}", f"{vmax:.1f}"])
+        # Add model vectors after the observed vectors.
+        if has_model:
+            self.model_imdata = self.ax.quiver(self.filtered_x, self.filtered_elevation, self.x_model, self.z_model, color="#2979b8", alpha=0.7, scale=scale, width=width * 0.8, label="Model", zorder=2,)
+            self.ax.legend(loc="upper right", fontsize=7,)
 
-            cb.set_label(self.unit)
-            cb.ax.xaxis.set_label_position('top')
-
-        # Add labels
         self.ax.set_ylabel("Elevation (m)")
         self.ax.set_xlabel("Distance (km)")
 
+
+def parameters_from_utm_to_latlon(ref_lat, ref_lon, sources):
+    from plotdata.helper_functions import latlon_to_utm_zone, utm_to_latlon, meters_to_lat_deg, meters_to_lon_deg
+
+    zone_number, hemisphere = latlon_to_utm_zone(ref_lat, ref_lon)
+    METRIC_PARAMS = {"radius", "s_axis_max", "length", "width"}
+
+    for src_id, params in sources.items():
+
+        # ---------------------------
+        # Position conversion
+        # ---------------------------
+        if 'xcen' in params and 'ycen' in params:
+            lat, lon = utm_to_latlon(
+                params['xcen'],
+                params['ycen'],
+                zone_number,
+                hemisphere,
+            )
+            params['ycen'] = lat
+            params['xcen'] = lon
+
+        if 'xtlc' in params and 'ytlc' in params:
+            lat_tlc, lon_tlc = utm_to_latlon(
+                params['xtlc'],
+                params['ytlc'],
+                zone_number,
+                hemisphere,
+            )
+            params['ytlc'] = lat_tlc
+            params['xtlc'] = lon_tlc
+
+        # ---------------------------
+        # Metric → degree conversion
+        # ---------------------------
+        # use source latitude if available, otherwise reference latitude
+        lat0 = params.get('ycen', ref_lat)
+
+        for key in METRIC_PARAMS:
+            if key in params:
+                meters = params[key]
+
+                params[f"{key}"] = meters_to_lat_deg(meters)
+                params[f"{key}"] = meters_to_lon_deg(meters, lat0)
+
+    return sources
 
 class Mogi():
     def __init__(self, ax, xcen, ycen):

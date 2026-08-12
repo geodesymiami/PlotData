@@ -341,8 +341,8 @@ def main(iargs=None):
     # The plotter_map defines the mapping of plot types to their respective classes and required attributes
     # Attributes refer to the type of input file to get from the ProcessData object
     plotter_map = {
-        "model_ascending": {"class": VelocityPlot, "attributes": ["ascending_model"]}, # TODO
-        "model_descending": {"class": VelocityPlot, "attributes": ["descending_model"]}, # TODO
+        "model_ascending": {"class": VelocityPlot, "attributes": ["ascending_model"]},
+        "model_descending": {"class": VelocityPlot, "attributes": ["descending_model"]},
         "profile_ascending": {"class": ProfilePlot, "attributes": ["ascending_model", "ascending"]},
         "profile_descending": {"class": ProfilePlot, "attributes": ["descending_model", "descending"]},
         "vectors": {"class": VectorsPlot, "attributes": ["horizontal", "vertical"]},

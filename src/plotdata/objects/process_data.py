@@ -33,6 +33,7 @@ class ProcessData:
         self.directory = None
         self.project = None
         self.layout = layout
+        self.model_path = None
 
         # Extract file names once for all cases
         self._extract_file_names()
@@ -117,8 +118,8 @@ class ProcessData:
         if self.model:
             self._read_model_input()
 
-            if not self.no_sources:
-                self.sources = self._read_model_parameters(self.model)
+            if not self.no_sources or 'vectors.model' in self.layout:
+                self.sources = self._read_model_parameters(self.model_path)
 
         if self.ref_lalo:
             self.ref_lalo = select_reference_point(geo_masked_files, self.window_size, self.ref_lalo)
@@ -146,10 +147,11 @@ class ProcessData:
         # -------------------------------------------------
         # Read sources
         # -------------------------------------------------
+        params = ['dP_mu', 'dVol', 'opening', 'param1', 'param2']
         if os.path.exists(os.path.join(folder, 'VSM_best.csv')):
-            sources = read_best_values(os.path.join(folder, 'VSM_best.csv'))
+            sources = read_best_values(os.path.join(folder, 'VSM_best.csv'), params=params)
         elif os.path.exists(os.path.join(folder, 'VSM_mean.csv')):
-            sources = read_best_values(os.path.join(folder, 'VSM_mean.csv'))
+            sources = read_best_values(os.path.join(folder, 'VSM_mean.csv'), params=params)
         else:
             print(f"VSM_best.csv not found in {folder}")
             return None
@@ -168,57 +170,12 @@ class ProcessData:
                 "to determine UTM zone and hemisphere."
             )
 
-        zone_number, hemisphere = latlon_to_utm_zone(ref_lat, ref_lon)
-
-        # -------------------------------------------------
-        # Convert UTM → lat/lon + meters → degrees
-        # -------------------------------------------------
-        METRIC_PARAMS = {"radius", "s_axis_max", "length", "width"}
-
-        for src_id, params in sources.items():
-
-            # ---------------------------
-            # Position conversion
-            # ---------------------------
-            if 'xcen' in params and 'ycen' in params:
-                lat, lon = utm_to_latlon(
-                    params['xcen'],
-                    params['ycen'],
-                    zone_number,
-                    hemisphere,
-                )
-                params['ycen'] = lat
-                params['xcen'] = lon
-
-            if 'xtlc' in params and 'ytlc' in params:
-                lat_tlc, lon_tlc = utm_to_latlon(
-                    params['xtlc'],
-                    params['ytlc'],
-                    zone_number,
-                    hemisphere,
-                )
-                params['ytlc'] = lat_tlc
-                params['xtlc'] = lon_tlc
-
-            # ---------------------------
-            # Metric → degree conversion
-            # ---------------------------
-            # use source latitude if available, otherwise reference latitude
-            lat0 = params.get('ycen', ref_lat)
-
-            for key in METRIC_PARAMS:
-                if key in params:
-                    meters = params[key]
-
-                    params[f"{key}"] = meters_to_lat_deg(meters)
-                    params[f"{key}"] = meters_to_lon_deg(meters, lat0)
-
         return sources
 
     def _read_model_input(self):
-        self.model = os.path.join(self.directory, f"{self.start_date}_{self.end_date}", "_".join(self.model) )
+        self.model_path = os.path.join(self.directory, f"{self.start_date}_{self.end_date}", "_".join(self.model))
 
-        with open(os.path.join(self.model, 'VSM_input.txt'), 'r') as i:
+        with open(os.path.join(self.model_path, 'VSM_input.txt'), 'r') as i:
             lines = i.readlines()[1]
         lines = lines.replace(' \n', '').split(' ')
 
@@ -229,8 +186,8 @@ class ProcessData:
                 lines[idx] = 'descending'
 
         synth_sar_files = [
-            os.path.join(self.model, f) 
-            for f in os.listdir(self.model) 
+            os.path.join(self.model_path, f)
+            for f in os.listdir(self.model_path)
             if 'synth_sar' in f
         ]
 

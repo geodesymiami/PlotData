@@ -67,11 +67,13 @@ class PlotTemplate:
                 ["model_ascending.section"],
             ],
             "test": [
-                ["velocity_descending", "velocity_ascending"],
-                ["horizontal", "vertical"]
-                # ["vectors",             "velocity_descending.section.point"],
-                # ["profile_descending",  "timeseries"],
+                # ["profile_descending",],
+                # ["profile_ascending",],
+                ["velocity_descending.section.point","horizontal"],
+                ["velocity_ascending.section.point","profile_ascending"],
+                # ["model_descending.section"],
                 # ["timeseries"],
+                ["vectors.model", "profile_descending"],
                 # ["seismicmap"],
                 # ["seismicity.date",],
                 # ["seismicity.distance",],

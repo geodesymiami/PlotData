@@ -209,21 +209,39 @@ class DataExtractor:
                         if 'data' in v:
                             v['data'] *= conversion_factor
                             v['attributes']['unit'] = self.unit
-            if 'data' in value or 'synth' in value:
-                days = value['attributes'].get('days', 1)
-                units.update({
-                    'mm': 1000 * days / 365.25,
-                    'cm': 100 * days/ 365.25,
-                    'm': days / 365.25 ,
-                    })
-                if self.unit in units:
-                    if 'data' in value and value['data'] is not None:
-                        value['data'] = value['data'] * units[self.unit]
-                    if 'synth' in value and value['synth'] is not None:
-                        value['synth'] = value['synth'] * units[self.unit]
-                    value.setdefault('attributes', {})['unit'] = self.unit
-                else:
-                    raise ValueError(f"Unit '{self.unit}' is not recognized.")
+
+            if "data" in value or "synth" in value:
+                days = value.get("attributes", {}).get("days", 1)
+                duration_years = days / 365.25 or 1.0
+
+                rate_units = {
+                    "mm/yr": 1000,
+                    "cm/yr": 100,
+                    "m/yr": 1,
+                }
+                displacement_units = {
+                    "mm": 1000,
+                    "cm": 100,
+                    "m": 1,
+                }
+
+                if "data" in value and value["data"] is not None:
+                    if self.unit in rate_units:
+                        value["data"] *= rate_units[self.unit]
+                    elif self.unit in displacement_units:
+                        value["data"] *= displacement_units[self.unit] * duration_years
+                    else:
+                        raise ValueError(f"Unit '{self.unit}' is not recognized.")
+
+                if "synth" in value and value["synth"] is not None:
+                    if self.unit in displacement_units:
+                        value["synth"] *= displacement_units[self.unit]
+                    elif self.unit in rate_units:
+                        value["synth"] *= rate_units[self.unit] / duration_years
+                    else:
+                        raise ValueError(f"Unit '{self.unit}' is not recognized.")
+
+                value.setdefault("attributes", {})["unit"] = self.unit
 
             if key == 'vectors':
                 for k, v in value.items():
