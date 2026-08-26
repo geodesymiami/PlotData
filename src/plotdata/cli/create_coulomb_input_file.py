@@ -20,7 +20,8 @@ FORMAT = (
 )
 
 EXAMPLE = """
-Chiles --period 20150731:20220713 --model mogi --output /Users/giacomo/Downloads/coulomb3402/input_file/coulomb_input.inp
+create_coulomb_input_file.py Chiles --period 20150731:20220713 --model mogi --output path/to/folder/file.inp
+create_coulomb_input_file.py Chiles --period 20220412:20220622 --model spheroid --receiver-period 20220714:20220801 --receiver-model okada
 """
 
 def create_parser():
@@ -80,7 +81,7 @@ def return_okada(source_params, receiver=False):
     """Return a Coulomb fault row tuple for an Okada tensile dislocation.
 
     Source parameters are expected in UTM meters/degrees:
-        xtlc, ytlc, dtlc, length, width, strike, dip, opening
+        xtlc, ytlc, dtlc, length, width, strike, dip, opening, param1, param2
 
     The returned Coulomb row is in kilometers, consistent with return_mogi().
     """
@@ -101,13 +102,33 @@ def return_okada(source_params, receiver=False):
     top = source_params.get('dtlc') / 1000.0
     bot = top + width * np.sin(dip_rad)
 
+    rt_lat = 0
+    reverse = 0
+
+    slip = source_params.get('param1', 0.0) or 0.0
+    opening = source_params.get('opening', 0.0) or 0.0
+    rake = source_params.get('param2', 0.0) or 0.0
+
+    if slip:
+        rake_rad = np.deg2rad(rake)
+        rt_lat = round(slip * np.cos(rake_rad), 0)
+        reverse = round(slip * np.sin(rake_rad), 0)
+    elif opening:
+        rt_lat = 0
+        reverse = round(opening, 0)
+
     if receiver:
         kode = 100
+        rt_lat = 0
+        reverse = 0
+    elif slip:
+        kode = 100
+    elif opening > 0:
+        kode = 200
+    elif opening < 0:
+        kode = 300
     else:
-        kode = 200 if source_params.get('opening', 0) > 0 else 300
-
-    rt_lat = 0
-    reverse = round(source_params.get('opening', 0.0), 2)
+        kode = 100
 
     return x_start, y_start, x_fin, y_fin, kode, rt_lat, reverse, dip, top, bot
 
@@ -164,6 +185,38 @@ def return_spheroid_as_okada(source_params, opening=None, receiver=False):
     return x_start, y_start, x_fin, y_fin, kode, rt_lat, reverse, dip, top, bot
 
 
+def return_spheroid_as_point(source_params, xstep, ystep):
+    """Approximate a Yang spheroid as a finite tensile Okada rectangle for Coulomb."""
+    center_x = source_params.get('xcen') / 1000.0
+    center_y = source_params.get('ycen') / 1000.0
+    center_d = source_params.get('depth') / 1000.0
+
+    s_axis_max = source_params.get('s_axis_max')
+    ratio = source_params.get('ratio')
+    strike = source_params.get('strike')
+    dip = source_params.get('dip')
+    dp_mu = source_params.get('dP_mu')
+
+    major_axis_m = 2.0 * s_axis_max
+    minor_axis_m = 2.0 * s_axis_max * ratio
+
+    v = (1/8) * np.pi * ((major_axis_m)**2) * (minor_axis_m) * dp_mu
+
+    x_start = center_x - xstep
+    y_start = center_y - ystep
+    x_fin = center_x + xstep
+    y_fin = center_y + ystep
+
+    top = 0
+    bot = 2 * center_d
+    kode = 500
+    rt_lat = 0
+    reverse = round(v,2)
+    dip = 90.0
+
+    return x_start, y_start, x_fin, y_fin, kode, rt_lat, reverse, dip, top, bot
+
+
 def model_dir_for_period(base_dir, period, model):
     return base_dir / period.replace(":", "_") / model
 
@@ -173,7 +226,7 @@ def read_source_params(model_dir):
     if not params_file.exists():
         raise FileNotFoundError(f"Source parameter file not found: {params_file}")
 
-    params = ['dP_mu', 'dVol', 'opening', 'param1']
+    params = ['dP_mu', 'dVol', 'opening', 'param1', 'param2']
     return next(iter(read_best_values(str(params_file), params).values()), {})
 
 
@@ -218,19 +271,18 @@ def main():
 
     xstep = (xmax - xmin) *0.05
     ystep = (ymax - ymin) * 0.05
+    xstep = 1
+    ystep = 1
 
     fault_rows = []
 
     if inps.model == 'mogi':
         x_start, y_start, x_fin, y_fin, kode, rt_lat, reverse, dip, top, bot = return_mogi(source_params, xstep, ystep)
-
     elif inps.model == 'okada':
         x_start, y_start, x_fin, y_fin, kode, rt_lat, reverse, dip, top, bot = return_okada(source_params)
     elif inps.model == 'spheroid':
-        x_start, y_start, x_fin, y_fin, kode, rt_lat, reverse, dip, top, bot = return_spheroid_as_okada(
-            source_params,
-            opening=inps.spheroid_opening,
-        )
+        # x_start, y_start, x_fin, y_fin, kode, rt_lat, reverse, dip, top, bot = return_spheroid_as_okada(source_params, opening=inps.spheroid_opening,)
+        x_start, y_start, x_fin, y_fin, kode, rt_lat, reverse, dip, top, bot = return_spheroid_as_point(source_params, xstep, ystep)
     else:
         raise ValueError(f"Unsupported Coulomb model: {inps.model}")
 
@@ -258,30 +310,31 @@ def main():
         if inps.receiver_model == "okada":
             x_start, y_start, x_fin, y_fin, kode, rt_lat, reverse, dip, top, bot = return_okada(receiver_params, receiver=True)
         else:
-            x_start, y_start, x_fin, y_fin, kode, rt_lat, reverse, dip, top, bot = return_spheroid_as_okada(
-                receiver_params,
-                opening=inps.spheroid_opening,
-                receiver=True,
-            )
+            x_start, y_start, x_fin, y_fin, kode, rt_lat, reverse, dip, top, bot = return_spheroid_as_okada(receiver_params, opening=inps.spheroid_opening, receiver=True,)
         fault_rows.append(
             FORMAT.format(
-                idx=len(fault_rows) + 1,
+                # idx=len(fault_rows) + 1,
+                idx = 1, # This works for receiver fault
                 x0=x_start, y0=y_start,
                 x1=x_fin,   y1=y_fin,
                 kode=kode,
-                rt=rt_lat,
-                rev=reverse,
+                rt=0,
+                rev=0,
                 dip=dip,
                 top=top,
                 bot=bot,
             )
         )
 
+
+    max_depth = max([bot for row in fault_rows for bot in [float(row.split()[-1])]])
+    depth = 10 if max_depth < 10 else max_depth + 1
+
     with open(inps.output, "w", encoding="utf-8") as f:
-        f.write("This is a test file for the Coulomb 1.0\n")
-        f.write("This file is prepared to check mainly thrust faulting calculation\n")
-        f.write("#reg1=  0  #reg2=  0   #fixed=  1  sym=  1\n")
-        f.write(" PR1=       .250      PR2=       .250    DEPTH=        7.5\n")
+        f.write("This file is a test file for Coulomb input\n")
+        f.write("Keep this line\n")
+        f.write(f"#reg1=  0  #reg2=  0   #fixed=  {len(fault_rows)}  sym=  1\n")
+        f.write(f" PR1=       .250      PR2=       .250    DEPTH=        {depth}\n")
         f.write("  E1=   0.800000E+06   E2=   0.800000E+06\n")
         f.write("XSYM=       .000     YSYM=       .000\n")
         f.write("FRIC=       .400\n")
@@ -306,7 +359,7 @@ def main():
         f.write("     Size Parameters\n")
         f.write("  1  --------------------------  Plot size =     2.00000\n")
         f.write("  2  --------------  Shade/Color increment =     1.00000\n")
-        f.write("  3  ------  Exaggeration for disp.& dist. =  10000.00000\n")
+        f.write("  3  ------  Exaggeration for disp.& dist. =    100000.0\n")
         f.write("\n")
         f.write("Cross section default\n")
         f.write(f"  1  ----------------------------  Start-x =    {xmin:10.5f}\n")

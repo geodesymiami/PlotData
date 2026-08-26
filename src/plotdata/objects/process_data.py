@@ -1,4 +1,5 @@
 import os
+import glob
 from mintpy.utils import readfile
 from mintpy.cli import (
     reference_point, asc_desc2horz_vert, mask, geocode, timeseries2velocity as ts2v
@@ -34,6 +35,7 @@ class ProcessData:
         self.project = None
         self.layout = layout
         self.model_path = None
+        self.coulomb_path = None
 
         # Extract file names once for all cases
         self._extract_file_names()
@@ -120,6 +122,12 @@ class ProcessData:
 
             if not self.no_sources or 'vectors.model' in self.layout:
                 self.sources = self._read_model_parameters(self.model_path)
+
+        if ['coulomb' in element for row in self.layout for element in row]:
+            cou = glob.glob(os.path.join(self.directory, f"{self.start_date}_{self.end_date}", 'Strain*.cou'))
+            if not cou:
+                cou = glob.glob(os.path.join(self.directory, f"{self.start_date}_{self.end_date}", '*.cou'))
+            self.coulomb_file = cou[0] if cou else None
 
         if self.ref_lalo:
             self.ref_lalo = select_reference_point(geo_masked_files, self.window_size, self.ref_lalo)

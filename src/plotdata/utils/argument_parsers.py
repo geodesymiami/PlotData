@@ -250,11 +250,11 @@ def add_save_arguments(parser):
                         nargs='?',
                         const='png',
                         choices=['png', 'pdf'],
-                        help=f'Save the plots (default path: $SCRATCHDIR/Volcano_dir as PNG (default) or PDF.')
+                        help='Save the complete figure as PNG (default when no format is given) or PDF.')
     save.add_argument('--save-axis',
                       dest='flag_save_axis',
                       action='store_true',
-                      help='Save the axis of the plot as individual images.')
+                      help='Save each axis as an individual file; defaults to PDF unless --save specifies a format.')
     save.add_argument('--outdir',
                       type=str,
                       default=os.getenv("SCRATCHDIR"),
@@ -334,5 +334,36 @@ def add_seismicity_arguments(parser):
                             default=None,
                             help='Add focal mechanisms to the plot with magnitude above specified value (default: %(default)s).'
                             )
+
+    return parser
+
+
+def add_coulomb_arguments(parser):
+    """
+    Add Coulomb arguments to the argument parser.
+
+    Args:
+        parser (argparse.ArgumentParser): The argument parser to add the Coulomb arguments to.
+
+    Returns:
+        argparse.ArgumentParser: The updated argument parser.
+    """
+    coulomb = parser.add_argument_group('Coulomb options')
+    coulomb.add_argument('--coulomb-grid-size',
+                         dest='coulomb_grid_size',
+                         default=300,
+                         type=int,
+                         help='Coulomb grid size (default: %(default)s).')
+    coulomb.add_argument('--coulomb-levels',
+                         dest='coulomb_levels',
+                         default=10,
+                         type=int,
+                         help='Coulomb levels (default: %(default)s).')
+    coulomb.add_argument('--coulomb-limit',
+                         dest='limit',
+                         default=1,
+                         type=float,
+                         help='Coulomb limit (default: %(default)s).')
+
 
     return parser

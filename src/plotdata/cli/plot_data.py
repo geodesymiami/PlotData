@@ -18,7 +18,7 @@ from mintpy.utils import readfile
 from dateutil.relativedelta import relativedelta
 from plotdata.volcano_functions import get_volcano_event
 from plotdata.helper_functions import prepend_scratchdir_if_needed, get_eos5_file, parse_coord_vert
-from plotdata.utils.argument_parsers import add_date_arguments, add_location_arguments, add_plot_parameters_arguments, add_map_parameters_arguments, add_save_arguments,add_gps_arguments, add_seismicity_arguments
+from plotdata.utils.argument_parsers import add_date_arguments, add_location_arguments, add_plot_parameters_arguments, add_map_parameters_arguments, add_save_arguments,add_gps_arguments, add_seismicity_arguments, add_coulomb_arguments
 
 ############################################################
 EXAMPLE = """
@@ -57,6 +57,8 @@ def create_parser():
     parser.add_argument("--num-vectors", dest="resample_vector", type=int, default=1, help="resample factor for deformation vectors (default: %(default)s).")
     # parser.add_argument("--id", type=int, default=None, help="ID of the plot volcano ofr global location command (default: %(default)s).")
 
+    parser.add_argument("--no-legend", action='store_true', default=False, help="Do not show labels on the plots (default: %(default)s).")
+
     parser.add_argument("--volcano", action='store_true', default=False, help="Plot volcanoes if they are in the region")
 
     parser = add_date_arguments(parser)
@@ -66,9 +68,9 @@ def create_parser():
     parser = add_save_arguments(parser)
     parser = add_gps_arguments(parser)
     parser = add_seismicity_arguments(parser)
+    parser = add_coulomb_arguments(parser)
 
     inps = parser.parse_args()
-
 
     if len(inps.data_dir) > 2:
         parser.error('USER ERROR: Too many files provided.')
@@ -125,9 +127,10 @@ def create_parser():
             except ValueError:
                 msg = 'Date format not valid, it must be in the format YYYYMMDD or YYYY-MM-DD'
                 raise ValueError(msg)
-    # TODO to change
-    if False:
-        inps.style = 'ifgram'
+
+    if inps.coulomb_levels:
+        if inps.coulomb_levels % 2 != 0:
+            inps.coulomb_levels += 1
 
     if inps.add_event:
         if not inps.event_magnitude:
@@ -136,8 +139,9 @@ def create_parser():
             msg = 'Number of events and magnitudes do not match'
             raise ValueError(msg)
 
-    if inps.flag_save_axis:
-        inps.save = 'png'
+    # --save-axis defaults to PDF, but an explicit --save format wins.
+    if inps.flag_save_axis and inps.save is None:
+        inps.save = 'pdf'
 
 ##### Hardwired for Hawaii #####
     if 'GPSDIR' in os.environ:
@@ -353,6 +357,7 @@ def main(iargs=None):
         "timeseries": {"class": TimeseriesPlot, "attributes": ["eos_file_ascending", "eos_file_descending"]},
         "seismicmap": {"class": VelocityPlot, "attributes": ["ascending_geometry", "descending_geometry"]},
         "seismicity": {"class": EarthquakePlot, "attributes": ["ascending", "descending"]},
+        "coulomb": {"class": VelocityPlot, "attributes": ["coulomb_file"]},
         ########
     }
 
@@ -381,43 +386,43 @@ def main(iargs=None):
     # Log
     configure_logging(processors)
 
-    # Save or show
-    if inps.save == 'pdf':
-        from matplotlib.backends.backend_pdf import PdfPages
-
+    # Save either one composite figure or one file per axis. PlotGrid already
+    # creates the appropriate figure structure based on flag_save_axis.
+    if inps.save in {'pdf', 'png'}:
         for processor in processors:
-            saving_root = os.path.join(inps.outdir,processor.project,'images', f"{processor.start_date}_{processor.end_date}")
+            saving_root = os.path.join(
+                inps.outdir,
+                processor.project,
+                'images',
+                f"{processor.start_date}_{processor.end_date}",
+            )
             os.makedirs(saving_root, exist_ok=True)
-            process_id = id(processor)
-            if process_id in figures:
-                if len(figures[process_id]) > 1:
-                    saving_path = os.path.join(saving_root, f"{processor.project}_{figures[process_id][0].get_axes()[0].get_label().split('.')[0]}_{processor.start_date}_{processor.end_date}.pdf")
+
+            processor_figures = figures.get(id(processor), [])
+            for figure_index, fig in enumerate(processor_figures):
+                if inps.flag_save_axis:
+                    axes = fig.get_axes()
+                    plot_name = (
+                        axes[0].get_label().split('.')[0]
+                        if axes else f"axis_{figure_index + 1}"
+                    )
                 else:
-                    saving_path = os.path.join(saving_root, f"{processor.project}_{inps.template}_{processor.start_date}_{processor.end_date}.pdf")
+                    plot_name = inps.template
 
-                with PdfPages(saving_path) as pdf:
-                    for fig in figures[process_id]:
-                        pdf.savefig(fig, bbox_inches='tight', dpi=inps.dpi, transparent=True)
-
-                        print(f"Figures saved to {saving_path}\n")
-                        plt.close(fig)
-
-    elif inps.save == 'png':
-        # Save each figure as a PNG file
-        for processor in processors:
-            saving_root = os.path.join(inps.outdir,processor.project,'images',f"{processor.start_date}_{processor.end_date}")
-            os.makedirs(saving_root, exist_ok=True)
-            process_id = id(processor)
-            if process_id in figures:
-                for fig in figures[process_id]:
-                    if len(figures[process_id]) > 1:
-                        png_path = os.path.join(saving_root, f"{processor.project}_{fig.get_axes()[0].get_label().split('.')[0]}_{processor.start_date}_{processor.end_date}.png")
-                    else:
-                        png_path = os.path.join(saving_root, f"{processor.project}_{inps.template}_{processor.start_date}_{processor.end_date}.png")
-                    fig.savefig(png_path, bbox_inches='tight', dpi=inps.dpi, transparent=True)
-
-                    print(f"Figure saved to {png_path}\n")
-                    plt.close(fig)
+                filename = (
+                    f"{processor.project}_{plot_name}_"
+                    f"{processor.start_date}_{processor.end_date}.{inps.save}"
+                )
+                saving_path = os.path.join(saving_root, filename)
+                fig.savefig(
+                    saving_path,
+                    format=inps.save,
+                    bbox_inches='tight',
+                    dpi=inps.dpi,
+                    transparent=True,
+                )
+                print(f"Figure saved to {saving_path}\n")
+                plt.close(fig)
 
     if inps.show_flag:
             plt.show()

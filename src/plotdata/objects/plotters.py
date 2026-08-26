@@ -12,12 +12,14 @@ from matplotlib.colors import LightSource
 from matplotlib.transforms import Affine2D
 from matplotlib.patheffects import withStroke
 from matplotlib.patches import Rectangle, Polygon
+from scipy.interpolate import griddata
 from plotdata.volcano_functions import get_volcanoes_data
 from plotdata.objects.forward import Penny as frwPenny, Mogi as frwMogi, Okada as frwOkada, Yang as frwYang
-from plotdata.helper_functions import calculate_distance, get_bounding_box, parse_polygon, resize_to_match, parse_coord_vert, interpolate, convert_to_utm, set_default_section
+from plotdata.helper_functions import calculate_distance, get_bounding_box, parse_polygon, resize_to_match, parse_coord_vert, interpolate, convert_to_utm, set_default_section, latlon_to_utm_zone, utm_to_latlon
 
 def plot_point(ax, lat, lon, marker='o', color='black', size=5, alpha=1, zorder=None):
     ax.plot(lon, lat, marker, color=color, markersize=size, alpha=alpha, zorder=zorder)
+
 
 class VelocityPlot:
     """Handles the plotting of velocity maps."""
@@ -25,6 +27,8 @@ class VelocityPlot:
         for attr in dir(inps):
             if not attr.startswith('__') and not callable(getattr(inps, attr)):
                 setattr(self, attr, getattr(inps, attr))
+
+        self.vert_ex = 0.5
 
         if 'data' in dataset:
             self.data = dataset["data"]
@@ -34,9 +38,15 @@ class VelocityPlot:
             self.attributes = dataset["attributes"]
             self.east = dataset["east"]
             self.north = dataset["north"]
+        elif 'dilatation' in dataset:
+            self.x = np.asarray(dataset["x"], dtype=float)
+            self.y = np.asarray(dataset["y"], dtype=float)
+            self.dilatation = np.asarray(dataset["dilatation"], dtype=float)
+            self.attributes = dataset["attributes"]
+            # self.vert_ex = 10
+
         elif 'geometry' in dataset:
             self.attributes = dataset["geometry"]["attributes"]
-
 
         if "region" in self.attributes:
             self.region = self.attributes["region"]
@@ -129,6 +139,97 @@ class VelocityPlot:
                         model = value["class"]
                         source_params = {attr: sources[s][attr] for attr in value["attributes"]}
                         model(self.ax, **source_params)
+
+    def _plot_coulomb(self):
+        """Plot dilatation, interpolating only when a map region is known."""
+        print("-"*50)
+        print("Plotting Coulomb dilatation data...\n")
+
+        valid = (np.isfinite(self.x) & np.isfinite(self.y) & np.isfinite(self.dilatation))
+        if valid.sum() < 3:
+            raise ValueError("At least three finite Coulomb points are required")
+
+        color_limit = np.nanmax(abs(self.dilatation)) * self.limit
+        contour_levels = np.linspace(-color_limit, color_limit, self.coulomb_levels)
+        plot_kwargs = {
+            "cmap": "RdBu_r",
+            "vmin": -color_limit,
+            "vmax": color_limit,
+            "alpha": 0.5,
+            "zorder": self._get_next_zorder(),
+        }
+
+        if hasattr(self, "region") and self.region is not None:
+            # Coulomb x/y are UTM kilometres; the map and DEM use lon/lat.
+            center_lon = 0.5 * (self.region[0] + self.region[1])
+            center_lat = 0.5 * (self.region[2] + self.region[3])
+            utm_zone, hemisphere = latlon_to_utm_zone(center_lat, center_lon)
+            latitude, longitude = utm_to_latlon(self.x[valid] * 1000.0, self.y[valid] * 1000.0, utm_zone, hemisphere,)
+
+            grid_lon = np.linspace(self.region[0], self.region[1], self.coulomb_grid_size)
+            grid_lat = np.linspace(self.region[2], self.region[3], self.coulomb_grid_size)
+
+            lon2d, lat2d = np.meshgrid(grid_lon, grid_lat)
+            dilatation_grid = griddata((longitude, latitude), self.dilatation[valid], (lon2d, lat2d), method='linear',)
+
+            self.imdata = self.ax.contourf(
+                lon2d,
+                lat2d,
+                dilatation_grid,
+                levels=contour_levels,
+                extend="both",
+                **plot_kwargs,
+            )
+
+            if getattr(self, "lalo", None):
+                point_lat, point_lon = map(float, self.lalo)
+                point_value = griddata(
+                    (longitude, latitude),
+                    self.dilatation[valid],
+                    np.array([[point_lon, point_lat]]),
+                    method='linear',
+                )[0]
+                if not np.isfinite(point_value):
+                    # Linear/cubic interpolation is undefined outside the
+                    # convex hull; use the closest Coulomb node as fallback.
+                    point_value = griddata(
+                        (longitude, latitude),
+                        self.dilatation[valid],
+                        np.array([[point_lon, point_lat]]),
+                        method="nearest",
+                    )[0]
+
+                point_zorder = self._get_next_zorder()
+                plot_point(self.ax, [point_lat], [point_lon], marker="x", size=7, zorder=point_zorder, color="white" if point_value < 0 else "black")
+                self.ax.annotate(f"{point_value:.2e}", xy=(point_lon, point_lat), xytext=(0, 8), textcoords="offset points", ha="center", va="bottom", fontsize=self.font_size, color="black", path_effects=[withStroke(linewidth=2, foreground="white")], zorder=point_zorder,)
+        else:
+            # Preserve the original Coulomb nodes: no interpolation/resampling.
+            x_unique = np.unique(self.x[valid])
+            y_unique = np.unique(self.y[valid])
+            dilatation_grid = np.full(
+                (y_unique.size, x_unique.size), np.nan, dtype=float
+            )
+            x_indices = np.searchsorted(x_unique, self.x[valid])
+            y_indices = np.searchsorted(y_unique, self.y[valid])
+            dilatation_grid[y_indices, x_indices] = self.dilatation[valid]
+            self.imdata = self.ax.pcolormesh(x_unique, y_unique, dilatation_grid, shading="nearest", **plot_kwargs,)
+
+        if not self.no_colorbar:
+            cbar = self.ax.figure.colorbar(self.imdata, ax=self.ax, orientation='horizontal', aspect=12, shrink=self.colorbar_size)
+
+            exponent = int(np.floor(np.log10(color_limit)))
+            scientific_scale = 10.0 ** exponent
+            tick_values = [-color_limit, 0.0, color_limit]
+            tick_labels = [f"{-color_limit / scientific_scale:.1f}", "0", f"{color_limit / scientific_scale:.1f}",]
+            cbar.set_ticks(tick_values, labels=tick_labels)
+            cbar.set_label(rf"Dilatation ($\times 10^{{{exponent}}}$)", fontsize=self.font_size,)
+            cbar.ax.tick_params(labelsize=self.font_size)
+
+        self._plot_source(copy.deepcopy(getattr(self, "sources", None)))
+
+        self._update_axis_limits()
+
+        self._plot_scale()
 
     def _plot_synthetic(self, data):
         zorder = self._get_next_zorder()
@@ -253,8 +354,6 @@ class VelocityPlot:
         # label centered under the bar
         self.ax.text(x0 + dlon/2, y0 + 0.06 * abs(lat_span), label, ha='center', va='top', fontsize=8, path_effects=[withStroke(linewidth=1.5, foreground='white')], zorder=zorder)
 
-
-
     def _plot_dem(self):
         print("-"*50)
         print("Plotting DEM data...\n")
@@ -304,7 +403,7 @@ class VelocityPlot:
 
         # Compute hillshade with real spacing
         ls = LightSource(azdeg=315, altdeg=45)
-        hillshade = ls.hillshade(self.z, vert_exag=0.5, dx=dx, dy=dy)
+        hillshade = ls.hillshade(self.z, vert_exag=self.vert_ex, dx=dx, dy=dy)
 
         # Use pcolormesh to plot hillshade using real coordinates
         self.im = self.ax.pcolormesh(lon2d, lat2d, hillshade, cmap='grey', shading='gouraud', zorder=zorder, vmin=0, vmax=0.7)
@@ -403,6 +502,9 @@ class VelocityPlot:
         if hasattr(self, 'synth') and self.synth is not None:
             self._plot_synthetic(self.synth)
 
+        if hasattr(self, 'dilatation') and self.dilatation is not None:
+            self._plot_coulomb()
+
         if self.contour:
             self._plot_isolines()
 
@@ -422,7 +524,7 @@ class VelocityPlot:
         if self.ref_lalo and 'seismicmap' not in self.ax.get_label():
             plot_point(self.ax, [self.ref_lalo[0]], [self.ref_lalo[1]], marker='s', zorder=self._get_next_zorder())
 
-        if self.label:
+        if self.label and not self.no_legend:
             self.ax.annotate(self.label,xy=(0.02, 0.98),xycoords='axes fraction',fontsize=7,ha='left',va='top',color='white',bbox=dict(facecolor='black', edgecolor='none', alpha=0.6, boxstyle='round,pad=0.3'))
 
         min_lon, max_lon = self.ax.get_xlim()
@@ -568,7 +670,8 @@ class TimeseriesPlot:
         ax_ts.axvspan(self.start_date, self.end_date, color='#a8a8a8', alpha=0.1)
         ax_ts.set_ylabel(f'LOS displacement ({self.unit.replace("/yr", "")})')
         size = 'xx-small' if self.font_size <= 10 else 'small'
-        ax_ts.legend(fontsize=size)
+        if not self.no_legend:
+            ax_ts.legend(fontsize=size)
 
     def _plot_event(self):
         if self.add_event:
@@ -578,7 +681,7 @@ class TimeseriesPlot:
 
                 # Add a number near the top of the line
                 if magnitude:
-                    self.ax.text(event, self.ax.get_ylim()[1] * (magnitude/10), f"{magnitude}", color='#900C3F', fontsize=7, alpha=1, ha='center',  path_effects=[withStroke(linewidth=0.5, foreground='black')])
+                    self.ax.text(event, self.ax.get_ylim()[1] * (magnitude/10), f"{magnitude}", color='#900C3F', fontsize=self.font_size, alpha=1, ha='center',  path_effects=[withStroke(linewidth=0.5, foreground='black')])
 
     def plot(self, ax):
         self.ax = ax
@@ -703,9 +806,9 @@ class ProfilePlot:
         for key in self.profiles:
             self._plot_profile(self.profiles, key, self.ax)
 
-        size = 'xx-small' if self.font_size <= 10 else 'small'
-        self.ax.legend(fontsize=size)
-
+        if not self.no_legend:
+            size = 'xx-small' if self.font_size <= 10 else 'small'
+            self.ax.legend(fontsize=size)
 
         if 'ascending' in self.ax.get_label():
             self.label = "ASCENDING"
@@ -910,10 +1013,7 @@ class VectorsPlot:
             combined_h = np.concatenate((self.filtered_h, self.x_model))
             combined_v = np.concatenate((self.filtered_v, self.z_model))
 
-            combined_v, combined_h = self._normalize_vectors(
-                combined_h,
-                combined_v,
-            )
+            combined_v, combined_h = self._normalize_vectors(combined_h, combined_v,)
 
             self.filtered_h = combined_h[:n_observed]
             self.filtered_v = combined_v[:n_observed]
@@ -930,7 +1030,7 @@ class VectorsPlot:
 
         # Plot observed velocity vectors.
         if self.vector_legend == "mean_vector":
-            self.imdata = self.ax.quiver(self.filtered_x, self.filtered_elevation, self.filtered_h, self.filtered_v, color="#ff7366", scale=scale, width=width, label="Observed", alpha=0.8, zorder=3,)
+            self.imdata = self.ax.quiver(self.filtered_x, self.filtered_elevation, self.filtered_h, self.filtered_v, color="#000000", scale=scale, width=width, label="Observed", alpha=0.8, zorder=3,)
 
             start_x = np.nanmax(self.xrange) * 0.1
             y_span = ylim[1] - ylim[0]
@@ -942,13 +1042,13 @@ class VectorsPlot:
             candidates = np.array([1.0, 5.0, 10.0]) * 10**exp
             velocity_rep = float(candidates[np.argmin(np.abs(candidates - mean_velocity))])
 
-            # Avoid division by zero when all observed vectors are zero.
-            if mean_velocity > 0:
-                legend_length = (normalized_mean * velocity_rep / mean_velocity)
-            else:
-                legend_length = 0.0
+            legend_length = (normalized_mean * velocity_rep / mean_velocity)
 
-            self.ax.quiver([start_x], [start_y], [legend_length], [0], color="#ff7366", scale=scale, width=width,)
+            if legend_length < np.nanmax(np.hypot(self.filtered_h, self.filtered_v)) * 0.25:
+                velocity_rep = float(candidates[np.argmin(np.abs(candidates - mean_velocity)) + 1])
+                legend_length = (normalized_mean * velocity_rep / mean_velocity)
+
+            self.ax.quiver([start_x], [start_y], [legend_length], [0], color="#000000", scale=scale, width=width,)
             self.ax.text(start_x, start_y + 0.02 * y_span, f"{velocity_rep:g} {unit}", color="black", ha="left", fontsize=self.font_size, alpha=0.8,  zorder=3,)
 
         elif self.vector_legend == "colorbar":
@@ -964,8 +1064,10 @@ class VectorsPlot:
 
         # Add model vectors after the observed vectors.
         if has_model:
-            self.model_imdata = self.ax.quiver(self.filtered_x, self.filtered_elevation, self.x_model, self.z_model, color="#2979b8", alpha=0.7, scale=scale, width=width * 0.8, label="Model", zorder=2,)
-            self.ax.legend(loc="upper right", fontsize=7,)
+            self.model_imdata = self.ax.quiver(self.filtered_x, self.filtered_elevation, self.x_model, self.z_model, color="#12AFB5", alpha=0.7, scale=scale, width=width * 0.8, label="Model", zorder=2,)
+            if not self.no_legend:
+                size = 'xx-small' if self.font_size <= 10 else 'small'
+                self.ax.legend(loc="upper right", fontsize=size,)
 
         self.ax.set_ylabel("Elevation (m)")
         self.ax.set_xlabel("Distance (km)")

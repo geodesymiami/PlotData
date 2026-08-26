@@ -160,6 +160,7 @@ class DataExtractor:
             "vectors": self._extract_vector_data,
             "seismicmap": self._make_seismicmap,
             "seismicity": self._make_seismicity,
+            "coulomb": self._extract_coulomb_data,
         }
 
         self._fetch_data()
@@ -279,6 +280,30 @@ class DataExtractor:
                         self.dataset.setdefault(name, {}).update(handler(file))
                 else:
                     print(f"[Warning] No handler defined for plot type '{name}'.\n")
+
+    # TODO Finish
+    def _extract_coulomb_data(self, file):
+        df = pd.read_csv(
+        file,
+        sep=r"\s+",
+        header=1,
+        skiprows=[2],)
+
+        dictionary = df.to_dict(orient='list')
+
+        if not self.no_dem:
+            geom = (
+                self.ascending_geometry
+                if hasattr(self, 'ascending_geometry') and self.ascending_geometry
+                else self.descending_geometry
+                if hasattr(self, 'descending_geometry') and self.descending_geometry
+                else None
+            )
+            if geom:
+                dictionary["geometry"] = self._extract_geometry_data(geom)
+                dictionary["attributes"] = dictionary.get("geometry", {}).get("attributes", {})
+
+        return dictionary
 
     def _extract_model(self, dict):
         direction, file = list(dict.items())[0][0], list(dict.items())[0][1]

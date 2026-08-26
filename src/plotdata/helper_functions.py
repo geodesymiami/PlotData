@@ -375,6 +375,7 @@ def get_file_names(path):
     vel_file = os.path.join(eos_file.rsplit('/', 1)[0], velocity_file)
     geometry_file = os.path.join(project_base_dir, track_dir, geometryRadar_file)
     mask_file = os.path.join(project_base_dir, track_dir, maskTempCoh_file)
+    coulomb_file = os.path.join(project_base_dir, track_dir,)
 
     inputs_folder = os.path.join(scratch, project_dir)
     out_vel_file = os.path.join(project_base_dir, track_dir, velocity_file.split(os.sep)[-1])
