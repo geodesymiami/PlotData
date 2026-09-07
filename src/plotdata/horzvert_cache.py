@@ -8,13 +8,18 @@ from datetime import datetime
 
 from plotdata.fault_transect.cache import cache_is_fresh
 
-# mintpy / miaplpy, optionally with YYYYMM or YYYYMMDD span (keep full dirname).
-_PROC_DIR_RE = re.compile(r'^(mintpy|miaplpy)(?:_(\d{6}|\d{8})_(\d{6}|\d{8}))?$')
+# mintpy / miaplpy, with optional suffix (date span and/or custom addition).
+_PROC_DIR_RE = re.compile(r'^(mintpy|miaplpy)(_.*)?$')
+# Trailing YYYYMM or YYYYMMDD span on a processing-method dir name.
+_PROC_SPAN_RE = re.compile(r'_(\d{6}|\d{8})_(\d{6}|\d{8})$')
 
 
 def hvparams_path(vert_path):
     """Sidecar path storing processing-parameter fingerprint for a vert HE5."""
-    return f'{vert_path}.hvparams'
+    directory = os.path.dirname(os.path.abspath(vert_path)) if vert_path else ''
+    if not directory:
+        return 'horzvert.hvparams'
+    return os.path.join(directory, 'horzvert.hvparams')
 
 
 def _repr_value(value):
@@ -93,7 +98,7 @@ def predict_geo_input_path(file_path):
 
 
 def infer_output_subdir(file_path):
-    """Return mintpy/miaplpy path component (keep dated suffix when present)."""
+    """Return mintpy/miaplpy path component (keep full dirname, including custom suffix)."""
     if not file_path:
         return None
     for element in os.path.normpath(file_path).split(os.sep):
@@ -105,12 +110,13 @@ def infer_output_subdir(file_path):
 def processing_dir_span(name):
     """Comparable period length for a processing-method dir (months or days).
 
-    Bare mintpy/miaplpy (no dates) → 0 so dated names win when picking the longer span.
+    Uses a trailing _YYYYMM_YYYYMM or _YYYYMMDD_YYYYMMDD if present.
+    Bare mintpy/miaplpy (no dates) → 0.
     """
-    match = _PROC_DIR_RE.match(name or '')
-    if not match or not match.group(2):
+    match = _PROC_SPAN_RE.search(name or '')
+    if not match:
         return 0
-    start, end = match.group(2), match.group(3)
+    start, end = match.group(1), match.group(2)
     if len(start) == 6:
         start_m = int(start[:4]) * 12 + int(start[4:6])
         end_m = int(end[:4]) * 12 + int(end[4:6])
@@ -120,16 +126,28 @@ def processing_dir_span(name):
     return (end_d - start_d).days
 
 
-def longest_output_subdir(file_paths):
-    """Among input paths, keep the mintpy/miaplpy dir covering the longer period."""
-    dirs = []
+def first_output_subdir(file_paths):
+    """mintpy/miaplpy dir from the first input path that has one."""
     for path in file_paths or []:
         name = infer_output_subdir(path)
         if name:
-            dirs.append(name)
-    if not dirs:
-        return None
-    return max(dirs, key=processing_dir_span)
+            return name
+    return None
+
+
+def longest_output_subdir(file_paths):
+    """mintpy/miaplpy dir covering the longer period among inputs (ties: first)."""
+    best = None
+    best_span = -1
+    for path in file_paths or []:
+        name = infer_output_subdir(path)
+        if not name:
+            continue
+        span = processing_dir_span(name)
+        if best is None or span > best_span:
+            best = name
+            best_span = span
+    return best
 
 
 def locate_hv_outputs(output_dir):
@@ -152,7 +170,63 @@ def locate_hv_outputs(output_dir):
     return vert_path, horz_path
 
 
-def hv_cache_hit(vert_path, horz_path, geo1, geo2, fingerprint):
+def _floats_close(left, right, tol=1e-8):
+    try:
+        return abs(abs(float(left)) - abs(float(right))) <= tol
+    except (TypeError, ValueError):
+        return False
+
+
+def _read_he5_attributes(he5_path):
+    """Return HE5 metadata dict, or None if unreadable."""
+    if not he5_path or not os.path.isfile(he5_path):
+        return None
+    try:
+        from mintpy.utils import readfile
+        return readfile.read_attribute(he5_path)
+    except Exception:
+        return None
+
+
+def he5_matches_ref_and_posting(he5_path, ref_lalo, lat_step, lon_step=None, atr=None):
+    """True when HE5 REF_LAT/REF_LON and Y_STEP/X_STEP match the requested values."""
+    if atr is None:
+        atr = _read_he5_attributes(he5_path)
+    if not atr:
+        return False
+    if ref_lalo and len(ref_lalo) >= 2:
+        if 'REF_LAT' not in atr or 'REF_LON' not in atr:
+            return False
+        try:
+            y_tol = max(abs(float(atr.get('Y_STEP', 1e-4))) * 1.5, 1e-5)
+            x_tol = max(abs(float(atr.get('X_STEP', 1e-4))) * 1.5, 1e-5)
+        except (TypeError, ValueError):
+            y_tol, x_tol = 1e-4, 1e-4
+        try:
+            if abs(float(atr['REF_LAT']) - float(ref_lalo[0])) > y_tol:
+                return False
+            if abs(float(atr['REF_LON']) - float(ref_lalo[1])) > x_tol:
+                return False
+        except (TypeError, ValueError):
+            return False
+    if lat_step is not None:
+        if 'Y_STEP' not in atr:
+            return False
+        if not _floats_close(atr['Y_STEP'], lat_step):
+            return False
+        x_expected = lon_step
+        if x_expected is None and ref_lalo and len(ref_lalo) >= 1:
+            from plotdata.helper_functions import find_longitude_degree
+            x_expected = find_longitude_degree(ref_lalo[0], lat_step)
+        if x_expected is not None:
+            if 'X_STEP' not in atr:
+                return False
+            if not _floats_close(atr['X_STEP'], x_expected):
+                return False
+    return True
+
+
+def hv_cache_hit(vert_path, horz_path, geo1, geo2, fingerprint, inps=None):
     """True when vert/horz exist, are fresh vs geo inputs, and params match."""
     if not vert_path or not horz_path:
         return False
@@ -164,6 +238,17 @@ def hv_cache_hit(vert_path, horz_path, geo1, geo2, fingerprint):
         return False
     if not cache_is_fresh(horz_path, geo1, geo2):
         return False
+    if inps is not None:
+        ref_lalo = getattr(inps, 'ref_lalo', None)
+        lat_step = getattr(inps, 'lat_step', None)
+        lon_step = None
+        if lat_step is not None and ref_lalo and len(ref_lalo) >= 1:
+            from plotdata.helper_functions import find_longitude_degree
+            lon_step = find_longitude_degree(ref_lalo[0], lat_step)
+        if not he5_matches_ref_and_posting(vert_path, ref_lalo, lat_step, lon_step):
+            return False
+        if not he5_matches_ref_and_posting(horz_path, ref_lalo, lat_step, lon_step):
+            return False
     return True
 
 
@@ -171,7 +256,7 @@ def should_recompute_hv(inps, vert_path, horz_path, geo1, geo2, fingerprint):
     """True when horz/vert products should be (re)computed."""
     if getattr(inps, 'force', False) or getattr(inps, 'overwrite', False):
         return True
-    return not hv_cache_hit(vert_path, horz_path, geo1, geo2, fingerprint)
+    return not hv_cache_hit(vert_path, horz_path, geo1, geo2, fingerprint, inps=inps)
 
 
 def geometry_cache_fresh(geometry_file, eos_file):

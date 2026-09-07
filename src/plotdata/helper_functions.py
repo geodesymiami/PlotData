@@ -449,11 +449,13 @@ def create_mask_file(eos_file, out_folder, mask_trehshold=0.55):
 def get_eos5_file(path, scratch=None):
     if not scratch:
         scratch = os.getenv('SCRATCHDIR')
+    if path:
+        path = os.path.normpath(path)
     files = glob.glob(path)
     if files and os.path.isfile(files[0]):
         eos_file = files[0]
 
-    elif os.path.isfile(os.path.join(scratch, path)):
+    elif scratch and os.path.isfile(os.path.join(scratch, path)):
         eos_file = os.path.join(scratch, path)
 
     else:

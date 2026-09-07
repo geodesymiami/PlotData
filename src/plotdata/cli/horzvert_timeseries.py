@@ -21,8 +21,8 @@ from plotdata.helper_functions import (
 from plotdata.horzvert_cache import (
     build_hv_fingerprint,
     geometry_cache_fresh,
-    longest_output_subdir,
     locate_hv_outputs,
+    longest_output_subdir,
     predict_geo_input_path,
     should_recompute_hv,
     write_hvparams,
@@ -100,7 +100,7 @@ def _geo_input_paths(file_args):
 
 
 def _hv_output_dir(project_base_dir, file_args):
-    """Return directory containing horz/vert HE5 products (longest dated span)."""
+    """Return directory for horz/vert HE5 (longer mintpy/miaplpy period among inputs)."""
     subdir = longest_output_subdir(file_args)
     if subdir:
         return os.path.join(project_base_dir, subdir)
@@ -1451,7 +1451,7 @@ def main(iargs=None, namespace=None):
     ts1.metadata['first_date'] = min(date_objs).strftime('%Y-%m-%d')
     ts1.metadata['last_date'] = max(date_objs).strftime('%Y-%m-%d')
 
-    # Create output files under site/<mintpy|miaplpy[_YYYYMM_YYYYMM]>/ (longest input span)
+    # Create output files under site/<longer mintpy|miaplpy[_...] period>/
     output_dir = _hv_output_dir(project_base_dir, inps.file)
     os.makedirs(output_dir, exist_ok=True)
     vertical_path = os.path.join(output_dir, get_output_filename(ts1.metadata, None, direction='vert'))
